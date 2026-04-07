@@ -17,10 +17,10 @@ class _ShellScreenState extends State<ShellScreen> {
 
   static const _items = [
     _NavDef('/dashboard', Icons.dashboard_outlined,   'Dashboard'),
-    _NavDef('/employees', Icons.people_outline,        'Employee Master'),
-    _NavDef('/vouchers',  Icons.description_outlined,  'Voucher Builder'),
+    _NavDef('/employees', Icons.people_outline,        'Employee Master Data'),
+    _NavDef('/vouchers',  Icons.description_outlined,  'Voucher'),
     _NavDef('/invoices',  Icons.receipt_outlined,       'Invoices'),
-    _NavDef('/settings',  Icons.settings_outlined,      'Company Config'),
+    _NavDef('/settings',  Icons.settings_outlined,      'Company-Config'),
   ];
 
   String _activeRoute(BuildContext ctx) {

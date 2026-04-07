@@ -5,6 +5,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../data/models/employee_model.dart';
+import '../services/employee_excel_import_service.dart';
 import '../notifiers/employee_notifier.dart';
 
 class EmployeeListScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class EmployeeListScreen extends StatefulWidget {
 class _EmployeeListScreenState extends State<EmployeeListScreen> {
   final _notifier = EmployeeNotifier();
   final _search   = TextEditingController();
+  bool _isImporting = false;
 
   @override
   void initState() {
@@ -54,6 +56,60 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     if (ok == true && emp.id != null) await _notifier.delete(emp.id!);
   }
 
+  Future<void> _onImportExcel() async {
+    if (_isImporting) return;
+
+    setState(() => _isImporting = true);
+
+    try {
+      final result = await EmployeeExcelImportService.importFromFile();
+
+      if (!mounted) return;
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Import Preview'),
+          content: Text(
+            'Valid: ${result.validCount}\n'
+            'Duplicates (in file): ${result.duplicateCount}\n'
+            'Invalid: ${result.invalidCount}\n\n'
+            'Proceed?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Import'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      final inserted = await _notifier.importEmployees(result.validEmployees);
+
+      if (!mounted) return;
+
+      final skipped =
+          (result.validEmployees.length - inserted) + result.duplicateCount + result.invalidCount;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported: $inserted, Skipped: $skipped')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Import failed')),
+      );
+    } finally {
+      if (mounted) setState(() => _isImporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _notifier,
@@ -69,6 +125,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                   child: TextField(
                     controller: _search,
                     onChanged: _notifier.search,
+                    style: AppTextStyles.input,
                     decoration: InputDecoration(
                       hintText: 'Search by name or PF No...',
                       prefixIcon: const Icon(Icons.search, size: 18),
@@ -80,6 +137,18 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              ElevatedButton.icon(
+                onPressed: _isImporting ? null : _onImportExcel,
+                icon: _isImporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.upload_file, size: 18),
+                label: Text(_isImporting ? 'Importing...' : 'Import Excel'),
               ),
               const SizedBox(width: AppSpacing.md),
               ElevatedButton.icon(

@@ -1,4 +1,5 @@
 import 'package:sqflite/sqflite.dart';
+import '../models/employee_model.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -69,6 +70,19 @@ class DatabaseHelper {
   // --- Employees ---
   Future<int> insertEmployee(Map<String, dynamic> data) async =>
       (await database).insert('employees', data);
+
+  Future<void> insertEmployeesBulk(List<EmployeeModel> employees) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final e in employees) {
+        await txn.insert(
+          'employees',
+          e.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
 
   Future<List<Map<String, dynamic>>> getAllEmployees() async =>
       (await database).query('employees', orderBy: 'sr_no ASC');

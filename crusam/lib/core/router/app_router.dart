@@ -12,6 +12,16 @@ class AppRouter {
   static final _root  = GlobalKey<NavigatorState>();
   static final _shell = GlobalKey<NavigatorState>();
 
+  static NoTransitionPage<void> _buildPageTransition(
+    GoRouterState state,
+    Widget child,
+  ) {
+    return NoTransitionPage<void>(
+      key: state.pageKey,
+      child: child,
+    );
+  }
+
   static final router = GoRouter(
     navigatorKey: _root,
     initialLocation: '/dashboard',
@@ -20,17 +30,35 @@ class AppRouter {
         navigatorKey: _shell,
         builder: (ctx, state, child) => ShellScreen(child: child),
         routes: [
-          GoRoute(path: '/dashboard', builder: (c, s) => const DashboardScreen()),
-          GoRoute(path: '/employees', builder: (c, s) => const EmployeeListScreen()),
-          GoRoute(path: '/vouchers',  builder: (c, s) => const VoucherBuilderScreen()),
-          GoRoute(path: '/invoices',  builder: (c, s) => const InvoicesScreen()),
-          GoRoute(path: '/settings',  builder: (c, s) => const SettingsScreen()),
+          GoRoute(
+            path: '/dashboard',
+            pageBuilder: (c, s) => _buildPageTransition(s, const DashboardScreen()),
+          ),
+          GoRoute(
+            path: '/employees',
+            pageBuilder: (c, s) => _buildPageTransition(s, const EmployeeListScreen()),
+          ),
+          GoRoute(
+            path: '/vouchers',
+            pageBuilder: (c, s) => _buildPageTransition(s, const VoucherBuilderScreen()),
+          ),
+          GoRoute(
+            path: '/invoices',
+            pageBuilder: (c, s) => _buildPageTransition(s, const InvoicesScreen()),
+          ),
+          GoRoute(
+            path: '/settings',
+            pageBuilder: (c, s) => _buildPageTransition(s, const SettingsScreen()),
+          ),
         ],
       ),
       GoRoute(
         parentNavigatorKey: _root,
         path: '/employees/form',
-        builder: (c, s) => EmployeeFormScreen(employee: s.extra as Map<String, dynamic>?),
+        pageBuilder: (c, s) => _buildPageTransition(
+          s,
+          EmployeeFormScreen(employee: s.extra as Map<String, dynamic>?),
+        ),
       ),
     ],
   );

@@ -10,6 +10,8 @@ class AppTextStyles {
   static final body        = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w400, color: AppColors.slate900);
   static final bodyMedium  = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.slate900);
   static final bodySemi    = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.slate900);
+  static final input       = _base.copyWith(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.slate900);
+  static final inputMono   = input.copyWith(fontFamily: 'monospace');
 
   static final small       = _base.copyWith(fontSize: 12, fontWeight: FontWeight.w400, color: AppColors.slate500);
   static final smallMedium = _base.copyWith(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.slate500);

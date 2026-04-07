@@ -47,7 +47,7 @@ class AppTextField extends StatelessWidget {
     textCapitalization:   capitalization,
     maxLines:             maxLines,
     validator:            validator,
-    style:                monospace ? AppTextStyles.mono.copyWith(fontSize: 13) : null,
+    style:                monospace ? AppTextStyles.inputMono : AppTextStyles.input,
     textInputAction:      nextFocus != null ? TextInputAction.next : TextInputAction.done,
     onFieldSubmitted:     nextFocus != null ? (_) => FocusScope.of(context).requestFocus(nextFocus) : null,
     decoration: InputDecoration(

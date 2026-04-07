@@ -103,7 +103,7 @@ class _RecentVouchers extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Recent Vouchers', style: AppTextStyles.h4),
-        const SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.xxl),
         if (vouchers.isEmpty)
           Center(
             child: Padding(

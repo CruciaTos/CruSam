@@ -99,6 +99,7 @@ class _MetadataCard extends StatelessWidget {
           Expanded(child: _labelField('Voucher Title', child:
             TextField(
               onChanged: (v) => notifier.update((c) => c.copyWith(title: v)),
+              style: AppTextStyles.input,
               decoration: const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
             ),
           )),
@@ -106,9 +107,10 @@ class _MetadataCard extends StatelessWidget {
           Expanded(child: _labelField('Department Code', child:
             DropdownButtonFormField<String>(
               initialValue: notifier.current.deptCode,
+              style: AppTextStyles.input,
               onChanged: (v) { if (v != null) notifier.update((c) => c.copyWith(deptCode: v)); },
               items: AppConstants.deptCodes.map((d) =>
-                  DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input))).toList(),
               decoration: const InputDecoration(),
             ),
           )),
@@ -116,6 +118,7 @@ class _MetadataCard extends StatelessWidget {
           Expanded(child: _labelField('Date', child:
             TextField(
               controller: TextEditingController(text: notifier.current.date),
+              style: AppTextStyles.input,
               readOnly: true,
               onTap: () async {
                 final p = await showDatePicker(
@@ -135,6 +138,7 @@ class _MetadataCard extends StatelessWidget {
             TextField(
               onChanged: (v) => notifier.update((c) => c.copyWith(clientName: v)),
               controller: TextEditingController(text: notifier.current.clientName),
+              style: AppTextStyles.input,
             ),
           )),
           const SizedBox(width: AppSpacing.md),
@@ -142,6 +146,7 @@ class _MetadataCard extends StatelessWidget {
             TextField(
               onChanged: (v) => notifier.update((c) => c.copyWith(clientGstin: v)),
               controller: TextEditingController(text: notifier.current.clientGstin),
+              style: AppTextStyles.input,
             ),
           )),
         ]),
@@ -150,9 +155,10 @@ class _MetadataCard extends StatelessWidget {
           DropdownButtonFormField<String>(
             initialValue: notifier.current.itemDescription,
             isExpanded: true,
+            style: AppTextStyles.input,
             onChanged: (v) { if (v != null) notifier.update((c) => c.copyWith(itemDescription: v)); },
             items: AppConstants.itemDescriptions.map((d) =>
-                DropdownMenuItem(value: d, child: Text(d, overflow: TextOverflow.ellipsis))).toList(),
+                DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input, overflow: TextOverflow.ellipsis))).toList(),
             decoration: const InputDecoration(),
           ),
         ),

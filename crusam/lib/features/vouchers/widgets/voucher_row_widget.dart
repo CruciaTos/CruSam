@@ -103,13 +103,14 @@ class _EmpDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
     initialValue: selectedId.isEmpty ? null : selectedId,
-    hint: const Text('Select', style: TextStyle(fontSize: 13)),
+    hint: Text('Select', style: AppTextStyles.input),
+    style: AppTextStyles.input,
     onChanged: (v) { if (v != null) onChanged(v); },
     isExpanded: true,
     decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
     items: employees.map((e) => DropdownMenuItem(
       value: e.id.toString(),
-      child: Text('${e.name} (${e.pfNo})', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+      child: Text('${e.name} (${e.pfNo})', style: AppTextStyles.input, overflow: TextOverflow.ellipsis),
     )).toList(),
   );
 }
@@ -132,7 +133,7 @@ class _AmountFieldState extends State<_AmountField> {
     textAlign: TextAlign.right,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
-    style: const TextStyle(fontSize: 13),
+    style: AppTextStyles.input,
     decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
     onChanged: (v) => widget.onChanged(double.tryParse(v) ?? 0),
   );
@@ -163,7 +164,10 @@ class _DateField extends StatelessWidget {
       ),
       child: Text(
         value.isEmpty ? 'Pick date' : value,
-        style: TextStyle(fontSize: 12, color: value.isEmpty ? AppColors.slate400 : AppColors.slate700),
+        style: AppTextStyles.input.copyWith(
+          fontSize: 12,
+          color: value.isEmpty ? AppColors.slate400 : AppColors.slate700,
+        ),
       ),
     ),
   );
