@@ -1,7 +1,9 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'dart:io';
-import 'screens/home_screen.dart';
+import 'core/theme/app_theme.dart';
+import 'core/router/app_router.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -9,20 +11,19 @@ void main() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
-  runApp(const MyApp());
+  runApp(const AartiApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class AartiApp extends StatelessWidget {
+  const AartiApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'CruSam DB',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const HomeScreen(), // Use HomeScreen as the home
+    return MaterialApp.router(
+      title: 'Aarti Enterprises',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      routerConfig: AppRouter.router,
     );
   }
 }
