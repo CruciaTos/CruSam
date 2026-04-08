@@ -31,12 +31,6 @@ class VoucherPdfPreview extends StatelessWidget {
             Text(formatCurrency(voucher.baseTotal), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11)),
             Text(numberToWords(voucher.baseTotal), style: const TextStyle(fontStyle: FontStyle.italic)),
           ]),
-          Column(children: [
-            const Text('For AARTI ENTERPRISES', style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 24),
-            const SizedBox(width: 80, child: Divider(color: Colors.black)),
-            const Text('Partner'),
-          ]),
         ]),
       ]),
     ),
