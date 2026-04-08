@@ -23,6 +23,7 @@ class AppTextStyles {
 
   static final navLabel    = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.slate400);
   static final sidebarBrand = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.white, letterSpacing: -0.3);
+  static final sidebarBig = _base.copyWith(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.white, letterSpacing: -0.3);
   static final sidebarVersion = _base.copyWith(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.slate600); 
   
 
