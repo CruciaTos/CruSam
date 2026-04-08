@@ -13,12 +13,16 @@ class EmployeeSearchDropdown extends StatefulWidget {
   final List<EmployeeModel> employees;
   final String? selectedId;
   final void Function(EmployeeModel) onSelected;
+  final TextEditingController? searchController;
+  final bool showSearchBar;
 
   const EmployeeSearchDropdown({
     super.key,
     required this.employees,
     required this.onSelected,
     this.selectedId,
+    this.searchController,
+    this.showSearchBar = true,
   });
 
   @override
@@ -28,16 +32,29 @@ class EmployeeSearchDropdown extends StatefulWidget {
 class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
   String _query = '';
   late final TextEditingController _ctrl;
+  late final bool _ownsController;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController();
+    _ownsController = widget.searchController == null;
+    _ctrl = widget.searchController ?? TextEditingController();
+    _query = _ctrl.text;
+    _ctrl.addListener(_syncQueryWithController);
+  }
+
+  void _syncQueryWithController() {
+    final nextQuery = _ctrl.text;
+    if (nextQuery == _query) return;
+    setState(() => _query = nextQuery);
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _ctrl.removeListener(_syncQueryWithController);
+    if (_ownsController) {
+      _ctrl.dispose();
+    }
     super.dispose();
   }
 
@@ -50,11 +67,8 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
         .toList(growable: false);
   }
 
-  void _onChanged(String value) => setState(() => _query = value);
-
   void _onClear() {
     _ctrl.clear();
-    setState(() => _query = '');
   }
 
   @override
@@ -67,13 +81,14 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-        _SearchBar(
-          controller: _ctrl,
-          onChanged: _onChanged,
-          onClear: _onClear,
-          hasText: _query.isNotEmpty,
-        ),
-        const SizedBox(height: AppSpacing.sm),
+          if (widget.showSearchBar) ...[
+            _SearchBar(
+              controller: _ctrl,
+              onClear: _onClear,
+              hasText: _query.isNotEmpty,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+          ],
         _CountLabel(
           shown: filtered.length,
           total: widget.employees.length,
@@ -95,13 +110,11 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
 
 class _SearchBar extends StatelessWidget {
   final TextEditingController controller;
-  final ValueChanged<String> onChanged;
   final VoidCallback onClear;
   final bool hasText;
 
   const _SearchBar({
     required this.controller,
-    required this.onChanged,
     required this.onClear,
     required this.hasText,
   });
@@ -109,8 +122,7 @@ class _SearchBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TextField(
         controller: controller,
-        onChanged: onChanged,
-        autofocus: true, 
+        autofocus: true,
         style: AppTextStyles.input,
         decoration: InputDecoration(
           isDense: true,

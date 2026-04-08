@@ -68,6 +68,8 @@ class _EmpDropdown extends StatefulWidget {
 
 class _EmpDropdownState extends State<_EmpDropdown> {
   final LayerLink _layerLink = LayerLink();
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
   OverlayEntry? _overlayEntry;
 
   EmployeeModel? get _selectedEmployee {
@@ -77,17 +79,56 @@ class _EmpDropdownState extends State<_EmpDropdown> {
     return null;
   }
 
-  void _closeDropdown() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
+  String _employeeLabel(EmployeeModel employee) =>
+      '${employee.name} (${employee.pfNo})';
+
+  void _syncTextWithSelection() {
+    final selected = _selectedEmployee;
+    final text = selected != null ? _employeeLabel(selected) : '';
+    _searchController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
-  void _openDropdown() {
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+    _searchFocusNode = FocusNode();
+    _syncTextWithSelection();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EmpDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_overlayEntry == null && oldWidget.selectedId != widget.selectedId) {
+      _syncTextWithSelection();
+    }
+  }
+
+  void _closeDropdown({bool restoreSelectionText = true}) {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+    if (restoreSelectionText) {
+      _syncTextWithSelection();
+    }
+    _searchFocusNode.unfocus();
+  }
+
+  void _openDropdown({bool resetSearchText = true}) {
   if (_overlayEntry != null) return;
 
   final RenderBox renderBox = context.findRenderObject() as RenderBox;
   final Offset offset = renderBox.localToGlobal(Offset.zero);
-  final double fieldWidth = renderBox.size.width;
+
+  if (resetSearchText) {
+    _searchController
+      ..clear()
+      ..selection = const TextSelection.collapsed(offset: 0);
+  }
+
+  _searchFocusNode.requestFocus();
 
   _overlayEntry = OverlayEntry(
     builder: (context) => Stack(
@@ -104,7 +145,7 @@ class _EmpDropdownState extends State<_EmpDropdown> {
         Positioned(
           top: offset.dy + renderBox.size.height + 4,
           left: offset.dx,
-          width: fieldWidth,
+          width: 500,
           child: CompositedTransformFollower(
             link: _layerLink,
             showWhenUnlinked: false,
@@ -115,12 +156,20 @@ class _EmpDropdownState extends State<_EmpDropdown> {
               child: EmployeeSearchDropdown(
                 employees: widget.employees,
                 selectedId: widget.selectedId,
+                searchController: _searchController,
+                showSearchBar: false,
                 onSelected: (emp) {
                   final id = emp.id;
                   if (id != null) {
+                    final label = _employeeLabel(emp);
+                    _searchController.value = TextEditingValue(
+                      text: label,
+                      selection:
+                          TextSelection.collapsed(offset: label.length),
+                    );
                     widget.onChanged(id.toString());
                   }
-                  _closeDropdown();
+                  _closeDropdown(restoreSelectionText: false);
                 },
               ),
             ),
@@ -144,45 +193,48 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   @override
   void dispose() {
     _closeDropdown();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final selected = _selectedEmployee;
-
     return CompositedTransformTarget(
       link: _layerLink,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(6),
-        onTap: _toggleDropdown,
-        child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.slate200),
-            borderRadius: BorderRadius.circular(6),
-            color: AppColors.white,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  selected != null
-                      ? '${selected.name} (${selected.pfNo})'
-                      : 'Select',
-                  style: AppTextStyles.input.copyWith(
-                    color: selected != null
-                        ? AppColors.slate700
-                        : AppColors.slate400,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const Icon(Icons.unfold_more,
+      child: SizedBox(
+        height: 36,
+        child: TextField(
+          controller: _searchController,
+          focusNode: _searchFocusNode,
+          style: AppTextStyles.input.copyWith(color: AppColors.slate700),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'Select',
+            hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.slate200),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.slate300),
+            ),
+            suffixIcon: IconButton(
+              splashRadius: 16,
+              onPressed: _toggleDropdown,
+              icon: const Icon(Icons.unfold_more,
                   size: 14, color: AppColors.slate400),
-            ],
+            ),
           ),
+          onTap: () => _openDropdown(),
+          onChanged: (_) {
+            if (_overlayEntry == null) {
+              _openDropdown(resetSearchText: false);
+            }
+          },
         ),
       ),
     );
