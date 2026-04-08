@@ -9,11 +9,21 @@ class ItemDescriptionField extends StatefulWidget {
   final void Function(String) onChanged;
   final ItemDescriptionNotifier notifier;
 
+  /// Custom background color for the dropdown overlay.
+  /// Defaults to [Colors.white] if not provided.
+  final Color? overlayBackgroundColor;
+
+  /// Custom border for the dropdown overlay.
+  /// Defaults to `Border.all(color: AppColors.slate100)` if not provided.
+  final Border? overlayBorder;
+
   const ItemDescriptionField({
     super.key,
     required this.value,
     required this.onChanged,
     required this.notifier,
+    this.overlayBackgroundColor,
+    this.overlayBorder,
   });
 
   @override
@@ -113,7 +123,6 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
     if (!mounted) return;
     _addCtrl.clear();
     _overlayEntry?.markNeedsBuild();
-    // Optionally keep focus for quick consecutive adds
     _addFocusNode.requestFocus();
   }
 
@@ -140,7 +149,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
               position: _slideAnimation,
               child: Material(
                 elevation: 8,
-                shadowColor: Colors.black.withOpacity(0.15),
+                shadowColor: Colors.black.withOpacity(0.90),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
@@ -148,18 +157,16 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                     width: size.width,
                     constraints: const BoxConstraints(maxHeight: 320),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: AppColors.slate100),
+                      color: widget.overlayBackgroundColor ?? const Color.fromARGB(255, 156, 154, 208),
+                      border: widget.overlayBorder ?? Border.all(color: const Color.fromARGB(255, 70, 79, 229)),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Header / count (optional)
                         if (items.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                          const Padding(
+                            padding: EdgeInsets.fromLTRB(12, 10, 12, 4),
                           ),
-                        // List of items
                         if (items.isEmpty)
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 32, horizontal: 16),
@@ -238,7 +245,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                                               child: Container(
                                                 padding: const EdgeInsets.all(6),
                                                 child: Icon(
-                                                   Icons.delete_outline_rounded,
+                                                  Icons.delete_outline_rounded,
                                                   size: 16,
                                                   color: AppColors.slate400,
                                                 ),
@@ -253,7 +260,6 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                             ),
                           ),
                         const Divider(height: 1, thickness: 1, color: AppColors.slate100),
-                        // Add new description section
                         Padding(
                           padding: const EdgeInsets.all(12),
                           child: Row(
@@ -361,11 +367,10 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                   GestureDetector(
                     onTap: () {
                       widget.onChanged('');
-                      // Optionally close overlay if open
                       if (_isOpen) _removeOverlay();
                     },
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 4),
+                    child: const Padding(
+                      padding: EdgeInsets.only(right: 4),
                     ),
                   ),
                 AnimatedRotation(

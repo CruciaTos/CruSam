@@ -7,7 +7,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
-import '../widgets/voucher_row_widget.dart';
+import '../widgets/voucher_row_widget.dart' as voucher_row_widget;
 import '../widgets/calculations_card.dart';
 import '../widgets/bank_split_card.dart';
 import '../widgets/invoice_preview_dialog.dart';
@@ -51,42 +51,48 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: _notifier,
-    builder: (ctx, _) {
-      if (_notifier.isLoading) return const Center(child: CircularProgressIndicator());
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.pagePadding),
-        child: Column(
-          children: [
-            _MetadataCard(notifier: _notifier),
-            const SizedBox(height: AppSpacing.xl),
-            _RowsTable(notifier: _notifier),
-            const SizedBox(height: AppSpacing.xl),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        listenable: _notifier,
+        builder: (ctx, _) {
+          if (_notifier.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.pagePadding),
+            child: Column(
               children: [
-                Expanded(child: BankSplitCard(
-                  idbiToOther: _notifier.idbiToOther,
-                  idbiToIdbi:  _notifier.idbiToIdbi,
-                  baseTotal:   _notifier.baseTotal,
-                )),
-                const SizedBox(width: AppSpacing.xl),
-                Expanded(child: CalculationsCard(
-                  baseTotal:  _notifier.baseTotal,
-                  cgst:       _notifier.cgst,
-                  sgst:       _notifier.sgst,
-                  roundOff:   _notifier.roundOff,
-                  finalTotal: _notifier.finalTotal,
-                )),
+                _MetadataCard(notifier: _notifier),
+                const SizedBox(height: AppSpacing.xl),
+                _RowsTable(notifier: _notifier),
+                const SizedBox(height: AppSpacing.xl),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: BankSplitCard(
+                        idbiToOther: _notifier.idbiToOther,
+                        idbiToIdbi: _notifier.idbiToIdbi,
+                        baseTotal: _notifier.baseTotal,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.xl),
+                    Expanded(
+                      child: CalculationsCard(
+                        baseTotal: _notifier.baseTotal,
+                        cgst: _notifier.cgst,
+                        sgst: _notifier.sgst,
+                        roundOff: _notifier.roundOff,
+                        finalTotal: _notifier.finalTotal,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                _ActionButtons(notifier: _notifier, onSave: _saveVoucher),
               ],
             ),
-            const SizedBox(height: AppSpacing.xl),
-            _ActionButtons(notifier: _notifier, onSave: _saveVoucher),
-          ],
-        ),
+          );
+        },
       );
-    },
-  );
 }
 
 class _MetadataCard extends StatefulWidget {
@@ -98,12 +104,12 @@ class _MetadataCard extends StatefulWidget {
 }
 
 class _MetadataCardState extends State<_MetadataCard> {
-  late final _titleCtrl = TextEditingController();
-  late final _dateCtrl = TextEditingController();
-  late final _clientCtrl = TextEditingController();
-  late final _gstnCtrl = TextEditingController();
-  late final _addressCtrl = TextEditingController();
-  late final _descNotifier = ItemDescriptionNotifier();
+  late final TextEditingController _titleCtrl = TextEditingController();
+  late final TextEditingController _dateCtrl = TextEditingController();
+  late final TextEditingController _clientCtrl = TextEditingController();
+  late final TextEditingController _gstnCtrl = TextEditingController();
+  late final TextEditingController _addressCtrl = TextEditingController();
+  late final ItemDescriptionNotifier _descNotifier = ItemDescriptionNotifier();
 
   @override
   void initState() {
@@ -158,168 +164,239 @@ class _MetadataCardState extends State<_MetadataCard> {
 
   @override
   Widget build(BuildContext context) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          Expanded(child: _labelField('Voucher Title', child:
-            TextField(
-              controller: _titleCtrl,
-              onChanged: (v) => widget.notifier.update((c) => c.copyWith(title: v)),
-              style: AppTextStyles.input,
-              decoration: const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _labelField(
+                    'Voucher Title',
+                    child: TextField(
+                      controller: _titleCtrl,
+                      onChanged: (v) =>
+                          widget.notifier.update((c) => c.copyWith(title: v)),
+                      style: AppTextStyles.input,
+                      decoration:
+                          const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: _labelField(
+                    'Department Code',
+                    child: DropdownButtonFormField<String>(
+                      key: ValueKey(widget.notifier.current.deptCode),
+                      // FIX: was `initialValue` which is not a valid parameter
+                      value: widget.notifier.current.deptCode,
+                      style: AppTextStyles.input,
+                      onChanged: (v) {
+                        if (v != null) {
+                          widget.notifier.update((c) => c.copyWith(deptCode: v));
+                        }
+                      },
+                      items: AppConstants.deptCodes
+                          .map((d) => DropdownMenuItem(
+                                value: d,
+                                child: Text(d, style: AppTextStyles.input),
+                              ))
+                          .toList(),
+                      decoration: const InputDecoration(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: _labelField(
+                    'Date',
+                    child: TextField(
+                      controller: _dateCtrl,
+                      style: AppTextStyles.input,
+                      readOnly: true,
+                      onTap: () async {
+                        final p = await showDatePicker(
+                          context: context,
+                          initialDate:
+                              DateTime.tryParse(widget.notifier.current.date) ??
+                                  DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2100),
+                        );
+                        if (!mounted) return;
+                        if (p != null) {
+                          widget.notifier.update(
+                            (c) => c.copyWith(
+                                date: p.toIso8601String().split('T').first),
+                          );
+                        }
+                      },
+                      decoration: const InputDecoration(
+                          suffixIcon: Icon(Icons.calendar_today, size: 16)),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          )),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(child: _labelField('Department Code', child:
-            DropdownButtonFormField<String>(
-              initialValue: widget.notifier.current.deptCode,
-              style: AppTextStyles.input,
-              onChanged: (v) {
-                if (v != null) widget.notifier.update((c) => c.copyWith(deptCode: v));
-              },
-              items: AppConstants.deptCodes.map((d) =>
-                  DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input))).toList(),
-              decoration: const InputDecoration(),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _labelField(
+                    'Client Name',
+                    child: TextField(
+                      onChanged: (v) => widget.notifier
+                          .update((c) => c.copyWith(clientName: v)),
+                      controller: _clientCtrl,
+                      style: AppTextStyles.input,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: _labelField(
+                    'Client GSTIN',
+                    child: TextField(
+                      onChanged: (v) => widget.notifier
+                          .update((c) => c.copyWith(clientGstin: v)),
+                      controller: _gstnCtrl,
+                      style: AppTextStyles.input,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          )),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(child: _labelField('Date', child:
-            TextField(
-              controller: _dateCtrl,
-              style: AppTextStyles.input,
-              readOnly: true,
-              onTap: () async {
-                final p = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.tryParse(widget.notifier.current.date) ?? DateTime.now(),
-                  firstDate: DateTime(2000), lastDate: DateTime(2100),
-                );
-                if (p != null) {
-                  widget.notifier.update(
-                    (c) => c.copyWith(date: p.toIso8601String().split('T').first),
-                  );
-                }
-              },
-              decoration: const InputDecoration(suffixIcon: Icon(Icons.calendar_today, size: 16)),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _labelField(
+                    'Client Address',
+                    child: TextField(
+                      controller: _addressCtrl,
+                      onChanged: (v) => widget.notifier
+                          .update((c) => c.copyWith(clientAddress: v)),
+                      style: AppTextStyles.input,
+                      maxLines: 2,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          )),
-        ]),
-        const SizedBox(height: AppSpacing.md),
-        Row(children: [
-          Expanded(child: _labelField('Client Name', child:
-            TextField(
-              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientName: v)),
-              controller: _clientCtrl,
-              style: AppTextStyles.input,
+            const SizedBox(height: AppSpacing.md),
+            _labelField(
+              'Item Description (for Invoice)',
+              child: ItemDescriptionField(
+                value: widget.notifier.current.itemDescription,
+                onChanged: (v) => widget.notifier
+                    .update((c) => c.copyWith(itemDescription: v)),
+                notifier: _descNotifier,
+              ),
             ),
-          )),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(child: _labelField('Client GSTIN', child:
-            TextField(
-              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientGstin: v)),
-              controller: _gstnCtrl,
-              style: AppTextStyles.input,
-            ),
-          )),
-        ]),
-        const SizedBox(height: AppSpacing.md),
-        Row(children: [
-          Expanded(child: _labelField('Client Address', child:
-            TextField(
-              controller: _addressCtrl,
-              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientAddress: v)),
-              style: AppTextStyles.input,
-              maxLines: 2,
-            ),
-          )),
-        ]),
-        const SizedBox(height: AppSpacing.md),
-        _labelField('Item Description (for Invoice)', child:
-          ItemDescriptionField(
-            value: widget.notifier.current.itemDescription,
-            onChanged: (v) => widget.notifier.update((c) => c.copyWith(itemDescription: v)),
-            notifier: _descNotifier,
-          ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 
   static Widget _labelField(String label, {required Widget child}) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: AppTextStyles.smallMedium.copyWith(color: AppColors.slate700)),
-      const SizedBox(height: 6),
-      child,
-    ],
-  );
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: AppTextStyles.smallMedium.copyWith(color: AppColors.slate700)),
+          const SizedBox(height: 6),
+          child,
+        ],
+      );
 }
 
 class _RowsTable extends StatelessWidget {
   final VoucherNotifier notifier;
   const _RowsTable({required this.notifier});
 
+  static const _headers = <String>[
+    '#',
+    'Employee Name',
+    'Amount',
+    'From Date',
+    'To Date',
+    'Auto-filled Details',
+    '',
+  ];
+
+  TableRow _buildHeaderRow() => TableRow(
+        decoration: const BoxDecoration(
+          color: AppColors.slate50,
+          border: Border(
+            top: BorderSide(color: AppColors.slate200),
+            bottom: BorderSide(color: AppColors.slate200),
+          ),
+        ),
+        children: _headers
+            .map((header) => Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                  child: Text(header, style: AppTextStyles.label),
+                ))
+            .toList(growable: false),
+      );
+
+  List<TableRow> _buildDataRows() => List<TableRow>.generate(
+        notifier.current.rows.length,
+        (index) {
+          final row = notifier.current.rows[index];
+          return voucher_row_widget.buildVoucherRow(
+            index: index,
+            row: row,
+            employees: notifier.employees,
+            onSelectEmployee: (empId) => notifier.selectEmployee(row.id, empId),
+            onAmountChanged: (amt) =>
+                notifier.updateRow(row.id, (r) => r.copyWith(amount: amt)),
+            onFromDateChanged: (date) =>
+                notifier.updateRow(row.id, (r) => r.copyWith(fromDate: date)),
+            onToDateChanged: (date) =>
+                notifier.updateRow(row.id, (r) => r.copyWith(toDate: date)),
+            onRemove: () => notifier.removeRow(row.id),
+          );
+        },
+        growable: false,
+      );
+
   @override
   Widget build(BuildContext context) => AppCard(
-    padding: EdgeInsets.zero,
-    child: Column(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minWidth: 900),
-            child: Table(
-              columnWidths: const {
-                0: FixedColumnWidth(40),
-                1: FixedColumnWidth(230),
-                2: FixedColumnWidth(100),
-                3: FixedColumnWidth(130),
-                4: FixedColumnWidth(130),
-                5: FlexColumnWidth(),
-                6: FixedColumnWidth(48),
-              },
-              children: [
-                TableRow(
-                  decoration: const BoxDecoration(
-                    color: AppColors.slate50,
-                    border: Border(
-                      top: BorderSide(color: AppColors.slate200),
-                      bottom: BorderSide(color: AppColors.slate200),
-                    ),
-                  ),
-                  children: ['#','Employee Name','Amount','From Date','To Date','Auto-filled Details','']
-                      .map((h) => Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                            child: Text(h, style: AppTextStyles.label),
-                          ))
-                      .toList(),
+        padding: EdgeInsets.zero,
+        child: Column(
+          children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 900),
+                child: Table(
+                  columnWidths: const {
+                    0: FixedColumnWidth(40),
+                    1: FixedColumnWidth(230),
+                    2: FixedColumnWidth(100),
+                    3: FixedColumnWidth(130),
+                    4: FixedColumnWidth(130),
+                    5: FlexColumnWidth(),
+                    6: FixedColumnWidth(48),
+                  },
+                  children: [
+                    _buildHeaderRow(),
+                    ..._buildDataRows(),
+                  ],
                 ),
-                ...notifier.current.rows.asMap().entries.map((e) => buildVoucherRow(
-                  index:             e.key,
-                  row:               e.value,
-                  employees:         notifier.employees,
-                  onSelectEmployee:  (empId) => notifier.selectEmployee(e.value.id, empId),
-                  onAmountChanged:   (amt)   => notifier.updateRow(e.value.id, (r) => r.copyWith(amount: amt)),
-                  onFromDateChanged: (d)     => notifier.updateRow(e.value.id, (r) => r.copyWith(fromDate: d)),
-                  onToDateChanged:   (d)     => notifier.updateRow(e.value.id, (r) => r.copyWith(toDate: d)),
-                  onRemove:                  () => notifier.removeRow(e.value.id),
-                )),
-              ],
+              ),
             ),
-          ),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.md),
+              child: TextButton.icon(
+                onPressed: notifier.addRow,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Add Row'),
+              ),
+            ),
+          ],
         ),
-        Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: TextButton.icon(
-            onPressed: notifier.addRow,
-            icon: const Icon(Icons.add, size: 16),
-            label: const Text('Add Row'),
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 }
 
 class _ActionButtons extends StatelessWidget {
@@ -329,39 +406,41 @@ class _ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-    spacing: AppSpacing.sm,
-    runSpacing: AppSpacing.sm,
-    alignment: WrapAlignment.end,
-    children: [
-      OutlinedButton.icon(
-        onPressed: () {},
-        icon: const Icon(Icons.save_outlined, size: 16),
-        label: const Text('Save as Draft'),
-      ),
-      OutlinedButton.icon(
-        onPressed: onSave,
-        icon: const Icon(Icons.save, size: 16),
-        label: const Text('Save Invoice'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.emerald700,
-          side: const BorderSide(color: AppColors.emerald100),
-        ),
-      ),
-      OutlinedButton.icon(
-        onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.invoice),
-        icon: const Icon(Icons.description_outlined, size: 16),
-        label: const Text('Preview Invoice'),
-      ),
-      OutlinedButton.icon(
-        onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.bank),
-        icon: const Icon(Icons.account_balance_outlined, size: 16),
-        label: const Text('Preview Bank Sheet'),
-      ),
-      ElevatedButton.icon(
-        onPressed: () {},
-        icon: const Icon(Icons.file_download_outlined, size: 16),
-        label: const Text('Finalise & Export'),
-      ),
-    ],
-  );
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        alignment: WrapAlignment.end,
+        children: [
+          OutlinedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.save_outlined, size: 16),
+            label: const Text('Save as Draft'),
+          ),
+          OutlinedButton.icon(
+            onPressed: onSave,
+            icon: const Icon(Icons.save, size: 16),
+            label: const Text('Save Invoice'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.emerald700,
+              side: const BorderSide(color: AppColors.emerald100),
+            ),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => InvoicePreviewDialog.show(
+                context, notifier, notifier.config, PreviewType.invoice),
+            icon: const Icon(Icons.description_outlined, size: 16),
+            label: const Text('Preview Invoice'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => InvoicePreviewDialog.show(
+                context, notifier, notifier.config, PreviewType.bank),
+            icon: const Icon(Icons.account_balance_outlined, size: 16),
+            label: const Text('Preview Bank Sheet'),
+          ),
+          ElevatedButton.icon(
+            onPressed: null,
+            icon: const Icon(Icons.file_download_outlined, size: 16),
+            label: const Text('Finalise & Export'),
+          ),
+        ],
+      );
 }

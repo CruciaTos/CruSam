@@ -71,7 +71,7 @@ class _ShellScreenState extends State<ShellScreen> {
                   color: const Color.fromARGB(255, 18, 24, 35).withOpacity(0.90), 
                   border: Border(
                     right: BorderSide(
-                    color: AppColors.slate800.withOpacity(0.6),width: 1,
+                    color: const Color.fromARGB(255, 255, 255, 255),width: 1,
                     ),
                   ),
                 ),           // sidebar is opaque → hides particles behind it
