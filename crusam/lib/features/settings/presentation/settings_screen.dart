@@ -82,7 +82,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _notifier.removeListener(_syncControllers);
     _notifier.dispose();
-    for (final c in _ctrl.values) c.dispose();
+    for (final c in _ctrl.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 

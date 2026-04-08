@@ -16,7 +16,10 @@ class VoucherPdfPreview extends StatelessWidget {
       style: const TextStyle(fontSize: 9, color: Colors.black, fontFamily: 'monospace'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          const Text('AARTI ENTERPRISES : Expenses Statement', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10)),
+          Text(
+            'AARTI ENTERPRISES : ${voucher.title.isEmpty ? "Expenses Statement" : voucher.title}',
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 10),
+          ),
           Text(voucher.deptCode, style: const TextStyle(fontWeight: FontWeight.w700)),
         ]),
         const Divider(color: Colors.black),

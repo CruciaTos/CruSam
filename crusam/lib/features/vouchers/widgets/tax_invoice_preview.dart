@@ -50,7 +50,17 @@ class TaxInvoicePreview extends StatelessWidget {
           Text('Tel. Office: ${config.phone}', style: const TextStyle(fontWeight: FontWeight.w700)),
         ]),
       ),
-      const Text('TAX INVOICE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text('TAX INVOICE', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          if (voucher.title.isNotEmpty)
+            Text(
+              voucher.title,
+              style: const TextStyle(fontSize: 10, fontStyle: FontStyle.italic),
+            ),
+        ],
+      ),
     ],
   );
 

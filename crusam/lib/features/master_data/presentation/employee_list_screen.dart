@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
-import '../../../core/theme/app_colors.dart';
+import 'dart:ui';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../data/models/employee_model.dart';
 import '../services/employee_excel_import_service.dart';
 import '../notifiers/employee_notifier.dart';
+import 'employee_form_screen.dart';
 
 class EmployeeListScreen extends StatefulWidget {
   const EmployeeListScreen({super.key});
@@ -17,6 +17,9 @@ class EmployeeListScreen extends StatefulWidget {
 class _EmployeeListScreenState extends State<EmployeeListScreen> {
   final _notifier = EmployeeNotifier();
   final _search   = TextEditingController();
+  final _verticalScrollController = ScrollController();
+  final _horizontalScrollController = ScrollController();
+  bool _showHorizontalScrollbar = false;
   bool _isImporting = false;
 
   @override
@@ -29,31 +32,33 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   void dispose() {
     _notifier.dispose();
     _search.dispose();
+    _verticalScrollController.dispose();
+    _horizontalScrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _goToForm([EmployeeModel? emp]) async {
-    await context.push('/employees/form', extra: emp?.toMap());
-    _notifier.load();
+  void _toggleHorizontalScrollbar(bool visible) {
+    if (_showHorizontalScrollbar == visible || !mounted) return;
+    setState(() => _showHorizontalScrollbar = visible);
   }
 
-  Future<void> _confirmDelete(EmployeeModel emp) async {
-    final ok = await showDialog<bool>(
+  Widget _doubleTapToEdit(EmployeeModel e, Widget child) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onDoubleTap: () => _goToForm(e),
+    child: child,
+  );
+
+  Future<void> _goToForm([EmployeeModel? emp]) async {
+    await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Employee'),
-        content: Text('Delete "${emp.name}"? This cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
+      barrierColor: Colors.black45,
+      barrierDismissible: false,
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: EmployeeFormScreen(employee: emp?.toMap()),
       ),
     );
-    if (ok == true && emp.id != null) await _notifier.delete(emp.id!);
+    _notifier.load();
   }
 
   Future<void> _onImportExcel() async {
@@ -174,56 +179,99 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             Expanded(
               child: AppCard(
                 padding: EdgeInsets.zero,
-                child: SingleChildScrollView(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      columns: const [
-                        DataColumn(label: Text('Sr.')),
-                        DataColumn(label: Text('Name')),
-                        DataColumn(label: Text('PF No.')),
-                        DataColumn(label: Text('UAN No.')),
-                        DataColumn(label: Text('Code')),
-                        DataColumn(label: Text('IFSC')),
-                        DataColumn(label: Text('Account No.')),
-                        DataColumn(label: Text('Bank')),
-                        DataColumn(label: Text('Branch')),
-                        DataColumn(label: Text('Zone')),
-                        DataColumn(label: Text('Actions')),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final table = ConstrainedBox(
+                      constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                      child: Scrollbar(
+                        controller: _verticalScrollController,
+                        thumbVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: _verticalScrollController,
+                          child: DataTable(
+                            horizontalMargin: 16,
+                            columns: const [
+                              DataColumn(label: Text('Sr.')),
+                              DataColumn(label: Text('Name')),
+                              DataColumn(label: Text('PF No.')),
+                              DataColumn(label: Text('UAN No.')),
+                              DataColumn(label: Text('Code')),
+                              DataColumn(label: Text('IFSC')),
+                              DataColumn(label: Text('Account No.')),
+                              DataColumn(label: Text('Bank')),
+                              DataColumn(label: Text('Branch')),
+                              DataColumn(label: Text('Zone')),
+                            ],
+                            rows: _notifier.filtered.map((e) => DataRow(cells: [
+                              DataCell(_doubleTapToEdit(e, Text(e.srNo.toString()))),
+                              DataCell(_doubleTapToEdit(
+                                e,
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(e.name, style: AppTextStyles.bodySemi.copyWith(fontSize: 13)),
+                                    Text(e.code, style: AppTextStyles.small),
+                                  ],
+                                ),
+                              )),
+                              DataCell(_doubleTapToEdit(e, Text(e.pfNo))),
+                              DataCell(_doubleTapToEdit(e, Text(e.uanNo))),
+                              DataCell(_doubleTapToEdit(e, Text(e.code))),
+                              DataCell(_doubleTapToEdit(
+                                e,
+                                Text(e.ifscCode, style: AppTextStyles.monoSm),
+                              )),
+                              DataCell(_doubleTapToEdit(
+                                e,
+                                Text(e.accountNumber, style: AppTextStyles.monoSm),
+                              )),
+                              DataCell(_doubleTapToEdit(e, Text(e.bankDetails))),
+                              DataCell(_doubleTapToEdit(e, Text(e.branch))),
+                              DataCell(_doubleTapToEdit(e, Text(e.zone))),
+                            ])).toList(),
+                          ),
+                        ),
+                      ),
+                    );
+
+                    return Column(
+                      children: [
+                        const SizedBox(height: 6),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Double-tap an employee row to edit or delete',
+                              style: AppTextStyles.small,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: MouseRegion(
+                            onEnter: (_) => _toggleHorizontalScrollbar(true),
+                            onExit: (_) => _toggleHorizontalScrollbar(false),
+                            child: Scrollbar(
+                              controller: _horizontalScrollController,
+                              thumbVisibility: _showHorizontalScrollbar,
+                              trackVisibility: false,
+                              thickness: 8,
+                              radius: const Radius.circular(8),
+                              notificationPredicate: (notification) =>
+                                  notification.metrics.axis == Axis.horizontal,
+                              child: SingleChildScrollView(
+                                controller: _horizontalScrollController,
+                                scrollDirection: Axis.horizontal,
+                                child: table,
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
-                      rows: _notifier.filtered.map((e) => DataRow(cells: [
-                        DataCell(Text(e.srNo.toString())),
-                        DataCell(Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(e.name, style: AppTextStyles.bodySemi.copyWith(fontSize: 13)),
-                            Text(e.code, style: AppTextStyles.small),
-                          ],
-                        )),
-                        DataCell(Text(e.pfNo)),
-                        DataCell(Text(e.uanNo)),
-                        DataCell(Text(e.code)),
-                        DataCell(Text(e.ifscCode, style: AppTextStyles.monoSm)),
-                        DataCell(Text(e.accountNumber, style: AppTextStyles.monoSm)),
-                        DataCell(Text(e.bankDetails)),
-                        DataCell(Text(e.branch)),
-                        DataCell(Text(e.zone)),
-                        DataCell(Row(children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.indigo600),
-                            onPressed: () => _goToForm(e),
-                            tooltip: 'Edit',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, size: 17, color: Colors.red),
-                            onPressed: () => _confirmDelete(e),
-                            tooltip: 'Delete',
-                          ),
-                        ])),
-                      ])).toList(),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ),

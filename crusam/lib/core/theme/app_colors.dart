@@ -11,6 +11,7 @@ class AppColors {
   static const slate200 = Color(0xFFE2E8F0);
   static const slate100 = Color(0xFFF1F5F9);
   static const slate50  = Color(0xFFF8FAFC);
+  static const slate25  = Color(0xFFFBFCFD);
 
   static const indigo700 = Color(0xFF4338CA);
   static const indigo600 = Color(0xFF4F46E5);
@@ -40,4 +41,6 @@ class AppColors {
   static const surface      = white;
   static const border       = slate200;
   static const sidebarBg    = slate900;
+
+  
 }

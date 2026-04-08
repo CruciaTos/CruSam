@@ -13,5 +13,9 @@ class AppSpacing {
   static const double headerHeight    = 64;
   static const double inputHeight     = 40;
   static const double radius          = 8;
+  static const double radiusMd        = 10;
   static const double radiusLg        = 12;
+  static const double radiusXl        = 16;
+  
+
 }

@@ -23,6 +23,9 @@ class AppTextStyles {
 
   static final navLabel    = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.slate400);
   static final sidebarBrand = _base.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.white, letterSpacing: -0.3);
+  static final sidebarVersion = _base.copyWith(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.slate600); 
+  
+
 
   static final grandTotal  = _base.copyWith(fontSize: 28, fontWeight: FontWeight.w700, color: AppColors.indigo400);
   static final amountWords = _base.copyWith(fontSize: 10, fontWeight: FontWeight.w400, color: AppColors.slate400, fontStyle: FontStyle.italic);

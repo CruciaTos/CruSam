@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -6,6 +9,7 @@ import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../master_data/presentation/employee_form_screen.dart';
 import '../notifiers/dashboard_notifier.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -175,37 +179,82 @@ class _QuickActions extends StatelessWidget {
           crossAxisSpacing: AppSpacing.md, mainAxisSpacing: AppSpacing.md,
           physics: const NeverScrollableScrollPhysics(),
           children: [
-            _QuickActionTile(icon: Icons.add, label: 'New Voucher', onTap: () {}),
-            _QuickActionTile(icon: Icons.person_add_outlined, label: 'Add Employee', onTap: () {}),
+            _QuickActionTile(
+              icon: Icons.add,
+              label: 'New Voucher',
+              onTap: () => context.go('/vouchers'),
+            ),
+            _QuickActionTile(
+              icon: Icons.person_add_outlined,
+              label: 'Add Employee',
+              onTap: () => _openAddEmployee(context),
+            ),
           ],
         ),
       ],
     ),
   );
+
+  void _openAddEmployee(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black45,
+      barrierDismissible: false,
+      builder: (_) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: const EmployeeFormScreen(employee: null),
+      ),
+    );
+  }
 }
 
-class _QuickActionTile extends StatelessWidget {
+class _QuickActionTile extends StatefulWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   const _QuickActionTile({required this.icon, required this.label, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-    child: Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.slate200),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+  State<_QuickActionTile> createState() => _QuickActionTileState();
+}
+
+class _QuickActionTileState extends State<_QuickActionTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: InkWell(
+      onTap: widget.onTap,
+      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: _hovered ? AppColors.slate100 : Colors.transparent,
+          border: Border.all(color: _hovered ? AppColors.slate300 : AppColors.slate200),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              widget.icon,
+              color: _hovered ? AppColors.indigo600 : AppColors.slate400,
+              size: 24,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.label,
+              style: AppTextStyles.smallMedium.copyWith(
+                color: _hovered ? AppColors.indigo600 : AppColors.slate600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, color: AppColors.slate400, size: 24),
-        const SizedBox(height: 8),
-        Text(label, style: AppTextStyles.smallMedium.copyWith(color: AppColors.slate600),
-            textAlign: TextAlign.center),
-      ]),
     ),
   );
 }

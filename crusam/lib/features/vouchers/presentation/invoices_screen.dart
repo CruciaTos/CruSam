@@ -5,8 +5,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/db/database_helper.dart';
+import '../../../data/models/company_config_model.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
+import '../notifiers/voucher_notifier.dart';
+import '../widgets/invoice_preview_dialog.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -16,6 +19,7 @@ class InvoicesScreen extends StatefulWidget {
 
 class _InvoicesScreenState extends State<InvoicesScreen> {
   List<VoucherModel> _vouchers = [];
+  CompanyConfigModel _config = const CompanyConfigModel();
   bool _loading = true;
 
   @override
@@ -27,12 +31,39 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final vMaps = await DatabaseHelper.instance.getAllVouchers();
+    final cfgMap = await DatabaseHelper.instance.getCompanyConfig();
+    if (cfgMap != null) _config = CompanyConfigModel.fromMap(cfgMap);
     final loaded = <VoucherModel>[];
     for (final v in vMaps) {
       final rowMaps = await DatabaseHelper.instance.getRowsByVoucherId(v['id'] as int);
       loaded.add(VoucherModel.fromDbMap(v, rowMaps.map(VoucherRowModel.fromDbMap).toList()));
     }
     if (mounted) setState(() { _vouchers = loaded; _loading = false; });
+  }
+
+  Future<void> _deleteVoucher(VoucherModel v) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Invoice'),
+        content: Text('Delete "${v.title.isEmpty ? "(Untitled)" : v.title}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && v.id != null) {
+      await DatabaseHelper.instance.deleteVoucher(v.id!);
+      await _load();
+    }
   }
 
   @override
@@ -96,9 +127,22 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                               tooltip: 'Download',
                             ),
                             IconButton(
-                              icon: const Icon(Icons.description_outlined, size: 17, color: AppColors.slate400),
-                              onPressed: () {},
+                              icon: const Icon(Icons.description_outlined, size: 17, color: AppColors.indigo600),
+                              onPressed: () {
+                                final previewNotifier = VoucherNotifier()..current = v;
+                                InvoicePreviewDialog.show(
+                                  context,
+                                  previewNotifier,
+                                  _config,
+                                  PreviewType.invoice,
+                                );
+                              },
                               tooltip: 'View',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 17, color: Colors.red),
+                              onPressed: () => _deleteVoucher(v),
+                              tooltip: 'Delete',
                             ),
                           ])),
                         ])).toList(),

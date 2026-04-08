@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../models/employee_model.dart';
+import '../seeds/employee_seed_data.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -12,12 +13,45 @@ class DatabaseHelper {
     final path = '${await getDatabasesPath()}/aarti.db';
     return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
-      onCreate:  (db, v) async { await _createTables(db); await _seedCompanyConfig(db); },
-      onUpgrade: (db, old, v) async { await _createTables(db); },
-      onOpen:    (db) async { await _createTables(db); await _seedCompanyConfig(db); },
+      onCreate:  (db, v) async {
+        await _createTables(db);
+        await _seedCompanyConfig(db);
+      },
+      onUpgrade: (db, old, v) async {
+        await _migrate(db);
+      },
+      onOpen:    (db) async {
+        await _migrate(db);
+        await _seedCompanyConfig(db);
+      },
     );
+  }
+
+  Future<void> _migrate(Database db) async {
+    await _createTables(db);
+
+    // Existing DBs may have older vouchers schema; ensure missing columns are added.
+    await _ensureColumn(db, 'vouchers', 'bill_no', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'po_no', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'item_description', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'client_name', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
+  }
+
+  Future<void> _ensureColumn(
+    Database db,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final cols = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = cols.any((c) => c['name'] == column);
+    if (!exists) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+    }
   }
 
   Future<void> _createTables(Database db) async {
@@ -38,6 +72,8 @@ class DatabaseHelper {
     await db.execute('''CREATE TABLE IF NOT EXISTS vouchers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT, description TEXT, dept_code TEXT,
+      bill_no TEXT, po_no TEXT, item_description TEXT,
+      client_name TEXT, client_address TEXT, client_gstin TEXT,
       base_total REAL, cgst REAL, sgst REAL, total_tax REAL,
       raw_total REAL, round_off REAL, final_total REAL, total_in_words TEXT,
       status TEXT DEFAULT 'draft',
@@ -50,7 +86,37 @@ class DatabaseHelper {
       from_date TEXT, to_date TEXT, ifsc_code TEXT, credit_account TEXT,
       sb_code TEXT, bank_detail TEXT, place TEXT, dept_code TEXT,
       debit_account TEXT, debit_account_name TEXT,
-      FOREIGN KEY(voucher_id) REFERENCES vouchers(id))''');
+      FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE)''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS users(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      username TEXT,
+      email TEXT UNIQUE,
+      phone TEXT,
+      alt_email TEXT,
+      dob TEXT,
+      gender TEXT,
+      pronouns TEXT,
+      avatar_path TEXT,
+      auth_provider TEXT DEFAULT 'manual',
+      password_hash TEXT,
+      created_at TEXT
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS item_descriptions(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text TEXT NOT NULL,
+      is_custom INTEGER DEFAULT 0
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS auth_session(
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      user_id INTEGER,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+    )''');
   }
 
   Future<void> _seedCompanyConfig(Database db) async {
@@ -64,6 +130,29 @@ class DatabaseHelper {
         'bank_name': 'IDBI Bank Ltd.', 'branch': 'Dahisar - East',
         'account_no': '0680651100000338', 'ifsc_code': 'IBKL0000680', 'phone': '28282906',
       });
+    }
+
+    final descRows = await db.query('item_descriptions', columns: ['id'], limit: 1);
+    if (descRows.isEmpty) {
+      for (final d in [
+        'Local and outstation travelling expenses with daily allowance including mobile expenses and material.',
+        'Service Charges for the month of',
+        'Manpower Supply Charges',
+        'Maintenance Services',
+        'Consultancy Fees',
+      ]) {
+        await db.insert('item_descriptions', {'text': d, 'is_custom': 0});
+      }
+    }
+
+    // Seed employees once if table is empty
+    final empRows = await db.query('employees', columns: ['id'], limit: 1);
+    if (empRows.isEmpty) {
+      final batch = db.batch();
+      for (final e in kEmployeeSeedData) {
+        batch.insert('employees', e, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+      await batch.commit(noResult: true);
     }
   }
 
@@ -115,6 +204,12 @@ class DatabaseHelper {
   Future<void> deleteVoucherRows(int voucherId) async =>
       (await database).delete('voucher_rows', where: 'voucher_id=?', whereArgs: [voucherId]);
 
+  Future<void> deleteVoucher(int id) async {
+    final db = await database;
+    await db.delete('voucher_rows', where: 'voucher_id=?', whereArgs: [id]);
+    await db.delete('vouchers', where: 'id=?', whereArgs: [id]);
+  }
+
   // --- Company Config ---
   Future<Map<String, dynamic>?> getCompanyConfig() async {
     final rows = await (await database).query('company_config', limit: 1);
@@ -130,5 +225,65 @@ class DatabaseHelper {
       await db.update('company_config', data,
           where: 'id=?', whereArgs: [existing.first['id']]);
     }
+  }
+
+  // --- Item Descriptions ---
+  Future<List<Map<String, dynamic>>> getItemDescriptions() async =>
+      (await database).query('item_descriptions', orderBy: 'id ASC');
+
+  Future<int> insertItemDescription(String text) async =>
+      (await database).insert('item_descriptions', {'text': text, 'is_custom': 1});
+
+  Future<void> deleteItemDescription(int id) async =>
+      (await database).delete('item_descriptions', where: 'id=?', whereArgs: [id]);
+
+  // --- Users / Auth ---
+  Future<Map<String, dynamic>?> getUserByEmail(String email) async {
+    final rows = await (await database).query(
+      'users',
+      where: 'LOWER(email)=?',
+      whereArgs: [email.trim().toLowerCase()],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<Map<String, dynamic>?> getUserById(int id) async {
+    final rows = await (await database).query(
+      'users',
+      where: 'id=?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<int> insertUser(Map<String, dynamic> data) async =>
+      (await database).insert('users', data);
+
+  Future<int> updateUser(int id, Map<String, dynamic> data) async =>
+      (await database).update('users', data, where: 'id=?', whereArgs: [id]);
+
+  Future<int?> getSessionUserId() async {
+    final rows = await (await database).query('auth_session', where: 'id=1', limit: 1);
+    if (rows.isEmpty) return null;
+    return rows.first['user_id'] as int?;
+  }
+
+  Future<void> setSessionUserId(int? userId) async {
+    final db = await database;
+    if (userId == null) {
+      await db.delete('auth_session', where: 'id=1');
+      return;
+    }
+
+    await db.insert(
+      'auth_session',
+      {
+        'id': 1,
+        'user_id': userId,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 }

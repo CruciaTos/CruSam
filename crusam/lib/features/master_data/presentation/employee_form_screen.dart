@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/widgets/app_text_field.dart';
@@ -16,6 +18,7 @@ class EmployeeFormScreen extends StatefulWidget {
 class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
+  bool _deleting = false;
 
   late final _ctrl = <String, TextEditingController>{
     'srNo':          TextEditingController(),
@@ -101,15 +104,54 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         await DatabaseHelper.instance.insertEmployee(emp.toMap());
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.employee == null ? 'Employee added' : 'Employee updated')),
-        );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final id = widget.employee?['id'] as int?;
+    if (id == null) return;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Employee'),
+        content: Text(
+          'Delete "${_ctrl['name']!.text.trim().isEmpty ? 'this employee' : _ctrl['name']!.text.trim()}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    setState(() => _deleting = true);
+    try {
+      await DatabaseHelper.instance.deleteEmployee(id);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
     }
   }
 
@@ -135,44 +177,132 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   );
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.employee == null ? 'Add Employee' : 'Edit Employee'),
-    ),
-    body: Form(
-      key: _formKey,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.pagePadding),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
-          child: Column(children: [
-            Row(children: [
-              Expanded(child: _field('srNo', 'Sr. No.', type: TextInputType.number, fmt: [FilteringTextInputFormatter.digitsOnly])),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(child: _field('code', 'Code')),
-            ]),
-            _field('name', 'Name', required: true, cap: TextCapitalization.words),
-            _field('pfNo', 'PF No.'),
-            _field('uanNo', 'UAN No.', type: TextInputType.number),
-            _field('ifscCode', 'IFSC Code', cap: TextCapitalization.characters),
-            _field('accountNumber', 'Account No.', type: TextInputType.number),
-            _field('aartiAcNo', 'Aarti A/c No.', type: TextInputType.number),
-            _field('sbCode', 'S/b Code', type: TextInputType.number),
-            _field('bankDetails', 'Bank Details', cap: TextCapitalization.words),
-            _field('branch', 'Branch', cap: TextCapitalization.words),
-            _field('zone', 'Zone', cap: TextCapitalization.words),
-            _field('dateOfJoining', 'Date of Joining', readOnly: true, onTap: _pickDate),
-            const SizedBox(height: AppSpacing.lg),
-            SizedBox(
-              width: double.infinity, height: 48,
-              child: ElevatedButton(
-                onPressed: _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Text('Save Employee'),
+  Widget build(BuildContext context) => Dialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      child: SizedBox(
+        width: 520,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: const BoxDecoration(
+                color: AppColors.slate50,
+                border: Border(bottom: BorderSide(color: AppColors.slate200)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.employee == null ? 'Add Employee' : 'Edit Employee',
+                      style: AppTextStyles.h4,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
             ),
-          ]),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AppSpacing.pagePadding),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      Row(children: [
+                        Expanded(
+                          child: _field(
+                            'srNo',
+                            'Sr. No.',
+                            type: TextInputType.number,
+                            fmt: [FilteringTextInputFormatter.digitsOnly],
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(child: _field('code', 'Code')),
+                      ]),
+                      _field('name', 'Name', required: true, cap: TextCapitalization.words),
+                      _field('pfNo', 'PF No.'),
+                      _field('uanNo', 'UAN No.', type: TextInputType.number),
+                      _field('ifscCode', 'IFSC Code', cap: TextCapitalization.characters),
+                      _field('accountNumber', 'Account No.', type: TextInputType.number),
+                      _field('aartiAcNo', 'Aarti A/c No.', type: TextInputType.number),
+                      _field('sbCode', 'S/b Code', type: TextInputType.number),
+                      _field('bankDetails', 'Bank Details', cap: TextCapitalization.words),
+                      _field('branch', 'Branch', cap: TextCapitalization.words),
+                      _field('zone', 'Zone', cap: TextCapitalization.words),
+                      _field('dateOfJoining', 'Date of Joining', readOnly: true, onTap: _pickDate),
+                      const SizedBox(height: AppSpacing.md),
+                      if (widget.employee == null)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: ElevatedButton(
+                            onPressed: (_saving || _deleting) ? null : _save,
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('Save Employee'),
+                          ),
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: (_saving || _deleting) ? null : _delete,
+                                icon: _deleting
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.delete_outline, color: Colors.red),
+                                label: const Text('Delete Employee'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  minimumSize: const Size.fromHeight(48),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: SizedBox(
+                                height: 48,
+                                child: ElevatedButton(
+                                  onPressed: (_saving || _deleting) ? null : _save,
+                                  child: _saving
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Text('Save Changes'),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     ),

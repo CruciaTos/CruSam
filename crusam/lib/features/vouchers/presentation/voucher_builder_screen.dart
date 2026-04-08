@@ -3,12 +3,15 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../data/models/voucher_model.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../widgets/voucher_row_widget.dart';
 import '../widgets/calculations_card.dart';
 import '../widgets/bank_split_card.dart';
 import '../widgets/invoice_preview_dialog.dart';
+import '../widgets/item_description_field.dart';
 
 class VoucherBuilderScreen extends StatefulWidget {
   const VoucherBuilderScreen({super.key});
@@ -86,9 +89,72 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   );
 }
 
-class _MetadataCard extends StatelessWidget {
+class _MetadataCard extends StatefulWidget {
   final VoucherNotifier notifier;
   const _MetadataCard({required this.notifier});
+
+  @override
+  State<_MetadataCard> createState() => _MetadataCardState();
+}
+
+class _MetadataCardState extends State<_MetadataCard> {
+  late final _titleCtrl = TextEditingController();
+  late final _dateCtrl = TextEditingController();
+  late final _clientCtrl = TextEditingController();
+  late final _gstnCtrl = TextEditingController();
+  late final _addressCtrl = TextEditingController();
+  late final _descNotifier = ItemDescriptionNotifier();
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFromNotifier(widget.notifier.current);
+    _descNotifier.load();
+    widget.notifier.addListener(_onVoucherChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MetadataCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notifier != widget.notifier) {
+      oldWidget.notifier.removeListener(_onVoucherChanged);
+      _syncFromNotifier(widget.notifier.current);
+      widget.notifier.addListener(_onVoucherChanged);
+    }
+  }
+
+  void _syncFromNotifier(VoucherModel current) {
+    if (_titleCtrl.text != current.title) _titleCtrl.text = current.title;
+    if (_dateCtrl.text != current.date) _dateCtrl.text = current.date;
+    if (_clientCtrl.text != current.clientName) _clientCtrl.text = current.clientName;
+    if (_gstnCtrl.text != current.clientGstin) _gstnCtrl.text = current.clientGstin;
+    if (_addressCtrl.text != current.clientAddress) {
+      _addressCtrl.text = current.clientAddress;
+    }
+  }
+
+  void _onVoucherChanged() {
+    final current = widget.notifier.current;
+    if (_titleCtrl.text != current.title ||
+        _dateCtrl.text != current.date ||
+        _clientCtrl.text != current.clientName ||
+        _gstnCtrl.text != current.clientGstin ||
+        _addressCtrl.text != current.clientAddress) {
+      _syncFromNotifier(current);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.notifier.removeListener(_onVoucherChanged);
+    _titleCtrl.dispose();
+    _dateCtrl.dispose();
+    _clientCtrl.dispose();
+    _gstnCtrl.dispose();
+    _addressCtrl.dispose();
+    _descNotifier.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => AppCard(
@@ -98,7 +164,8 @@ class _MetadataCard extends StatelessWidget {
         Row(children: [
           Expanded(child: _labelField('Voucher Title', child:
             TextField(
-              onChanged: (v) => notifier.update((c) => c.copyWith(title: v)),
+              controller: _titleCtrl,
+              onChanged: (v) => widget.notifier.update((c) => c.copyWith(title: v)),
               style: AppTextStyles.input,
               decoration: const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
             ),
@@ -106,9 +173,11 @@ class _MetadataCard extends StatelessWidget {
           const SizedBox(width: AppSpacing.md),
           Expanded(child: _labelField('Department Code', child:
             DropdownButtonFormField<String>(
-              initialValue: notifier.current.deptCode,
+              initialValue: widget.notifier.current.deptCode,
               style: AppTextStyles.input,
-              onChanged: (v) { if (v != null) notifier.update((c) => c.copyWith(deptCode: v)); },
+              onChanged: (v) {
+                if (v != null) widget.notifier.update((c) => c.copyWith(deptCode: v));
+              },
               items: AppConstants.deptCodes.map((d) =>
                   DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input))).toList(),
               decoration: const InputDecoration(),
@@ -117,16 +186,20 @@ class _MetadataCard extends StatelessWidget {
           const SizedBox(width: AppSpacing.md),
           Expanded(child: _labelField('Date', child:
             TextField(
-              controller: TextEditingController(text: notifier.current.date),
+              controller: _dateCtrl,
               style: AppTextStyles.input,
               readOnly: true,
               onTap: () async {
                 final p = await showDatePicker(
                   context: context,
-                  initialDate: DateTime.tryParse(notifier.current.date) ?? DateTime.now(),
+                  initialDate: DateTime.tryParse(widget.notifier.current.date) ?? DateTime.now(),
                   firstDate: DateTime(2000), lastDate: DateTime(2100),
                 );
-                if (p != null) notifier.update((c) => c.copyWith(date: p.toIso8601String().split('T').first));
+                if (p != null) {
+                  widget.notifier.update(
+                    (c) => c.copyWith(date: p.toIso8601String().split('T').first),
+                  );
+                }
               },
               decoration: const InputDecoration(suffixIcon: Icon(Icons.calendar_today, size: 16)),
             ),
@@ -136,30 +209,37 @@ class _MetadataCard extends StatelessWidget {
         Row(children: [
           Expanded(child: _labelField('Client Name', child:
             TextField(
-              onChanged: (v) => notifier.update((c) => c.copyWith(clientName: v)),
-              controller: TextEditingController(text: notifier.current.clientName),
+              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientName: v)),
+              controller: _clientCtrl,
               style: AppTextStyles.input,
             ),
           )),
           const SizedBox(width: AppSpacing.md),
           Expanded(child: _labelField('Client GSTIN', child:
             TextField(
-              onChanged: (v) => notifier.update((c) => c.copyWith(clientGstin: v)),
-              controller: TextEditingController(text: notifier.current.clientGstin),
+              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientGstin: v)),
+              controller: _gstnCtrl,
               style: AppTextStyles.input,
             ),
           )),
         ]),
         const SizedBox(height: AppSpacing.md),
+        Row(children: [
+          Expanded(child: _labelField('Client Address', child:
+            TextField(
+              controller: _addressCtrl,
+              onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientAddress: v)),
+              style: AppTextStyles.input,
+              maxLines: 2,
+            ),
+          )),
+        ]),
+        const SizedBox(height: AppSpacing.md),
         _labelField('Item Description (for Invoice)', child:
-          DropdownButtonFormField<String>(
-            initialValue: notifier.current.itemDescription,
-            isExpanded: true,
-            style: AppTextStyles.input,
-            onChanged: (v) { if (v != null) notifier.update((c) => c.copyWith(itemDescription: v)); },
-            items: AppConstants.itemDescriptions.map((d) =>
-                DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input, overflow: TextOverflow.ellipsis))).toList(),
-            decoration: const InputDecoration(),
+          ItemDescriptionField(
+            value: widget.notifier.current.itemDescription,
+            onChanged: (v) => widget.notifier.update((c) => c.copyWith(itemDescription: v)),
+            notifier: _descNotifier,
           ),
         ),
       ],
@@ -268,12 +348,12 @@ class _ActionButtons extends StatelessWidget {
         ),
       ),
       OutlinedButton.icon(
-        onPressed: () => InvoicePreviewDialog.show(context, notifier.enriched, notifier.config, PreviewType.invoice),
+        onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.invoice),
         icon: const Icon(Icons.description_outlined, size: 16),
         label: const Text('Preview Invoice'),
       ),
       OutlinedButton.icon(
-        onPressed: () => InvoicePreviewDialog.show(context, notifier.enriched, notifier.config, PreviewType.bank),
+        onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.bank),
         icon: const Icon(Icons.account_balance_outlined, size: 16),
         label: const Text('Preview Bank Sheet'),
       ),
