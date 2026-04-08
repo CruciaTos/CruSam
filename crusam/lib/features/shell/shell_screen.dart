@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:particles_network/particles_network.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
@@ -16,11 +17,11 @@ class _ShellScreenState extends State<ShellScreen> {
   bool _expanded = true;
 
   static const _items = [
-    _NavDef('/dashboard', Icons.dashboard_outlined,   'Dashboard'),
-    _NavDef('/employees', Icons.people_outline,        'Employee Master Data'),
-    _NavDef('/vouchers',  Icons.description_outlined,  'Voucher'),
-    _NavDef('/invoices',  Icons.receipt_outlined,       'Invoices'),
-    _NavDef('/settings',  Icons.settings_outlined,      'Company-Config'),
+    _NavDef('/dashboard', Icons.dashboard_outlined,  'Dashboard'),
+    _NavDef('/employees', Icons.people_outline,       'Employee Master Data'),
+    _NavDef('/vouchers',  Icons.description_outlined, 'Voucher'),
+    _NavDef('/invoices',  Icons.receipt_outlined,      'Invoices'),
+    _NavDef('/settings',  Icons.settings_outlined,     'Company-Config'),
   ];
 
   String _activeRoute(BuildContext ctx) {
@@ -40,53 +41,88 @@ class _ShellScreenState extends State<ShellScreen> {
     final w = _expanded ? AppSpacing.sidebarExpanded : AppSpacing.sidebarCollapsed;
 
     return Scaffold(
-      body: Row(
+      body: Stack(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: w,
-            color: AppColors.sidebarBg,
-            child: Column(
-              children: [
-                _SidebarHeader(expanded: _expanded),
-                const Divider(color: AppColors.slate800, height: 1),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    children: _items.map((item) => _SidebarTile(
-                      def: item,
-                      selected: active == item.path,
+          // ── Particle layer — sits behind everything ──────────────────
+          Positioned.fill(
+            child: Container(
+              color: const Color.fromARGB(255, 199, 199, 201),
+              child: ParticleNetwork(
+                particleColor: const Color.fromARGB(255, 255, 255, 255).withOpacity(0.60),
+                lineColor: const Color.fromARGB(255, 79, 70, 229).withOpacity(0.12),
+                particleCount: 100,
+                maxSpeed: 1.0,
+                maxSize: 2.0,
+                lineDistance: 100,
+                drawNetwork: true,
+                touchActivation: false,            // ← interactive on
+                gravityType: GravityType.none,   // ← particles follow cursor
+                gravityStrength: 0.08,
+                ),
+              ),
+            ),
+          // ── App chrome over particles ─────────────────────────────────
+          Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: w,
+                decoration: BoxDecoration(
+                  color: const Color.fromARGB(255, 18, 24, 35).withOpacity(0.90), 
+                  border: Border(
+                    right: BorderSide(
+                    color: AppColors.slate800.withOpacity(0.6),width: 1,
+                    ),
+                  ),
+                ),           // sidebar is opaque → hides particles behind it
+                child: Column(
+                  children: [
+                    _SidebarHeader(expanded: _expanded),
+                    const Divider(color: AppColors.slate800, height: 1),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        children: _items.map((item) => _SidebarTile(
+                          def: item,
+                          selected: active == item.path,
+                          expanded: _expanded,
+                          onTap: () => context.go(item.path),
+                        )).toList(),
+                      ),
+                    ),
+                    const Divider(color: AppColors.slate800, height: 1),
+                    Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: _SidebarTile(
+                        def: const _NavDef('', Icons.logout, 'Logout'),
+                        selected: false,
+                        expanded: _expanded,
+                        onTap: () {},
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    _Header(
                       expanded: _expanded,
-                      onTap: () => context.go(item.path),
-                    )).toList(),
-                  ),
+                      onToggle: () => setState(() => _expanded = !_expanded),
+                      title: _items.firstWhere(
+                        (e) => e.path == active,
+                        orElse: () => _items.first,
+                      ).label,
+                    ),
+                    // ── Content area: transparent so particles show through ──
+                    Expanded(
+                      child: widget.child,              // scaffold bg is now transparent here
+                    ),
+                  ],
                 ),
-                const Divider(color: AppColors.slate800, height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: _SidebarTile(
-                    def: const _NavDef('', Icons.logout, 'Logout'),
-                    selected: false, expanded: _expanded, onTap: () {},
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                _Header(
-                  expanded: _expanded,
-                  onToggle: () => setState(() => _expanded = !_expanded),
-                  title: _items.firstWhere((e) => e.path == active,
-                      orElse: () => _items.first).label,
-                ),
-                Expanded(
-                  child: ColoredBox(color: AppColors.background, child: widget.child),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -94,9 +130,16 @@ class _ShellScreenState extends State<ShellScreen> {
   }
 }
 
+// ─── Remove ColoredBox wrapper from content area ─────────────────────────────
+// The original code wrapped widget.child in ColoredBox(AppColors.background).
+// Removing that is what lets particles show through.
+// All AppCard widgets already paint their own white surface,
+// so cards remain crisp while the gaps between them show particles.
+
 class _MobileShell extends StatelessWidget {
   final Widget child;
   const _MobileShell({required this.child});
+
   @override
   Widget build(BuildContext context) => Scaffold(body: child);
 }
@@ -119,13 +162,19 @@ class _SidebarHeader extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
-            child: const Text('A', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
+            child: const Text(
+              'A',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
+            ),
           ),
           if (expanded) ...[
             const SizedBox(width: 10),
             Expanded(
-              child: Text('AARTI ENTERPRISES',
-                  style: AppTextStyles.sidebarBrand, overflow: TextOverflow.ellipsis),
+              child: Text(
+                'AARTI ENTERPRISES',
+                style: AppTextStyles.sidebarBrand,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ],
@@ -139,7 +188,12 @@ class _SidebarTile extends StatelessWidget {
   final bool selected;
   final bool expanded;
   final VoidCallback onTap;
-  const _SidebarTile({required this.def, required this.selected, required this.expanded, required this.onTap});
+  const _SidebarTile({
+    required this.def,
+    required this.selected,
+    required this.expanded,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -161,9 +215,11 @@ class _SidebarTile extends StatelessWidget {
             if (expanded) ...[
               const SizedBox(width: 10),
               Expanded(
-                child: Text(def.label,
+                child: Text(
+                  def.label,
                   style: AppTextStyles.navLabel.copyWith(
-                      color: selected ? Colors.white : AppColors.slate400),
+                    color: selected ? Colors.white : AppColors.slate400,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -175,19 +231,31 @@ class _SidebarTile extends StatelessWidget {
   );
 }
 
-class _Header extends StatelessWidget {
+  class _Header extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final String title;
-  const _Header({required this.expanded, required this.onToggle, required this.title});
+  final Color titleColor;
+  final Color userNameColor;
+  final Color emailColor;
+
+  const _Header({
+    required this.expanded,
+    required this.onToggle,
+    required this.title,
+    this.titleColor = Colors.white,
+    this.userNameColor = Colors.white70,
+    this.emailColor = Colors.white60,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
     height: AppSpacing.headerHeight,
     padding: const EdgeInsets.symmetric(horizontal: 20),
-    decoration: const BoxDecoration(
-      color: AppColors.white,
-      border: Border(bottom: BorderSide(color: AppColors.slate200))),
+    decoration: BoxDecoration(
+      color: const Color.fromARGB(255, 18, 24, 35).withOpacity(0.90),
+      border: const Border(bottom: BorderSide(color: AppColors.slate200)),
+    ),
     child: Row(
       children: [
         IconButton(
@@ -199,21 +267,24 @@ class _Header extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        Text(title, style: AppTextStyles.h4),
+        Text(title, style: AppTextStyles.h4.copyWith(color: titleColor)),
         const Spacer(),
         Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('Admin User', style: AppTextStyles.bodyMedium),
-            Text('boridkar24@gmail.com', style: AppTextStyles.small),
+            Text('Admin User', style: AppTextStyles.bodyMedium.copyWith(color: userNameColor)),
+            Text('boridkar24@gmail.com', style: AppTextStyles.small.copyWith(color: emailColor)),
           ],
         ),
         const SizedBox(width: 12),
         const CircleAvatar(
           radius: 18,
-          backgroundColor: AppColors.slate200,
-          child: Text('AU', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate600)),
+          backgroundColor: Color.fromARGB(255, 241, 241, 241),
+          child: Text(
+            'AU',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.slate600),
+          ),
         ),
       ],
     ),
