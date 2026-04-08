@@ -8,6 +8,10 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 
 class VoucherNotifier extends ChangeNotifier {
+  static final VoucherNotifier instance = VoucherNotifier._();
+  VoucherNotifier._();
+  VoucherNotifier();
+
   List<EmployeeModel>    employees    = [];
   List<VoucherModel>     savedVouchers= [];
   CompanyConfigModel     config       = const CompanyConfigModel();
@@ -98,6 +102,12 @@ class VoucherNotifier extends ChangeNotifier {
 
   void removeRow(String id) {
     current = current.copyWith(rows: current.rows.where((r) => r.id != id).toList());
+    notifyListeners();
+  }
+
+  Future<void> discardDraft() async {
+    await DatabaseHelper.instance.clearDraft();
+    _resetCurrent();
     notifyListeners();
   }
 

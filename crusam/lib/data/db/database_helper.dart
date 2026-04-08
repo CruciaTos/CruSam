@@ -88,6 +88,24 @@ class DatabaseHelper {
       debit_account TEXT, debit_account_name TEXT,
       FOREIGN KEY(voucher_id) REFERENCES vouchers(id) ON DELETE CASCADE)''');
 
+    await db.execute('''CREATE TABLE IF NOT EXISTS voucher_draft(
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      title TEXT, dept_code TEXT, date TEXT,
+      bill_no TEXT, po_no TEXT, item_description TEXT,
+      client_name TEXT, client_address TEXT, client_gstin TEXT,
+      base_total REAL, cgst REAL, sgst REAL, total_tax REAL,
+      round_off REAL, final_total REAL
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS voucher_draft_rows(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id TEXT, employee_name TEXT, amount REAL,
+      from_date TEXT, to_date TEXT, ifsc_code TEXT,
+      credit_account TEXT, sb_code TEXT, bank_detail TEXT,
+      place TEXT, dept_code TEXT,
+      debit_account TEXT, debit_account_name TEXT
+    )''');
+
     await db.execute('''CREATE TABLE IF NOT EXISTS users(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       full_name TEXT,
@@ -208,6 +226,41 @@ class DatabaseHelper {
     final db = await database;
     await db.delete('voucher_rows', where: 'voucher_id=?', whereArgs: [id]);
     await db.delete('vouchers', where: 'id=?', whereArgs: [id]);
+  }
+
+  Future<void> saveDraft(
+    Map<String, dynamic> header,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.insert(
+        'voucher_draft',
+        header,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete('voucher_draft_rows');
+      for (final row in rows) {
+        await txn.insert('voucher_draft_rows', row);
+      }
+    });
+  }
+
+  Future<Map<String, dynamic>?> getDraftHeader() async {
+    final rows =
+        await (await database).query('voucher_draft', where: 'id=1', limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getDraftRows() async =>
+      (await database).query('voucher_draft_rows');
+
+  Future<void> clearDraft() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('voucher_draft');
+      await txn.delete('voucher_draft_rows');
+    });
   }
 
   // --- Company Config ---

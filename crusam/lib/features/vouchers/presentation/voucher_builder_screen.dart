@@ -20,7 +20,7 @@ class VoucherBuilderScreen extends StatefulWidget {
 }
 
 class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
-  final _notifier = VoucherNotifier();
+  final _notifier = VoucherNotifier.instance;
 
   @override
   void initState() {
@@ -30,7 +30,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
 
   @override
   void dispose() {
-    _notifier.dispose();
+    // DO NOT dispose the singleton notifier here
     super.dispose();
   }
 
@@ -410,20 +410,59 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment: WrapAlignment.end,
         children: [
+
+
+
           OutlinedButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.save_outlined, size: 16),
-            label: const Text('Save as Draft'),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('Discard Draft'),
+                  content: const Text(
+                    'This will clear all current progress. Cannot be undone.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 17, 14, 61)),
+                      child: const Text('Discard'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  await notifier.discardDraft();
+                });
+              }
+            },
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Discard Draft'),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Color.fromARGB(255, 250, 227, 227)),
+            ),
           ),
+
+
+
+
           OutlinedButton.icon(
             onPressed: onSave,
             icon: const Icon(Icons.save, size: 16),
-            label: const Text('Save Invoice'),
+            label: const Text('Save as Draft'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.emerald700,
               side: const BorderSide(color: AppColors.emerald100),
             ),
           ),
+
+
+
+
           OutlinedButton.icon(
             onPressed: () => InvoicePreviewDialog.show(
                 context, notifier, notifier.config, PreviewType.invoice),

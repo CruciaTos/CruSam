@@ -7,6 +7,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/skeleton.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../master_data/presentation/employee_form_screen.dart';
@@ -38,7 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     listenable: _notifier,
     builder: (ctx, _) {
       if (_notifier.isLoading) {
-        return const Center(child: CircularProgressIndicator());
+        return const _DashboardSkeleton();
       }
       final totalInvoiced = _notifier.vouchers
           .fold(0.0, (acc, v) => acc + v.finalTotal);
@@ -67,6 +68,135 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     },
   );
+}
+
+class _DashboardSkeleton extends StatelessWidget {
+  const _DashboardSkeleton();
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpacing.pagePadding),
+        child: SkeletonPulse(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (ctx, constraints) {
+                  final isWide = constraints.maxWidth > 700;
+                  final cards = const [
+                    _SkeletonStatCard(),
+                    _SkeletonStatCard(),
+                    _SkeletonStatCard(),
+                  ];
+
+                  if (isWide) {
+                    return Row(
+                      children: cards
+                          .expand((c) => [
+                                Expanded(child: c),
+                                const SizedBox(width: AppSpacing.lg),
+                              ])
+                          .toList()
+                        ..removeLast(),
+                    );
+                  }
+
+                  return Column(
+                    children: cards
+                        .map(
+                          (c) => const Padding(
+                            padding: EdgeInsets.only(bottom: AppSpacing.md),
+                            child: _SkeletonStatCard(),
+                          ),
+                        )
+                        .toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              LayoutBuilder(
+                builder: (ctx, constraints) {
+                  final isWide = constraints.maxWidth > 900;
+                  if (isWide) {
+                    return const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _SkeletonPanel(lines: 5)),
+                        SizedBox(width: AppSpacing.xl),
+                        Expanded(child: _SkeletonPanel(lines: 4)),
+                      ],
+                    );
+                  }
+
+                  return const Column(
+                    children: [
+                      _SkeletonPanel(lines: 5),
+                      SizedBox(height: AppSpacing.lg),
+                      _SkeletonPanel(lines: 4),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _SkeletonStatCard extends StatelessWidget {
+  const _SkeletonStatCard();
+
+  @override
+  Widget build(BuildContext context) => const AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                SkeletonCircle(size: 28),
+                SizedBox(width: AppSpacing.sm),
+                Expanded(child: SkeletonBox(height: 12)),
+              ],
+            ),
+            SizedBox(height: AppSpacing.md),
+            SkeletonBox(width: 110, height: 22),
+          ],
+        ),
+      );
+}
+
+class _SkeletonPanel extends StatelessWidget {
+  final int lines;
+  const _SkeletonPanel({required this.lines});
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SkeletonBox(width: 180, height: 16),
+            const SizedBox(height: AppSpacing.lg),
+            ...List.generate(
+              lines,
+              (index) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                child: Row(
+                  children: [
+                    const SkeletonCircle(),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: SkeletonBox(
+                        height: 12,
+                        width: index.isEven ? null : 180,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _StatsRow extends StatelessWidget {
