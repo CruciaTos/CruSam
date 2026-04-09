@@ -37,33 +37,43 @@ class TaxInvoicePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double a4Width = 793.7;
+    const double a4Width  = 793.7;
+    const double a4Height = 1122.5; // 297mm at 96 PPI
 
     return Center(
       child: Container(
-        width: a4Width,
-        color: Colors.white,
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: DefaultTextStyle(
-              style: _body,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _header(),
-                  const SizedBox(height: 4),
-                  _divider(0.8),
-                  const SizedBox(height: 10),
-                  _taxInvoiceLabel(),
-                  const SizedBox(height: 8),
-                  _billToSection(),
-                  const SizedBox(height: 12),
-                  _itemTable(),
-                  const SizedBox(height: 16),
-                  _belowTableSection(),
-                ],
-              ),
+        width:  a4Width,
+        height: a4Height,
+        clipBehavior: Clip.hardEdge,       // hard clip — nothing bleeds outside the page
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x33000000),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: DefaultTextStyle(
+            style: _body,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _header(),
+                const SizedBox(height: 4),
+                _divider(0.8),
+                const SizedBox(height: 10),
+                _taxInvoiceLabel(),
+                const SizedBox(height: 8),
+                _billToSection(),
+                const SizedBox(height: 12),
+                _itemTable(),
+                const SizedBox(height: 16),
+                _belowTableSection(),
+              ],
             ),
           ),
         ),
