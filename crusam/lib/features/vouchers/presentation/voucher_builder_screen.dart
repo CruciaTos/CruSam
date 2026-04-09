@@ -299,8 +299,8 @@ class _RowsTable extends StatelessWidget {
         decoration: const BoxDecoration(
           color: AppColors.slate50,
           border: Border(
-            bottom: BorderSide(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),),
-          
+            bottom: BorderSide(color: Color.fromARGB(255, 21, 39, 81), width: 0.5),
+          ),
         ),
         children: _headers.map((h) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -336,80 +336,84 @@ class _RowsTable extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.white,
           border: Border.all(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
-          
+          borderRadius: BorderRadius.circular(AppSpacing.radius - 1), // ✅ FIX: rounded border
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(AppSpacing.radius - 1),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // ── Header bar ─────────────────────────────────────────────
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: AppColors.slate50,
-                  border: const Border(bottom: BorderSide(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5)),
-                  
-                  ),
-                child: Row(children: [
-                  Text('Labour Disbursement Details',
-                      style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  Text(
-                    '${notifier.current.rows.length} row${notifier.current.rows.length == 1 ? '' : 's'}',
-                    style: AppTextStyles.small,
-                  ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Header bar ─────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                border: const Border(bottom: BorderSide(color: Color.fromARGB(255, 21, 39, 81), width: 0.5)),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(AppSpacing.radius - 1),
+                  topRight: Radius.circular(AppSpacing.radius - 1),
+                ),
+              ),
+              child: Row(children: [
+                Text('Labour Disbursement Details',
+                    style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                Text(
+                  '${notifier.current.rows.length} row${notifier.current.rows.length == 1 ? '' : 's'}',
+                  style: AppTextStyles.small,
+                ),
+              ]),
+            ),
+            // ── Full-width Table via LayoutBuilder ──────────────────────
+            LayoutBuilder(builder: (ctx, constraints) {
+              final colWidths = _colWidths(constraints.maxWidth);
+              return Table(
+                columnWidths: colWidths,
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                children: [
+                  _headerRow(colWidths),
+                  ..._dataRows(),
+                ],
+              );
+            }),
+            // ── Empty state ─────────────────────────────────────────────
+            if (notifier.current.rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                child: Column(children: [
+                  Icon(Icons.table_rows_outlined, size: 36, color: AppColors.slate300),
+                  const SizedBox(height: 8),
+                  Text('No rows yet.', style: AppTextStyles.small),
                 ]),
               ),
-              // ── Full-width Table via LayoutBuilder ──────────────────────
-              LayoutBuilder(builder: (ctx, constraints) {
-                final colWidths = _colWidths(constraints.maxWidth);
-                return Table(
-                  columnWidths: colWidths,
-                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                  children: [
-                    _headerRow(colWidths),
-                    ..._dataRows(),
-                  ],
-                );
-              }),
-              // ── Empty state ─────────────────────────────────────────────
-              if (notifier.current.rows.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 28),
-                  child: Column(children: [
-                    Icon(Icons.table_rows_outlined, size: 36, color: AppColors.slate300),
-                    const SizedBox(height: 8),
-                    Text('No rows yet.', style: AppTextStyles.small),
-                  ]),
+            // ── Add Row CTA ─────────────────────────────────────────────
+            Container(
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.slate200)),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(AppSpacing.radius - 1),
+                  bottomRight: Radius.circular(AppSpacing.radius - 1),
                 ),
-              // ── Add Row CTA ─────────────────────────────────────────────
-              Container(
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: AppColors.slate200)),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Center(
-                  child: TextButton.icon(
-                    onPressed: notifier.addRow,
-                    icon: const Icon(Icons.add_circle_outline, size: 17, color: AppColors.indigo600),
-                    label: Text('+ Add Row',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.indigo600,
-                          fontWeight: FontWeight.w600,
-                        )),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      backgroundColor: AppColors.indigo50,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.radius),
-                      ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Center(
+                child: TextButton.icon(
+                  onPressed: notifier.addRow,
+                  icon: const Icon(Icons.add_circle_outline, size: 17, color: AppColors.indigo600),
+                  label: Text('+ Add Row',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.indigo600,
+                        fontWeight: FontWeight.w600,
+                      )),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    backgroundColor: AppColors.indigo50,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radius),
                     ),
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       );
 }
