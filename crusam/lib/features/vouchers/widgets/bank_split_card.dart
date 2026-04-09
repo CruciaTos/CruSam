@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/app_spacing.dart';
-import '../../../../shared/widgets/app_card.dart';
 import '../../../../shared/utils/format_utils.dart';
 
 class BankSplitCard extends StatelessWidget {
@@ -18,28 +17,69 @@ class BankSplitCard extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => AppCard(
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(AppSpacing.cardPadding),
+    decoration: BoxDecoration(
+      color: AppColors.slate900,
+      borderRadius: BorderRadius.circular(AppSpacing.radius),
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('BANK TRANSFER SPLIT', style: AppTextStyles.label),
+        Text(
+          'BANK TRANSFER SPLIT',
+          style: AppTextStyles.label.copyWith(color: AppColors.slate500),
+        ),
         const SizedBox(height: AppSpacing.md),
         _row('From IDBI to Other Bank', formatCurrency(idbiToOther)),
-        _row('From IDBI to IDBI Bank',  formatCurrency(idbiToIdbi)),
-        const Divider(height: 24, color: AppColors.slate100),
-        _row('Total Base Amount', formatCurrency(baseTotal), bold: true),
+        _row('From IDBI to IDBI Bank', formatCurrency(idbiToIdbi)),
+
+        const SizedBox(height: 69),
+        const Divider(color: AppColors.slate700, height: 24),
+        const SizedBox(height: 7),
+        _row(
+          'Total Base Amount',
+          formatCurrency(baseTotal),
+          labelColor: AppColors.white,
+          valueStyle: AppTextStyles.bodyMedium.copyWith(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: AppColors.white,
+          ),
+        ),
+         const SizedBox(height: 9.3), 
       ],
     ),
   );
 
-  static Widget _row(String label, String value, {bool bold = false}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: bold ? AppTextStyles.bodySemi.copyWith(fontSize: 13) : AppTextStyles.small.copyWith(color: AppColors.slate600)),
-        Text(value,  style: bold ? AppTextStyles.bodySemi : AppTextStyles.bodyMedium.copyWith(fontSize: 13)),
-      ],
-    ),
-  );
+  static Widget _row(
+    String label,
+    String value, {
+    Color? labelColor,
+    TextStyle? valueStyle,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: labelColor ?? AppColors.slate400,
+              ),
+            ),
+            Text(
+              value,
+              style: valueStyle ??
+                  const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.slate300,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
+      );
 }

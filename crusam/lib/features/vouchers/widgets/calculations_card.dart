@@ -37,7 +37,8 @@ class CalculationsCard extends StatelessWidget {
         _row('SGST (9%)',  formatCurrency(sgst)),
         _row('Round Off',  '${roundOff >= 0 ? '+' : ''}${roundOff.toStringAsFixed(2)}',
             valueColor: roundOff >= 0 ? AppColors.emerald600 : AppColors.rose400),
-        const Divider(color: AppColors.slate700, height: 24),
+        const SizedBox(height: 22),
+        const Divider(color: AppColors.slate700, height: 10.5),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -46,7 +47,6 @@ class CalculationsCard extends StatelessWidget {
             Text(formatCurrency(finalTotal), style: AppTextStyles.grandTotal),
           ],
         ),
-        const SizedBox(height: 4),
         Align(
           alignment: Alignment.centerRight,
           child: Text(numberToWords(finalTotal), style: AppTextStyles.amountWords),

@@ -339,26 +339,40 @@ class _RowsTable extends StatelessWidget {
             .toList(growable: false),
       );
 
-  List<TableRow> _buildDataRows() => List<TableRow>.generate(
-        notifier.current.rows.length,
-        (index) {
-          final row = notifier.current.rows[index];
-          return voucher_row_widget.buildVoucherRow(
-            index: index,
-            row: row,
-            employees: notifier.employees,
-            onSelectEmployee: (empId) => notifier.selectEmployee(row.id, empId),
-            onAmountChanged: (amt) =>
-                notifier.updateRow(row.id, (r) => r.copyWith(amount: amt)),
-            onFromDateChanged: (date) =>
-                notifier.updateRow(row.id, (r) => r.copyWith(fromDate: date)),
-            onToDateChanged: (date) =>
-                notifier.updateRow(row.id, (r) => r.copyWith(toDate: date)),
-            onRemove: () => notifier.removeRow(row.id),
-          );
-        },
-        growable: false,
+  List<TableRow> _buildDataRows() {
+  // Count occurrences of each employee ID
+  final employeeCounts = <String, int>{};
+  for (final row in notifier.current.rows) {
+    if (row.employeeId != null) {
+      employeeCounts[row.employeeId!] = (employeeCounts[row.employeeId!] ?? 0) + 1;
+    }
+  }
+
+  return List<TableRow>.generate(
+    notifier.current.rows.length,
+    (index) {
+      final row = notifier.current.rows[index];
+      final highlight = row.employeeId != null && 
+                        (employeeCounts[row.employeeId!] ?? 0) > 1;
+
+      return voucher_row_widget.buildVoucherRow(
+        index: index,
+        row: row,
+        employees: notifier.employees,
+        onSelectEmployee: (empId) => notifier.selectEmployee(row.id, empId),
+        onAmountChanged: (amt) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(amount: amt)),
+        onFromDateChanged: (date) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(fromDate: date)),
+        onToDateChanged: (date) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(toDate: date)),
+        onRemove: () => notifier.removeRow(row.id),
+        highlight: highlight, // <-- This must be passed
       );
+    },
+    growable: false,
+  );
+}
 
   @override
   Widget build(BuildContext context) => AppCard(
