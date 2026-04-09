@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../models/employee_model.dart';
+import '../models/margin_settings_model.dart';
 import '../seeds/employee_seed_data.dart';
 
 class DatabaseHelper {
@@ -15,14 +16,14 @@ class DatabaseHelper {
       path,
       version: 3,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
-      onCreate:  (db, v) async {
+      onCreate: (db, v) async {
         await _createTables(db);
         await _seedCompanyConfig(db);
       },
       onUpgrade: (db, old, v) async {
         await _migrate(db);
       },
-      onOpen:    (db) async {
+      onOpen: (db) async {
         await _migrate(db);
         await _seedCompanyConfig(db);
       },
@@ -39,7 +40,7 @@ class DatabaseHelper {
     await _ensureColumn(db, 'vouchers', 'client_name', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
-    await _ensureColumn(db, 'voucher_rows',  'employee_id',      'TEXT');
+    await _ensureColumn(db, 'voucher_rows', 'employee_id', 'TEXT');
   }
 
   Future<void> _ensureColumn(
@@ -64,11 +65,13 @@ class DatabaseHelper {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''');
 
-    await db.execute('''CREATE TABLE IF NOT EXISTS company_config(
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS company_config(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_name TEXT, address TEXT, gstin TEXT, pan TEXT,
       jurisdiction TEXT, declaration_text TEXT,
-      bank_name TEXT, branch TEXT, account_no TEXT, ifsc_code TEXT, phone TEXT)''');
+      bank_name TEXT, branch TEXT, account_no TEXT, ifsc_code TEXT, phone TEXT)''',
+    );
 
     await db.execute('''CREATE TABLE IF NOT EXISTS vouchers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +110,14 @@ class DatabaseHelper {
       debit_account TEXT, debit_account_name TEXT
     )''');
 
+    await db.execute('''CREATE TABLE IF NOT EXISTS pdf_settings(
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      margin_top REAL DEFAULT 24,
+      margin_bottom REAL DEFAULT 24,
+      margin_left REAL DEFAULT 24,
+      margin_right REAL DEFAULT 24
+    )''');
+
     await db.execute('''CREATE TABLE IF NOT EXISTS users(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       full_name TEXT,
@@ -143,15 +154,26 @@ class DatabaseHelper {
     if (rows.isEmpty) {
       await db.insert('company_config', {
         'company_name': 'AARTI ENTERPRISES',
-        'address': 'Dahisar Preeti Co-op Hsg. Soc., Shop No. 5, Opp. Janseva Bank, Maratha Colony, W. S. Road, Dahisar (E), Mumbai - 400 068.',
-        'gstin': '27AAQFA5248L2ZW', 'pan': 'AAQFA5248L', 'jurisdiction': 'Mumbai',
-        'declaration_text': 'Certified that particulars given above are true and correct.',
-        'bank_name': 'IDBI Bank Ltd.', 'branch': 'Dahisar - East',
-        'account_no': '0680651100000338', 'ifsc_code': 'IBKL0000680', 'phone': '28282906',
+        'address':
+            'Dahisar Preeti Co-op Hsg. Soc., Shop No. 5, Opp. Janseva Bank, Maratha Colony, W. S. Road, Dahisar (E), Mumbai - 400 068.',
+        'gstin': '27AAQFA5248L2ZW',
+        'pan': 'AAQFA5248L',
+        'jurisdiction': 'Mumbai',
+        'declaration_text':
+            'Certified that particulars given above are true and correct.',
+        'bank_name': 'IDBI Bank Ltd.',
+        'branch': 'Dahisar - East',
+        'account_no': '0680651100000338',
+        'ifsc_code': 'IBKL0000680',
+        'phone': '28282906',
       });
     }
 
-    final descRows = await db.query('item_descriptions', columns: ['id'], limit: 1);
+    final descRows = await db.query(
+      'item_descriptions',
+      columns: ['id'],
+      limit: 1,
+    );
     if (descRows.isEmpty) {
       for (final d in [
         'Local and outstation travelling expenses with daily allowance including mobile expenses and material.',
@@ -169,7 +191,11 @@ class DatabaseHelper {
     if (empRows.isEmpty) {
       final batch = db.batch();
       for (final e in kEmployeeSeedData) {
-        batch.insert('employees', e, conflictAlgorithm: ConflictAlgorithm.ignore);
+        batch.insert(
+          'employees',
+          e,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
       }
       await batch.commit(noResult: true);
     }
@@ -196,12 +222,20 @@ class DatabaseHelper {
       (await database).query('employees', orderBy: 'sr_no ASC');
 
   Future<List<Map<String, dynamic>>> searchEmployees(String q) async =>
-      (await database).query('employees',
-          where: 'name LIKE ? OR pf_no LIKE ?', whereArgs: ['%$q%', '%$q%']);
+      (await database).query(
+        'employees',
+        where: 'name LIKE ? OR pf_no LIKE ?',
+        whereArgs: ['%$q%', '%$q%'],
+      );
 
   Future<int> updateEmployee(int id, Map<String, dynamic> data) async {
     data['updated_at'] = DateTime.now().toIso8601String();
-    return (await database).update('employees', data, where: 'id=?', whereArgs: [id]);
+    return (await database).update(
+      'employees',
+      data,
+      where: 'id=?',
+      whereArgs: [id],
+    );
   }
 
   Future<int> deleteEmployee(int id) async =>
@@ -218,10 +252,14 @@ class DatabaseHelper {
       (await database).insert('voucher_rows', data);
 
   Future<List<Map<String, dynamic>>> getRowsByVoucherId(int id) async =>
-      (await database).query('voucher_rows', where: 'voucher_id=?', whereArgs: [id]);
+      (await database).query(
+        'voucher_rows',
+        where: 'voucher_id=?',
+        whereArgs: [id],
+      );
 
-  Future<void> deleteVoucherRows(int voucherId) async =>
-      (await database).delete('voucher_rows', where: 'voucher_id=?', whereArgs: [voucherId]);
+  Future<void> deleteVoucherRows(int voucherId) async => (await database)
+      .delete('voucher_rows', where: 'voucher_id=?', whereArgs: [voucherId]);
 
   Future<void> deleteVoucher(int id) async {
     final db = await database;
@@ -248,8 +286,11 @@ class DatabaseHelper {
   }
 
   Future<Map<String, dynamic>?> getDraftHeader() async {
-    final rows =
-        await (await database).query('voucher_draft', where: 'id=1', limit: 1);
+    final rows = await (await database).query(
+      'voucher_draft',
+      where: 'id=1',
+      limit: 1,
+    );
     return rows.isEmpty ? null : rows.first;
   }
 
@@ -272,24 +313,54 @@ class DatabaseHelper {
 
   Future<void> saveCompanyConfig(Map<String, dynamic> data) async {
     final db = await database;
-    final existing = await db.query('company_config', columns: ['id'], limit: 1);
+    final existing = await db.query(
+      'company_config',
+      columns: ['id'],
+      limit: 1,
+    );
     if (existing.isEmpty) {
       await db.insert('company_config', data);
     } else {
-      await db.update('company_config', data,
-          where: 'id=?', whereArgs: [existing.first['id']]);
+      await db.update(
+        'company_config',
+        data,
+        where: 'id=?',
+        whereArgs: [existing.first['id']],
+      );
     }
+  }
+
+  // --- PDF / margin settings ---
+  Future<MarginSettings> getMarginSettings() async {
+    final rows = await (await database).query(
+      'pdf_settings',
+      where: 'id=1',
+      limit: 1,
+    );
+    if (rows.isEmpty) return const MarginSettings();
+    return MarginSettings.fromMap(rows.first);
+  }
+
+  Future<void> saveMarginSettings(MarginSettings s) async {
+    final db = await database;
+    await db.insert('pdf_settings', {
+      'id': 1,
+      ...s.toMap(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // --- Item Descriptions ---
   Future<List<Map<String, dynamic>>> getItemDescriptions() async =>
       (await database).query('item_descriptions', orderBy: 'id ASC');
 
-  Future<int> insertItemDescription(String text) async =>
-      (await database).insert('item_descriptions', {'text': text, 'is_custom': 1});
+  Future<int> insertItemDescription(String text) async => (await database)
+      .insert('item_descriptions', {'text': text, 'is_custom': 1});
 
-  Future<void> deleteItemDescription(int id) async =>
-      (await database).delete('item_descriptions', where: 'id=?', whereArgs: [id]);
+  Future<void> deleteItemDescription(int id) async => (await database).delete(
+    'item_descriptions',
+    where: 'id=?',
+    whereArgs: [id],
+  );
 
   // --- Users / Auth ---
   Future<Map<String, dynamic>?> getUserByEmail(String email) async {
@@ -319,7 +390,11 @@ class DatabaseHelper {
       (await database).update('users', data, where: 'id=?', whereArgs: [id]);
 
   Future<int?> getSessionUserId() async {
-    final rows = await (await database).query('auth_session', where: 'id=1', limit: 1);
+    final rows = await (await database).query(
+      'auth_session',
+      where: 'id=1',
+      limit: 1,
+    );
     if (rows.isEmpty) return null;
     return rows.first['user_id'] as int?;
   }
@@ -331,13 +406,9 @@ class DatabaseHelper {
       return;
     }
 
-    await db.insert(
-      'auth_session',
-      {
-        'id': 1,
-        'user_id': userId,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('auth_session', {
+      'id': 1,
+      'user_id': userId,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 }

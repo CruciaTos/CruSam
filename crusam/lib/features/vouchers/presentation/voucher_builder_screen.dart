@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
@@ -7,6 +8,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
+import '../services/excel_export_service.dart';
 import '../widgets/voucher_row_widget.dart' as voucher_row_widget;
 import '../widgets/calculations_card.dart';
 import '../widgets/bank_split_card.dart';
@@ -21,6 +23,7 @@ class VoucherBuilderScreen extends StatefulWidget {
 
 class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   final _notifier = VoucherNotifier.instance;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -33,6 +36,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     super.dispose();
   }
 
+  // ── Save as Draft ─────────────────────────────────────────────────────────
   Future<void> _saveVoucher() async {
     if (_notifier.current.title.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -43,8 +47,255 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     final ok = await _notifier.saveVoucher();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(ok ? 'Invoice saved successfully' : 'Error saving invoice')),
+        SnackBar(
+            content: Text(
+                ok ? 'Invoice saved successfully' : 'Error saving invoice')),
       );
+    }
+  }
+
+  // ── Finalise & Export ─────────────────────────────────────────────────────
+  Future<void> _finaliseAndExport() async {
+    if (_exporting) return;
+
+    if (_notifier.current.title.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter a voucher title before exporting')),
+      );
+      return;
+    }
+    if (_notifier.current.rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Add at least one row before exporting')),
+      );
+      return;
+    }
+
+    setState(() => _exporting = true);
+
+    // Show progress dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text('Generating Excel files…'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    String? invoicePath;
+    String? bankPath;
+    String? errorMsg;
+
+    try {
+      final voucher = _notifier.enriched;
+      final config  = _notifier.config;
+      invoicePath =
+          await ExcelExportService.exportTaxInvoice(voucher, config);
+      bankPath =
+          await ExcelExportService.exportBankDisbursement(voucher, config);
+    } catch (e, st) {
+      // Capture full stack trace so we can show it in the error dialog
+      errorMsg = '$e\n\n$st';
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+
+    // Dismiss progress dialog
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (errorMsg != null) {
+      // Show full error in a scrollable dialog so nothing is hidden
+      await showDialog(
+        context: context,
+        builder: (dc) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.error_outline, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Export Failed'),
+            ],
+          ),
+          content: SizedBox(
+            width: 560,
+            height: 300,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                errorMsg!,
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 11),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dc),
+                child: const Text('Close')),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Both files created — show paths and offer to open the folder
+    if (mounted) {
+      await _showExportSuccessDialog(
+        invoicePath: invoicePath,
+        bankPath: bankPath,
+      );
+    }
+  }
+
+  Future<void> _showExportSuccessDialog({
+    required String? invoicePath,
+    required String? bankPath,
+  }) async {
+    // Derive the folder from whichever path is available
+    final folder = invoicePath != null
+        ? File(invoicePath).parent.path
+        : bankPath != null
+            ? File(bankPath).parent.path
+            : null;
+
+    await showDialog(
+      context: context,
+      builder: (dc) => AlertDialog(
+        title: Row(
+          children: const [
+            Icon(Icons.check_circle_outline,
+                color: AppColors.emerald600, size: 22),
+            SizedBox(width: 8),
+            Text('Export Complete'),
+          ],
+        ),
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Both Excel files have been saved:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 12),
+              if (invoicePath != null) ...[
+                _fileTile(
+                  icon: Icons.description_outlined,
+                  label: 'Tax Invoice',
+                  path: invoicePath,
+                ),
+                const SizedBox(height: 8),
+              ],
+              if (bankPath != null)
+                _fileTile(
+                  icon: Icons.account_balance_outlined,
+                  label: 'Bank Disbursement',
+                  path: bankPath,
+                ),
+              if (folder != null) ...[
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                const Text(
+                  'Saved to folder:',
+                  style: TextStyle(
+                      fontSize: 11, color: AppColors.slate500),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  folder,
+                  style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: AppColors.slate700),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          if (folder != null)
+            TextButton.icon(
+              onPressed: () => _openFolder(folder),
+              icon: const Icon(Icons.folder_open_outlined, size: 16),
+              label: const Text('Open Folder'),
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dc),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _fileTile({
+    required IconData icon,
+    required String label,
+    required String path,
+  }) =>
+      Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.slate50,
+          border: Border.all(color: AppColors.slate200),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.indigo600),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(height: 2),
+                  SelectableText(
+                    File(path).uri.pathSegments.last,
+                    style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: AppColors.slate600),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.check_circle,
+                size: 16, color: AppColors.emerald600),
+          ],
+        ),
+      );
+
+  /// Opens the folder in the OS file explorer.
+  static void _openFolder(String folderPath) {
+    try {
+      if (Platform.isWindows) {
+        Process.run('explorer', [folderPath]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [folderPath]);
+      } else if (Platform.isLinux) {
+        Process.run('xdg-open', [folderPath]);
+      }
+    } catch (_) {
+      // Path is shown in the dialog — user can navigate manually if this fails
     }
   }
 
@@ -87,7 +338,12 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
                   ],
                 ),
                 const SizedBox(height: AppSpacing.xl),
-                _ActionButtons(notifier: _notifier, onSave: _saveVoucher),
+                _ActionButtons(
+                  notifier: _notifier,
+                  onSave: _saveVoucher,
+                  onFinalise: _finaliseAndExport,
+                  exporting: _exporting,
+                ),
               ],
             ),
           );
@@ -106,10 +362,10 @@ class _MetadataCard extends StatefulWidget {
 }
 
 class _MetadataCardState extends State<_MetadataCard> {
-  late final TextEditingController _titleCtrl = TextEditingController();
-  late final TextEditingController _dateCtrl  = TextEditingController();
-  late final TextEditingController _clientCtrl = TextEditingController();
-  late final TextEditingController _gstnCtrl   = TextEditingController();
+  late final TextEditingController _titleCtrl   = TextEditingController();
+  late final TextEditingController _dateCtrl    = TextEditingController();
+  late final TextEditingController _clientCtrl  = TextEditingController();
+  late final TextEditingController _gstnCtrl    = TextEditingController();
   late final TextEditingController _addressCtrl = TextEditingController();
   late final ItemDescriptionNotifier _descNotifier = ItemDescriptionNotifier();
 
@@ -141,8 +397,10 @@ class _MetadataCardState extends State<_MetadataCard> {
 
   void _onVoucherChanged() {
     final c = widget.notifier.current;
-    if (_titleCtrl.text != c.title || _dateCtrl.text != c.date ||
-        _clientCtrl.text != c.clientName || _gstnCtrl.text != c.clientGstin ||
+    if (_titleCtrl.text   != c.title        ||
+        _dateCtrl.text    != c.date         ||
+        _clientCtrl.text  != c.clientName   ||
+        _gstnCtrl.text    != c.clientGstin  ||
         _addressCtrl.text != c.clientAddress) {
       _syncFromNotifier(c);
     }
@@ -151,8 +409,12 @@ class _MetadataCardState extends State<_MetadataCard> {
   @override
   void dispose() {
     widget.notifier.removeListener(_onVoucherChanged);
-    _titleCtrl.dispose(); _dateCtrl.dispose(); _clientCtrl.dispose();
-    _gstnCtrl.dispose();  _addressCtrl.dispose(); _descNotifier.dispose();
+    _titleCtrl.dispose();
+    _dateCtrl.dispose();
+    _clientCtrl.dispose();
+    _gstnCtrl.dispose();
+    _addressCtrl.dispose();
+    _descNotifier.dispose();
     super.dispose();
   }
 
@@ -162,90 +424,126 @@ class _MetadataCardState extends State<_MetadataCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Row 1: Title (flex 4) | Dept (flex 2) | Date (flex 2) ──────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 4, child: _lf('Voucher Title',
-                  TextField(
-                    controller: _titleCtrl,
-                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(title: v)),
-                    style: AppTextStyles.input,
-                    decoration: const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
-                  ),
-                )),
+                Expanded(
+                    flex: 4,
+                    child: _lf(
+                      'Voucher Title',
+                      TextField(
+                        controller: _titleCtrl,
+                        onChanged: (v) => widget.notifier
+                            .update((c) => c.copyWith(title: v)),
+                        style: AppTextStyles.input,
+                        decoration: const InputDecoration(
+                            hintText: 'e.g. Exp. MAR-2026 aarti'),
+                      ),
+                    )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(flex: 2, child: _lf('Department Code',
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(widget.notifier.current.deptCode),
-                    value: widget.notifier.current.deptCode,
-                    style: AppTextStyles.input,
-                    onChanged: (v) { if (v != null) widget.notifier.update((c) => c.copyWith(deptCode: v)); },
-                    items: AppConstants.deptCodes
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input)))
-                        .toList(),
-                    decoration: const InputDecoration(),
-                  ),
-                )),
+                Expanded(
+                    flex: 2,
+                    child: _lf(
+                      'Department Code',
+                      DropdownButtonFormField<String>(
+                        key: ValueKey(widget.notifier.current.deptCode),
+                        value: widget.notifier.current.deptCode,
+                        style: AppTextStyles.input,
+                        onChanged: (v) {
+                          if (v != null)
+                            widget.notifier
+                                .update((c) => c.copyWith(deptCode: v));
+                        },
+                        items: AppConstants.deptCodes
+                            .map((d) => DropdownMenuItem(
+                                value: d,
+                                child: Text(d,
+                                    style: AppTextStyles.input)))
+                            .toList(),
+                        decoration: const InputDecoration(),
+                      ),
+                    )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(flex: 2, child: _lf('Date',
-                  TextField(
-                    controller: _dateCtrl,
-                    style: AppTextStyles.input,
-                    readOnly: true,
-                    onTap: () async {
-                      final p = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.tryParse(widget.notifier.current.date) ?? DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (!mounted) return;
-                      if (p != null) widget.notifier.update((c) => c.copyWith(date: p.toIso8601String().split('T').first));
-                    },
-                    decoration: const InputDecoration(suffixIcon: Icon(Icons.calendar_today, size: 16)),
-                  ),
-                )),
+                Expanded(
+                    flex: 2,
+                    child: _lf(
+                      'Date',
+                      TextField(
+                        controller: _dateCtrl,
+                        style: AppTextStyles.input,
+                        readOnly: true,
+                        onTap: () async {
+                          final p = await showDatePicker(
+                            context: context,
+                            initialDate:
+                                DateTime.tryParse(
+                                        widget.notifier.current.date) ??
+                                    DateTime.now(),
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2100),
+                          );
+                          if (!mounted) return;
+                          if (p != null)
+                            widget.notifier.update((c) => c.copyWith(
+                                date: p
+                                    .toIso8601String()
+                                    .split('T')
+                                    .first));
+                        },
+                        decoration: const InputDecoration(
+                            suffixIcon:
+                                Icon(Icons.calendar_today, size: 16)),
+                      ),
+                    )),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            // ── Row 2: Client Name (flex 3) | GSTIN (flex 2) ─────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 3, child: _lf('Client Name',
-                  TextField(
-                    controller: _clientCtrl,
-                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientName: v)),
-                    style: AppTextStyles.input,
-                  ),
-                )),
+                Expanded(
+                    flex: 3,
+                    child: _lf(
+                      'Client Name',
+                      TextField(
+                        controller: _clientCtrl,
+                        onChanged: (v) => widget.notifier
+                            .update((c) => c.copyWith(clientName: v)),
+                        style: AppTextStyles.input,
+                      ),
+                    )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(flex: 2, child: _lf('Client GSTIN',
-                  TextField(
-                    controller: _gstnCtrl,
-                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientGstin: v)),
-                    style: AppTextStyles.input,
-                  ),
-                )),
+                Expanded(
+                    flex: 2,
+                    child: _lf(
+                      'Client GSTIN',
+                      TextField(
+                        controller: _gstnCtrl,
+                        onChanged: (v) => widget.notifier
+                            .update((c) => c.copyWith(clientGstin: v)),
+                        style: AppTextStyles.input,
+                      ),
+                    )),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            // ── Row 3: Address (full width) ───────────────────────────────
-            _lf('Client Address',
+            _lf(
+              'Client Address',
               TextField(
                 controller: _addressCtrl,
-                onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientAddress: v)),
+                onChanged: (v) => widget.notifier
+                    .update((c) => c.copyWith(clientAddress: v)),
                 style: AppTextStyles.input,
                 maxLines: 2,
               ),
             ),
             const SizedBox(height: AppSpacing.md),
-            // ── Row 4: Item Description ───────────────────────────────────
-            _lf('Item Description (for Invoice)',
+            _lf(
+              'Item Description (for Invoice)',
               ItemDescriptionField(
                 value: widget.notifier.current.itemDescription,
-                onChanged: (v) => widget.notifier.update((c) => c.copyWith(itemDescription: v)),
+                onChanged: (v) => widget.notifier
+                    .update((c) => c.copyWith(itemDescription: v)),
                 notifier: _descNotifier,
               ),
             ),
@@ -256,8 +554,10 @@ class _MetadataCardState extends State<_MetadataCard> {
   static Widget _lf(String label, Widget child) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: AppTextStyles.smallMedium.copyWith(
-              color: AppColors.slate600, fontWeight: FontWeight.w600)),
+          Text(label,
+              style: AppTextStyles.smallMedium.copyWith(
+                  color: AppColors.slate600,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           child,
         ],
@@ -270,15 +570,14 @@ class _RowsTable extends StatelessWidget {
   final VoucherNotifier notifier;
   const _RowsTable({required this.notifier});
 
-  static const _headers = ['#', 'Employee Name', 'Amount', 'From Date', 'To Date', 'Auto-filled Details', ''];
+  static const _headers = [
+    '#', 'Employee Name', 'Amount', 'From Date', 'To Date',
+    'Auto-filled Details', ''
+  ];
 
-  // ── column flex ratios (index → flex int OR null for fixed px) ────────────
-  // We compute widths via LayoutBuilder so every pixel is used.
-  // Fixed cols: # = 36, delete = 44
-  // Flex cols share the remainder in ratio 3.2 : 1.4 : 1.6 : 1.6 : 3.0
   static const _fixedLeft  = 36.0;
   static const _fixedRight = 44.0;
-  static const _flex       = [3.0, 2.0, 1.6, 1.6, 3.0]; // emp, amt, fr, to, auto
+  static const _flex       = [3.0, 2.0, 1.6, 1.6, 3.0];
 
   Map<int, TableColumnWidth> _colWidths(double totalWidth) {
     final available = totalWidth - _fixedLeft - _fixedRight;
@@ -299,32 +598,43 @@ class _RowsTable extends StatelessWidget {
         decoration: const BoxDecoration(
           color: AppColors.slate50,
           border: Border(
-            bottom: BorderSide(color: Color.fromARGB(255, 21, 39, 81), width: 0.5),
+            bottom: BorderSide(
+                color: Color.fromARGB(255, 21, 39, 81), width: 0.5),
           ),
         ),
-        children: _headers.map((h) => Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              child: Text(h, style: AppTextStyles.label.copyWith(
-                  color: AppColors.slate500, fontWeight: FontWeight.w700)),
-            )).toList(growable: false),
+        children: _headers
+            .map((h) => Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 10),
+                  child: Text(h,
+                      style: AppTextStyles.label.copyWith(
+                          color: AppColors.slate500,
+                          fontWeight: FontWeight.w700)),
+                ))
+            .toList(growable: false),
       );
 
   List<TableRow> _dataRows() {
     final counts = <String, int>{};
     for (final r in notifier.current.rows) {
-      if (r.employeeId.isNotEmpty) counts[r.employeeId] = (counts[r.employeeId] ?? 0) + 1;
+      if (r.employeeId.isNotEmpty)
+        counts[r.employeeId] = (counts[r.employeeId] ?? 0) + 1;
     }
     return List.generate(notifier.current.rows.length, (i) {
       final row = notifier.current.rows[i];
-      final dup = row.employeeId.isNotEmpty && (counts[row.employeeId] ?? 0) > 1;
+      final dup =
+          row.employeeId.isNotEmpty && (counts[row.employeeId] ?? 0) > 1;
       return voucher_row_widget.buildVoucherRow(
         index: i,
         row: row,
         employees: notifier.employees,
         onSelectEmployee: (id) => notifier.selectEmployee(row.id, id),
-        onAmountChanged: (a) => notifier.updateRow(row.id, (r) => r.copyWith(amount: a)),
-        onFromDateChanged: (d) => notifier.updateRow(row.id, (r) => r.copyWith(fromDate: d)),
-        onToDateChanged: (d) => notifier.updateRow(row.id, (r) => r.copyWith(toDate: d)),
+        onAmountChanged: (a) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(amount: a)),
+        onFromDateChanged: (d) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(fromDate: d)),
+        onToDateChanged: (d) =>
+            notifier.updateRow(row.id, (r) => r.copyWith(toDate: d)),
         onRemove: () => notifier.removeRow(row.id),
         highlight: dup,
       );
@@ -335,18 +645,22 @@ class _RowsTable extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         decoration: BoxDecoration(
           color: AppColors.white,
-          border: Border.all(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
-          borderRadius: BorderRadius.circular(AppSpacing.radius - 1), // ✅ FIX: rounded border
+          border: Border.all(
+              color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
+          borderRadius: BorderRadius.circular(AppSpacing.radius - 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Header bar ─────────────────────────────────────────────
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.slate50,
-                border: const Border(bottom: BorderSide(color: Color.fromARGB(255, 21, 39, 81), width: 0.5)),
+                border: const Border(
+                    bottom: BorderSide(
+                        color: Color.fromARGB(255, 21, 39, 81),
+                        width: 0.5)),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(AppSpacing.radius - 1),
                   topRight: Radius.circular(AppSpacing.radius - 1),
@@ -354,7 +668,8 @@ class _RowsTable extends StatelessWidget {
               ),
               child: Row(children: [
                 Text('Labour Disbursement Details',
-                    style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Text(
                   '${notifier.current.rows.length} row${notifier.current.rows.length == 1 ? '' : 's'}',
@@ -362,52 +677,57 @@ class _RowsTable extends StatelessWidget {
                 ),
               ]),
             ),
-            // ── Full-width Table via LayoutBuilder ──────────────────────
             LayoutBuilder(builder: (ctx, constraints) {
               final colWidths = _colWidths(constraints.maxWidth);
               return Table(
                 columnWidths: colWidths,
-                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                defaultVerticalAlignment:
+                    TableCellVerticalAlignment.middle,
                 children: [
                   _headerRow(colWidths),
                   ..._dataRows(),
                 ],
               );
             }),
-            // ── Empty state ─────────────────────────────────────────────
             if (notifier.current.rows.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Column(children: [
-                  Icon(Icons.table_rows_outlined, size: 36, color: AppColors.slate300),
+                  Icon(Icons.table_rows_outlined,
+                      size: 36, color: AppColors.slate300),
                   const SizedBox(height: 8),
                   Text('No rows yet.', style: AppTextStyles.small),
                 ]),
               ),
-            // ── Add Row CTA ─────────────────────────────────────────────
             Container(
               decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.slate200)),
+                border: Border(
+                    top: BorderSide(color: AppColors.slate200)),
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(AppSpacing.radius - 1),
-                  bottomRight: Radius.circular(AppSpacing.radius - 1),
+                  bottomLeft:
+                      Radius.circular(AppSpacing.radius - 1),
+                  bottomRight:
+                      Radius.circular(AppSpacing.radius - 1),
                 ),
               ),
               padding: const EdgeInsets.symmetric(vertical: 10),
               child: Center(
                 child: TextButton.icon(
                   onPressed: notifier.addRow,
-                  icon: const Icon(Icons.add_circle_outline, size: 17, color: AppColors.indigo600),
+                  icon: const Icon(Icons.add_circle_outline,
+                      size: 17, color: AppColors.indigo600),
                   label: Text('+ Add Row',
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.indigo600,
                         fontWeight: FontWeight.w600,
                       )),
                   style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 8),
                     backgroundColor: AppColors.indigo50,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      borderRadius:
+                          BorderRadius.circular(AppSpacing.radius),
                     ),
                   ),
                 ),
@@ -423,7 +743,15 @@ class _RowsTable extends StatelessWidget {
 class _ActionButtons extends StatelessWidget {
   final VoucherNotifier notifier;
   final VoidCallback onSave;
-  const _ActionButtons({required this.notifier, required this.onSave});
+  final VoidCallback onFinalise;
+  final bool exporting;
+
+  const _ActionButtons({
+    required this.notifier,
+    required this.onSave,
+    required this.onFinalise,
+    required this.exporting,
+  });
 
   @override
   Widget build(BuildContext context) => Wrap(
@@ -437,19 +765,24 @@ class _ActionButtons extends StatelessWidget {
                 context: context,
                 builder: (dc) => AlertDialog(
                   title: const Text('Discard Draft'),
-                  content: const Text('This will clear all current progress. Cannot be undone.'),
+                  content: const Text(
+                      'This will clear all current progress. Cannot be undone.'),
                   actions: [
-                    TextButton(onPressed: () => Navigator.pop(dc, false), child: const Text('Cancel')),
+                    TextButton(
+                        onPressed: () => Navigator.pop(dc, false),
+                        child: const Text('Cancel')),
                     TextButton(
                       onPressed: () => Navigator.pop(dc, true),
-                      style: TextButton.styleFrom(foregroundColor: const Color(0xFF11083D)),
+                      style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF11083D)),
                       child: const Text('Discard'),
                     ),
                   ],
                 ),
               );
               if (confirm == true) {
-                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                WidgetsBinding.instance
+                    .addPostFrameCallback((_) async {
                   await notifier.discardDraft();
                 });
               }
@@ -469,19 +802,29 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
           OutlinedButton.icon(
-            onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.invoice),
+            onPressed: () => InvoicePreviewDialog.show(
+                context, notifier, notifier.config, PreviewType.invoice),
             icon: const Icon(Icons.description_outlined, size: 16),
             label: const Text('Preview Invoice'),
           ),
           OutlinedButton.icon(
-            onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.bank),
+            onPressed: () => InvoicePreviewDialog.show(
+                context, notifier, notifier.config, PreviewType.bank),
             icon: const Icon(Icons.account_balance_outlined, size: 16),
             label: const Text('Preview Bank Sheet'),
           ),
           ElevatedButton.icon(
-            onPressed: null,
-            icon: const Icon(Icons.file_download_outlined, size: 16),
-            label: const Text('Finalise & Export'),
+            onPressed: exporting ? null : onFinalise,
+            icon: exporting
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.file_download_outlined, size: 16),
+            label:
+                Text(exporting ? 'Exporting…' : 'Finalise & Export'),
           ),
         ],
       );

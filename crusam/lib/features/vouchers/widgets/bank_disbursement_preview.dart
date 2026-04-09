@@ -6,7 +6,14 @@ import '../../../shared/utils/format_utils.dart';
 class BankDisbursementPreview extends StatelessWidget {
   final VoucherModel voucher;
   final CompanyConfigModel config;
-  const BankDisbursementPreview({super.key, required this.voucher, required this.config});
+  final EdgeInsets margins;
+
+  const BankDisbursementPreview({
+    super.key,
+    required this.voucher,
+    required this.config,
+    this.margins = const EdgeInsets.all(20),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +47,7 @@ class BankDisbursementPreview extends StatelessWidget {
 
         
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: margins,
           child: DefaultTextStyle(
             style: const TextStyle(fontSize: 10, color: Colors.black),
             child: Column(
