@@ -10,6 +10,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../widgets/invoice_preview_dialog.dart';
+import 'package:go_router/go_router.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -66,11 +67,52 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     }
   }
 
+  void _editVoucher(BuildContext context, VoucherModel v) {
+    // Confirm before overwriting any unsaved work in the builder
+    final hasUnsavedWork = VoucherNotifier.instance.current.rows.isNotEmpty ||
+        VoucherNotifier.instance.current.title.isNotEmpty;
+
+    if (!hasUnsavedWork) {
+      _loadIntoBuilder(context, v);
+      return;
+    }
+
+    showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Overwrite Current Draft?'),
+        content: const Text(
+          'The Voucher Builder has unsaved work.\n'
+          'Loading this invoice will replace it. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.indigo600),
+            child: const Text('Load Invoice'),
+          ),
+        ],
+      ),
+    ).then((confirmed) {
+      if (confirmed == true && mounted) _loadIntoBuilder(context, v);
+    });
+  }
+
+  void _loadIntoBuilder(BuildContext context, VoucherModel v) {
+    // Push voucher into the singleton so VoucherBuilderScreen picks it up
+    VoucherNotifier.instance.update((_) => v);
+    context.go('/vouchers');
+  }
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.all(AppSpacing.pagePadding),
     child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
@@ -88,14 +130,22 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           const Expanded(child: Center(child: CircularProgressIndicator()))
         else
           Expanded(
-            child: AppCard(
-              padding: EdgeInsets.zero,
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: 2,
+              clipBehavior: Clip.antiAlias, // ← THIS FIXES THE ROUNDED CORNERS
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
               child: _vouchers.isEmpty
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(48),
-                        child: Text('No invoices generated yet.\nFinalise a voucher to create one.',
-                            textAlign: TextAlign.center),
+                        child: Text(
+                          'No invoices generated yet.\nFinalise a voucher to create one.',
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     )
                   : SingleChildScrollView(
@@ -125,6 +175,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                               icon: const Icon(Icons.download_outlined, size: 17, color: AppColors.slate400),
                               onPressed: () {},
                               tooltip: 'Download',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.indigo600),
+                              onPressed: () => _editVoucher(context, v),
+                              tooltip: 'Edit',
                             ),
                             IconButton(
                               icon: const Icon(Icons.description_outlined, size: 17, color: AppColors.indigo600),

@@ -35,6 +35,10 @@ class BankDisbursementPreview extends StatelessWidget {
             ),
           ],
         ),
+
+
+
+        
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: DefaultTextStyle(

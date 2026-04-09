@@ -30,7 +30,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
 
   @override
   void dispose() {
-    // DO NOT dispose the singleton notifier here
     super.dispose();
   }
 
@@ -59,6 +58,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.pagePadding),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _MetadataCard(notifier: _notifier),
                 const SizedBox(height: AppSpacing.xl),
@@ -95,6 +95,8 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       );
 }
 
+// ── Metadata Card ─────────────────────────────────────────────────────────────
+
 class _MetadataCard extends StatefulWidget {
   final VoucherNotifier notifier;
   const _MetadataCard({required this.notifier});
@@ -105,9 +107,9 @@ class _MetadataCard extends StatefulWidget {
 
 class _MetadataCardState extends State<_MetadataCard> {
   late final TextEditingController _titleCtrl = TextEditingController();
-  late final TextEditingController _dateCtrl = TextEditingController();
+  late final TextEditingController _dateCtrl  = TextEditingController();
   late final TextEditingController _clientCtrl = TextEditingController();
-  late final TextEditingController _gstnCtrl = TextEditingController();
+  late final TextEditingController _gstnCtrl   = TextEditingController();
   late final TextEditingController _addressCtrl = TextEditingController();
   late final ItemDescriptionNotifier _descNotifier = ItemDescriptionNotifier();
 
@@ -129,167 +131,121 @@ class _MetadataCardState extends State<_MetadataCard> {
     }
   }
 
-  void _syncFromNotifier(VoucherModel current) {
-    if (_titleCtrl.text != current.title) _titleCtrl.text = current.title;
-    if (_dateCtrl.text != current.date) _dateCtrl.text = current.date;
-    if (_clientCtrl.text != current.clientName) _clientCtrl.text = current.clientName;
-    if (_gstnCtrl.text != current.clientGstin) _gstnCtrl.text = current.clientGstin;
-    if (_addressCtrl.text != current.clientAddress) {
-      _addressCtrl.text = current.clientAddress;
-    }
+  void _syncFromNotifier(VoucherModel c) {
+    if (_titleCtrl.text   != c.title)         _titleCtrl.text   = c.title;
+    if (_dateCtrl.text    != c.date)          _dateCtrl.text    = c.date;
+    if (_clientCtrl.text  != c.clientName)    _clientCtrl.text  = c.clientName;
+    if (_gstnCtrl.text    != c.clientGstin)   _gstnCtrl.text    = c.clientGstin;
+    if (_addressCtrl.text != c.clientAddress) _addressCtrl.text = c.clientAddress;
   }
 
   void _onVoucherChanged() {
-    final current = widget.notifier.current;
-    if (_titleCtrl.text != current.title ||
-        _dateCtrl.text != current.date ||
-        _clientCtrl.text != current.clientName ||
-        _gstnCtrl.text != current.clientGstin ||
-        _addressCtrl.text != current.clientAddress) {
-      _syncFromNotifier(current);
+    final c = widget.notifier.current;
+    if (_titleCtrl.text != c.title || _dateCtrl.text != c.date ||
+        _clientCtrl.text != c.clientName || _gstnCtrl.text != c.clientGstin ||
+        _addressCtrl.text != c.clientAddress) {
+      _syncFromNotifier(c);
     }
   }
 
   @override
   void dispose() {
     widget.notifier.removeListener(_onVoucherChanged);
-    _titleCtrl.dispose();
-    _dateCtrl.dispose();
-    _clientCtrl.dispose();
-    _gstnCtrl.dispose();
-    _addressCtrl.dispose();
-    _descNotifier.dispose();
+    _titleCtrl.dispose(); _dateCtrl.dispose(); _clientCtrl.dispose();
+    _gstnCtrl.dispose();  _addressCtrl.dispose(); _descNotifier.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => AppCard(
+        padding: const EdgeInsets.all(AppSpacing.cardPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Row 1: Title (flex 4) | Dept (flex 2) | Date (flex 2) ──────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _labelField(
-                    'Voucher Title',
-                    child: TextField(
-                      controller: _titleCtrl,
-                      onChanged: (v) =>
-                          widget.notifier.update((c) => c.copyWith(title: v)),
-                      style: AppTextStyles.input,
-                      decoration:
-                          const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
-                    ),
+                Expanded(flex: 4, child: _lf('Voucher Title',
+                  TextField(
+                    controller: _titleCtrl,
+                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(title: v)),
+                    style: AppTextStyles.input,
+                    decoration: const InputDecoration(hintText: 'e.g. Exp. MAR-2026 aarti'),
                   ),
-                ),
+                )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: _labelField(
-                    'Department Code',
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey(widget.notifier.current.deptCode),
-                      // FIX: was `initialValue` which is not a valid parameter
-                      value: widget.notifier.current.deptCode,
-                      style: AppTextStyles.input,
-                      onChanged: (v) {
-                        if (v != null) {
-                          widget.notifier.update((c) => c.copyWith(deptCode: v));
-                        }
-                      },
-                      items: AppConstants.deptCodes
-                          .map((d) => DropdownMenuItem(
-                                value: d,
-                                child: Text(d, style: AppTextStyles.input),
-                              ))
-                          .toList(),
-                      decoration: const InputDecoration(),
-                    ),
+                Expanded(flex: 2, child: _lf('Department Code',
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(widget.notifier.current.deptCode),
+                    value: widget.notifier.current.deptCode,
+                    style: AppTextStyles.input,
+                    onChanged: (v) { if (v != null) widget.notifier.update((c) => c.copyWith(deptCode: v)); },
+                    items: AppConstants.deptCodes
+                        .map((d) => DropdownMenuItem(value: d, child: Text(d, style: AppTextStyles.input)))
+                        .toList(),
+                    decoration: const InputDecoration(),
                   ),
-                ),
+                )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: _labelField(
-                    'Date',
-                    child: TextField(
-                      controller: _dateCtrl,
-                      style: AppTextStyles.input,
-                      readOnly: true,
-                      onTap: () async {
-                        final p = await showDatePicker(
-                          context: context,
-                          initialDate:
-                              DateTime.tryParse(widget.notifier.current.date) ??
-                                  DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2100),
-                        );
-                        if (!mounted) return;
-                        if (p != null) {
-                          widget.notifier.update(
-                            (c) => c.copyWith(
-                                date: p.toIso8601String().split('T').first),
-                          );
-                        }
-                      },
-                      decoration: const InputDecoration(
-                          suffixIcon: Icon(Icons.calendar_today, size: 16)),
-                    ),
+                Expanded(flex: 2, child: _lf('Date',
+                  TextField(
+                    controller: _dateCtrl,
+                    style: AppTextStyles.input,
+                    readOnly: true,
+                    onTap: () async {
+                      final p = await showDatePicker(
+                        context: context,
+                        initialDate: DateTime.tryParse(widget.notifier.current.date) ?? DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (!mounted) return;
+                      if (p != null) widget.notifier.update((c) => c.copyWith(date: p.toIso8601String().split('T').first));
+                    },
+                    decoration: const InputDecoration(suffixIcon: Icon(Icons.calendar_today, size: 16)),
                   ),
-                ),
+                )),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
+            // ── Row 2: Client Name (flex 3) | GSTIN (flex 2) ─────────────
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _labelField(
-                    'Client Name',
-                    child: TextField(
-                      onChanged: (v) => widget.notifier
-                          .update((c) => c.copyWith(clientName: v)),
-                      controller: _clientCtrl,
-                      style: AppTextStyles.input,
-                    ),
+                Expanded(flex: 3, child: _lf('Client Name',
+                  TextField(
+                    controller: _clientCtrl,
+                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientName: v)),
+                    style: AppTextStyles.input,
                   ),
-                ),
+                )),
                 const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: _labelField(
-                    'Client GSTIN',
-                    child: TextField(
-                      onChanged: (v) => widget.notifier
-                          .update((c) => c.copyWith(clientGstin: v)),
-                      controller: _gstnCtrl,
-                      style: AppTextStyles.input,
-                    ),
+                Expanded(flex: 2, child: _lf('Client GSTIN',
+                  TextField(
+                    controller: _gstnCtrl,
+                    onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientGstin: v)),
+                    style: AppTextStyles.input,
                   ),
-                ),
+                )),
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              children: [
-                Expanded(
-                  child: _labelField(
-                    'Client Address',
-                    child: TextField(
-                      controller: _addressCtrl,
-                      onChanged: (v) => widget.notifier
-                          .update((c) => c.copyWith(clientAddress: v)),
-                      style: AppTextStyles.input,
-                      maxLines: 2,
-                    ),
-                  ),
-                ),
-              ],
+            // ── Row 3: Address (full width) ───────────────────────────────
+            _lf('Client Address',
+              TextField(
+                controller: _addressCtrl,
+                onChanged: (v) => widget.notifier.update((c) => c.copyWith(clientAddress: v)),
+                style: AppTextStyles.input,
+                maxLines: 2,
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
-            _labelField(
-              'Item Description (for Invoice)',
-              child: ItemDescriptionField(
+            // ── Row 4: Item Description ───────────────────────────────────
+            _lf('Item Description (for Invoice)',
+              ItemDescriptionField(
                 value: widget.notifier.current.itemDescription,
-                onChanged: (v) => widget.notifier
-                    .update((c) => c.copyWith(itemDescription: v)),
+                onChanged: (v) => widget.notifier.update((c) => c.copyWith(itemDescription: v)),
                 notifier: _descNotifier,
               ),
             ),
@@ -297,121 +253,168 @@ class _MetadataCardState extends State<_MetadataCard> {
         ),
       );
 
-  static Widget _labelField(String label, {required Widget child}) => Column(
+  static Widget _lf(String label, Widget child) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: AppTextStyles.smallMedium.copyWith(color: AppColors.slate700)),
+          Text(label, style: AppTextStyles.smallMedium.copyWith(
+              color: AppColors.slate600, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           child,
         ],
       );
 }
 
+// ── Rows Table ────────────────────────────────────────────────────────────────
+
 class _RowsTable extends StatelessWidget {
   final VoucherNotifier notifier;
   const _RowsTable({required this.notifier});
 
-  static const _headers = <String>[
-    '#',
-    'Employee Name',
-    'Amount',
-    'From Date',
-    'To Date',
-    'Auto-filled Details',
-    '',
-  ];
+  static const _headers = ['#', 'Employee Name', 'Amount', 'From Date', 'To Date', 'Auto-filled Details', ''];
 
-  TableRow _buildHeaderRow() => TableRow(
+  // ── column flex ratios (index → flex int OR null for fixed px) ────────────
+  // We compute widths via LayoutBuilder so every pixel is used.
+  // Fixed cols: # = 36, delete = 44
+  // Flex cols share the remainder in ratio 3.2 : 1.4 : 1.6 : 1.6 : 3.0
+  static const _fixedLeft  = 36.0;
+  static const _fixedRight = 44.0;
+  static const _flex       = [3.0, 2.0, 1.6, 1.6, 3.0]; // emp, amt, fr, to, auto
+
+  Map<int, TableColumnWidth> _colWidths(double totalWidth) {
+    final available = totalWidth - _fixedLeft - _fixedRight;
+    final sum = _flex.fold(0.0, (a, b) => a + b);
+    final widths = _flex.map((f) => available * f / sum).toList();
+    return {
+      0: const FixedColumnWidth(_fixedLeft),
+      1: FixedColumnWidth(widths[0]),
+      2: FixedColumnWidth(widths[1]),
+      3: FixedColumnWidth(widths[2]),
+      4: FixedColumnWidth(widths[3]),
+      5: FixedColumnWidth(widths[4]),
+      6: const FixedColumnWidth(_fixedRight),
+    };
+  }
+
+  TableRow _headerRow(Map<int, TableColumnWidth> _) => TableRow(
         decoration: const BoxDecoration(
           color: AppColors.slate50,
           border: Border(
-            top: BorderSide(color: AppColors.slate200),
-            bottom: BorderSide(color: AppColors.slate200),
-          ),
+            bottom: BorderSide(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),),
+          
         ),
-        children: _headers
-            .map((header) => Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                  child: Text(header, style: AppTextStyles.label),
-                ))
-            .toList(growable: false),
+        children: _headers.map((h) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Text(h, style: AppTextStyles.label.copyWith(
+                  color: AppColors.slate500, fontWeight: FontWeight.w700)),
+            )).toList(growable: false),
       );
 
-  List<TableRow> _buildDataRows() {
-  // Count occurrences of each employee ID
-  final employeeCounts = <String, int>{};
-  for (final row in notifier.current.rows) {
-    if (row.employeeId != null) {
-      employeeCounts[row.employeeId!] = (employeeCounts[row.employeeId!] ?? 0) + 1;
+  List<TableRow> _dataRows() {
+    final counts = <String, int>{};
+    for (final r in notifier.current.rows) {
+      if (r.employeeId.isNotEmpty) counts[r.employeeId] = (counts[r.employeeId] ?? 0) + 1;
     }
-  }
-
-  return List<TableRow>.generate(
-    notifier.current.rows.length,
-    (index) {
-      final row = notifier.current.rows[index];
-      final highlight = row.employeeId != null && 
-                        (employeeCounts[row.employeeId!] ?? 0) > 1;
-
+    return List.generate(notifier.current.rows.length, (i) {
+      final row = notifier.current.rows[i];
+      final dup = row.employeeId.isNotEmpty && (counts[row.employeeId] ?? 0) > 1;
       return voucher_row_widget.buildVoucherRow(
-        index: index,
+        index: i,
         row: row,
         employees: notifier.employees,
-        onSelectEmployee: (empId) => notifier.selectEmployee(row.id, empId),
-        onAmountChanged: (amt) =>
-            notifier.updateRow(row.id, (r) => r.copyWith(amount: amt)),
-        onFromDateChanged: (date) =>
-            notifier.updateRow(row.id, (r) => r.copyWith(fromDate: date)),
-        onToDateChanged: (date) =>
-            notifier.updateRow(row.id, (r) => r.copyWith(toDate: date)),
+        onSelectEmployee: (id) => notifier.selectEmployee(row.id, id),
+        onAmountChanged: (a) => notifier.updateRow(row.id, (r) => r.copyWith(amount: a)),
+        onFromDateChanged: (d) => notifier.updateRow(row.id, (r) => r.copyWith(fromDate: d)),
+        onToDateChanged: (d) => notifier.updateRow(row.id, (r) => r.copyWith(toDate: d)),
         onRemove: () => notifier.removeRow(row.id),
-        highlight: highlight, // <-- This must be passed
+        highlight: dup,
       );
-    },
-    growable: false,
-  );
-}
+    }, growable: false);
+  }
 
   @override
-  Widget build(BuildContext context) => AppCard(
-        padding: EdgeInsets.zero,
-        child: Column(
-          children: [
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 900),
-                child: Table(
-                  columnWidths: const {
-                    0: FixedColumnWidth(40),
-                    1: FixedColumnWidth(230),
-                    2: FixedColumnWidth(100),
-                    3: FixedColumnWidth(130),
-                    4: FixedColumnWidth(130),
-                    5: FlexColumnWidth(),
-                    6: FixedColumnWidth(48),
-                  },
+  Widget build(BuildContext context) => Container(
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          border: Border.all(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
+          
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppSpacing.radius - 1),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Header bar ─────────────────────────────────────────────
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.slate50,
+                  border: const Border(bottom: BorderSide(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5)),
+                  
+                  ),
+                child: Row(children: [
+                  Text('Labour Disbursement Details',
+                      style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  Text(
+                    '${notifier.current.rows.length} row${notifier.current.rows.length == 1 ? '' : 's'}',
+                    style: AppTextStyles.small,
+                  ),
+                ]),
+              ),
+              // ── Full-width Table via LayoutBuilder ──────────────────────
+              LayoutBuilder(builder: (ctx, constraints) {
+                final colWidths = _colWidths(constraints.maxWidth);
+                return Table(
+                  columnWidths: colWidths,
+                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
                   children: [
-                    _buildHeaderRow(),
-                    ..._buildDataRows(),
+                    _headerRow(colWidths),
+                    ..._dataRows(),
                   ],
+                );
+              }),
+              // ── Empty state ─────────────────────────────────────────────
+              if (notifier.current.rows.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  child: Column(children: [
+                    Icon(Icons.table_rows_outlined, size: 36, color: AppColors.slate300),
+                    const SizedBox(height: 8),
+                    Text('No rows yet.', style: AppTextStyles.small),
+                  ]),
+                ),
+              // ── Add Row CTA ─────────────────────────────────────────────
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: AppColors.slate200)),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Center(
+                  child: TextButton.icon(
+                    onPressed: notifier.addRow,
+                    icon: const Icon(Icons.add_circle_outline, size: 17, color: AppColors.indigo600),
+                    label: Text('+ Add Row',
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          color: AppColors.indigo600,
+                          fontWeight: FontWeight.w600,
+                        )),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      backgroundColor: AppColors.indigo50,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: TextButton.icon(
-                onPressed: notifier.addRow,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Row'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
 }
+
+// ── Action Buttons ────────────────────────────────────────────────────────────
 
 class _ActionButtons extends StatelessWidget {
   final VoucherNotifier notifier;
@@ -424,26 +427,18 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment: WrapAlignment.end,
         children: [
-
-
-
           OutlinedButton.icon(
             onPressed: () async {
               final confirm = await showDialog<bool>(
                 context: context,
-                builder: (dialogContext) => AlertDialog(
+                builder: (dc) => AlertDialog(
                   title: const Text('Discard Draft'),
-                  content: const Text(
-                    'This will clear all current progress. Cannot be undone.',
-                  ),
+                  content: const Text('This will clear all current progress. Cannot be undone.'),
                   actions: [
+                    TextButton(onPressed: () => Navigator.pop(dc, false), child: const Text('Cancel')),
                     TextButton(
-                      onPressed: () => Navigator.pop(dialogContext, false),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext, true),
-                      style: TextButton.styleFrom(foregroundColor: const Color.fromARGB(255, 17, 14, 61)),
+                      onPressed: () => Navigator.pop(dc, true),
+                      style: TextButton.styleFrom(foregroundColor: const Color(0xFF11083D)),
                       child: const Text('Discard'),
                     ),
                   ],
@@ -458,13 +453,9 @@ class _ActionButtons extends StatelessWidget {
             icon: const Icon(Icons.delete_outline, size: 16),
             label: const Text('Discard Draft'),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color.fromARGB(255, 250, 227, 227)),
+              side: const BorderSide(color: Color(0xFFFAE3E3)),
             ),
           ),
-
-
-
-
           OutlinedButton.icon(
             onPressed: onSave,
             icon: const Icon(Icons.save, size: 16),
@@ -473,19 +464,13 @@ class _ActionButtons extends StatelessWidget {
               side: const BorderSide(color: AppColors.emerald100),
             ),
           ),
-
-
-
-
           OutlinedButton.icon(
-            onPressed: () => InvoicePreviewDialog.show(
-                context, notifier, notifier.config, PreviewType.invoice),
+            onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.invoice),
             icon: const Icon(Icons.description_outlined, size: 16),
             label: const Text('Preview Invoice'),
           ),
           OutlinedButton.icon(
-            onPressed: () => InvoicePreviewDialog.show(
-                context, notifier, notifier.config, PreviewType.bank),
+            onPressed: () => InvoicePreviewDialog.show(context, notifier, notifier.config, PreviewType.bank),
             icon: const Icon(Icons.account_balance_outlined, size: 16),
             label: const Text('Preview Bank Sheet'),
           ),

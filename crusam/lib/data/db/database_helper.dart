@@ -39,6 +39,7 @@ class DatabaseHelper {
     await _ensureColumn(db, 'vouchers', 'client_name', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
+    await _ensureColumn(db, 'voucher_rows',  'employee_id',      'TEXT');
   }
 
   Future<void> _ensureColumn(

@@ -62,33 +62,47 @@ class VoucherModel {
   );
 
   Map<String, dynamic> toDbMap() => {
-    if (id != null) 'id': id,
-    'title':       title,
-    'description': '',
-    'dept_code':   deptCode,
-    'base_total':  baseTotal,
-    'cgst':        cgst,
-    'sgst':        sgst,
-    'total_tax':   totalTax,
-    'raw_total':   baseTotal + totalTax,
-    'round_off':   roundOff,
-    'final_total': finalTotal,
-    'total_in_words': '',
-    'status':      status.name,
-  };
+  if (id != null) 'id': id,
+  'title':            title,
+  'description':      '',
+  'dept_code':        deptCode,
+  'bill_no':          billNo,          // ← add
+  'po_no':            poNo,            // ← add
+  'item_description': itemDescription, // ← add
+  'client_name':      clientName,      // ← add
+  'client_address':   clientAddress,   // ← add
+  'client_gstin':     clientGstin,     // ← add
+  'base_total':       baseTotal,
+  'cgst':             cgst,
+  'sgst':             sgst,
+  'total_tax':        totalTax,
+  'raw_total':        baseTotal + totalTax,
+  'round_off':        roundOff,
+  'final_total':      finalTotal,
+  'total_in_words':   '',
+  'status':           status.name,
+};
 
   factory VoucherModel.fromDbMap(Map<String, dynamic> m, List<VoucherRowModel> rows) => VoucherModel(
-    id:         m['id'] as int?,
-    title:      (m['title']      as String?) ?? '',
-    deptCode:   (m['dept_code']  as String?) ?? '',
-    date:       (m['created_at'] as String?) ?? '',
-    rows:       rows,
-    baseTotal:  (m['base_total'] as num?)?.toDouble()  ?? 0,
-    cgst:       (m['cgst']       as num?)?.toDouble()  ?? 0,
-    sgst:       (m['sgst']       as num?)?.toDouble()  ?? 0,
-    totalTax:   (m['total_tax']  as num?)?.toDouble()  ?? 0,
-    roundOff:   (m['round_off']  as num?)?.toDouble()  ?? 0,
-    finalTotal: (m['final_total']as num?)?.toDouble()  ?? 0,
-    status:     (m['status'] as String?) == 'saved' ? VoucherStatus.saved : VoucherStatus.draft,
-  );
+  id:              m['id'] as int?,
+  title:           (m['title']           as String?) ?? '',
+  deptCode:        (m['dept_code']        as String?) ?? '',
+  date:            (m['created_at']       as String?) ?? '',
+  rows:            rows,
+  baseTotal:       (m['base_total']       as num?)?.toDouble() ?? 0,
+  cgst:            (m['cgst']             as num?)?.toDouble() ?? 0,
+  sgst:            (m['sgst']             as num?)?.toDouble() ?? 0,
+  totalTax:        (m['total_tax']        as num?)?.toDouble() ?? 0,
+  roundOff:        (m['round_off']        as num?)?.toDouble() ?? 0,
+  finalTotal:      (m['final_total']      as num?)?.toDouble() ?? 0,
+  status:          (m['status'] as String?) == 'saved'
+                       ? VoucherStatus.saved : VoucherStatus.draft,
+  // ── previously missing ──────────────────────────────────
+  billNo:          (m['bill_no']          as String?) ?? '',
+  poNo:            (m['po_no']            as String?) ?? '',
+  itemDescription: (m['item_description'] as String?) ?? '',
+  clientName:      (m['client_name']      as String?) ?? '',
+  clientAddress:   (m['client_address']   as String?) ?? '',
+  clientGstin:     (m['client_gstin']     as String?) ?? '',
+);
 }
