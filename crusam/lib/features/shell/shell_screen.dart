@@ -17,11 +17,17 @@ class _ShellScreenState extends State<ShellScreen> {
   bool _expanded = true;
 
   static const _items = [
-    _NavDef('/dashboard', Icons.dashboard_outlined,  'Dashboard'),
-    _NavDef('/employees', Icons.people_outline,       'Employee Master Data'),
-    _NavDef('/vouchers',  Icons.description_outlined, 'Voucher'),
-    _NavDef('/invoices',  Icons.receipt_outlined,      'Invoices'),
-    _NavDef('/settings',  Icons.settings_outlined,     'Company-Config'),
+    _NavDef('/dashboard',        Icons.dashboard_outlined,       'Dashboard'),
+    _NavDef('/employees',        Icons.people_outline,            'Employee Master Data'),
+    _NavDef('/vouchers',         Icons.description_outlined,      'Voucher'),
+    _NavDef('/invoices',         Icons.receipt_outlined,          'Invoices'),
+    _NavDef('/settings',         Icons.settings_outlined,         'Company-Config'),
+    _NavDef('/salary-employees', Icons.badge_outlined,            'Employee Salary'),
+    _NavDef('/salary-slips',     Icons.receipt_long_outlined,     'Salary Slips'),
+    _NavDef('/salary-bills',     Icons.request_quote_outlined,    'Salary Bills'),
+    _NavDef('/salary-statement', Icons.summarize_outlined,        'Salary Statement'),
+    _NavDef('/salary-disburse',  Icons.account_balance_outlined,  'Salary Disbursements'),
+    _NavDef('/salary-preview',   Icons.preview_outlined,          'Preview Page'),
   ];
 
   String _activeRoute(BuildContext ctx) {
