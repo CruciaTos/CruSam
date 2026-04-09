@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
@@ -75,6 +76,7 @@ class BankDisbursementPreview extends StatelessWidget {
   }
 
   Widget _buildTable() {
+    final sorted = _sorted(voucher.rows);
     const headers = [
       'Amount',
       'Debit A/c',
@@ -100,7 +102,7 @@ class BankDisbursementPreview extends StatelessWidget {
                   ))
               .toList(),
         ),
-        ...voucher.rows.map((r) => TableRow(children: [
+        ...sorted.map((r) => TableRow(children: [
               _c(r.amount.toStringAsFixed(2), bold: true),
               _c(config.accountNo, mono: true),
               _c(r.ifscCode, mono: true),
@@ -177,4 +179,15 @@ class BankDisbursementPreview extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 9)),
         ]),
       );
+
+  static List<VoucherRowModel> _sorted(List<VoucherRowModel> rows) {
+    final copy = [...rows];
+    copy.sort((a, b) {
+      if (a.fromDate.isEmpty && b.fromDate.isEmpty) return 0;
+      if (a.fromDate.isEmpty) return 1;
+      if (b.fromDate.isEmpty) return -1;
+      return a.fromDate.compareTo(b.fromDate);
+    });
+    return copy;
+  }
 }

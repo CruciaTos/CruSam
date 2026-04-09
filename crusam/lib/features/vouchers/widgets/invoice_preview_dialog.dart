@@ -248,12 +248,11 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      final path = await PdfExportService.exportTaxInvoiceFromWidget(
-        _previewKey,
-        widget.notifier.enriched.billNo,
+      await PdfExportService.exportAndShare(
+        previewKey: _previewKey,
+        billNo: widget.notifier.enriched.billNo,
+        subject: widget.type == PreviewType.invoice ? 'Tax Invoice' : 'Bank Disbursement',
       );
-      if (!mounted) return;
-      await Share.shareXFiles([XFile(path)], subject: 'Tax Invoice');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

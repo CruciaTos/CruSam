@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
@@ -37,6 +38,7 @@ class VoucherPdfPreview extends StatelessWidget {
   );
 
   Widget _buildTable() {
+    final sorted = _sorted(voucher.rows);
     const headers = ['Sr.', 'Debit A/c', 'IFSC', 'Credit A/c', 'Code', 'Name', 'Place', 'Bank', 'Fr.', 'To', 'Amount'];
     return Table(
       border: TableBorder.all(color: Colors.black),
@@ -52,14 +54,15 @@ class VoucherPdfPreview extends StatelessWidget {
             child: Text(h, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 8)),
           )).toList(),
         ),
-        ...voucher.rows.asMap().entries.map((e) {
-          final i = e.key; final r = e.value;
+        ...sorted.asMap().entries.map((e) {
+          final i = e.key;
+          final r = e.value;
           return TableRow(children: [
             _c('${i + 1}'), _c(config.accountNo, mono: true),
             _c(r.ifscCode, mono: true), _c(r.accountNumber, mono: true),
             _c(r.sbCode), _c(r.employeeName),
             _c(r.branch), _c(voucher.title),
-            _c(r.fromDate), _c(r.toDate),
+            _c(_fmtDate(r.fromDate)), _c(_fmtDate(r.toDate)),
             _c(r.amount.toStringAsFixed(2), right: true),
           ]);
         }),
@@ -74,4 +77,24 @@ class VoucherPdfPreview extends StatelessWidget {
       style: TextStyle(fontSize: 8, fontFamily: mono ? 'monospace' : null),
     ),
   );
+
+  static String _fmtDate(String iso) {
+    if (iso.isEmpty) return '-';
+    if (iso.contains('-') && iso.length == 10) {
+      final p = iso.split('-');
+      return '${p[2]}/${p[1]}/${p[0]}';
+    }
+    return iso;
+  }
+
+  static List<VoucherRowModel> _sorted(List<VoucherRowModel> rows) {
+    final copy = [...rows];
+    copy.sort((a, b) {
+      if (a.fromDate.isEmpty && b.fromDate.isEmpty) return 0;
+      if (a.fromDate.isEmpty) return 1;
+      if (b.fromDate.isEmpty) return -1;
+      return a.fromDate.compareTo(b.fromDate);
+    });
+    return copy;
+  }
 }

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
-import '../../../shared/utils/format_utils.dart';
 
 /// Excel-style Tax Invoice Preview – A4 print ready.
 class TaxInvoicePreview extends StatelessWidget {
@@ -263,58 +262,59 @@ class TaxInvoicePreview extends StatelessWidget {
   );
 
   // ── Data row – QTY and RATE blank per reference image ──────────────────────
-  Widget _dataRow(double descW) => Container(
-    decoration: const BoxDecoration(border: Border(bottom: _bSide)),
-    child: IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _dCell('1', _wSr, center: true),
-          _dCell(
-            _fmtDate(
-              voucher.rows.isNotEmpty ? voucher.rows.first.fromDate : '',
+  Widget _dataRow(double descW) {
+    final sorted = _sorted(voucher.rows);
+    return Container(
+      decoration: const BoxDecoration(border: Border(bottom: _bSide)),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _dCell('1', _wSr, center: true),
+            _dCell(
+              _fmtDate(sorted.isNotEmpty ? sorted.first.fromDate : ''),
+              _wDateFr,
+              center: true,
             ),
-            _wDateFr,
-            center: true,
-          ),
-          _dCell(
-            _fmtDate(voucher.rows.isNotEmpty ? voucher.rows.last.toDate : ''),
-            _wDateTo,
-            center: true,
-          ),
-          Container(
-            width: descW,
-            decoration: const BoxDecoration(border: Border(right: _bSide)),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(voucher.itemDescription, style: _body),
-                const SizedBox(height: 12),
-                const Text(
-                  '( Vouchers attached with this original bill )',
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontStyle: FontStyle.italic,
-                    color: _black,
+            _dCell(
+              _fmtDate(sorted.isNotEmpty ? sorted.last.toDate : ''),
+              _wDateTo,
+              center: true,
+            ),
+            Container(
+              width: descW,
+              decoration: const BoxDecoration(border: Border(right: _bSide)),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(voucher.itemDescription, style: _body),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '( Vouchers attached with this original bill )',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontStyle: FontStyle.italic,
+                      color: _black,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          _dCell('', _wQty, center: true),
-          _dCell('', _wRate, center: true),
-          _dCell(
-            voucher.baseTotal.toStringAsFixed(2),
-            _wAmt,
-            right: true,
-            bold: true,
-            isLast: true,
-          ),
-        ],
+            _dCell('', _wQty, center: true),
+            _dCell('', _wRate, center: true),
+            _dCell(
+              voucher.baseTotal.toStringAsFixed(2),
+              _wAmt,
+              right: true,
+              bold: true,
+              isLast: true,
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // TABLE BOTTOM
@@ -615,6 +615,17 @@ class TaxInvoicePreview extends StatelessWidget {
       return '${p[2]}/${p[1]}/${p[0]}';
     }
     return iso;
+  }
+
+  static List<VoucherRowModel> _sorted(List<VoucherRowModel> rows) {
+    final copy = [...rows];
+    copy.sort((a, b) {
+      if (a.fromDate.isEmpty && b.fromDate.isEmpty) return 0;
+      if (a.fromDate.isEmpty) return 1;
+      if (b.fromDate.isEmpty) return -1;
+      return a.fromDate.compareTo(b.fromDate);
+    });
+    return copy;
   }
 }
 

@@ -269,47 +269,175 @@ class _AmountFieldState extends State<_AmountField> {
 
 // ── Date Field ────────────────────────────────────────────────────────────────
 
-class _DateField extends StatelessWidget {
+class _DateField extends StatefulWidget {
   final String value;
   final void Function(String) onChanged;
   const _DateField({required this.value, required this.onChanged});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: () async {
-          final p = await showDatePicker(
-            context: context,
-            initialDate: DateTime.tryParse(value) ?? DateTime.now(),
-            firstDate: DateTime(2000),
-            lastDate: DateTime(2100),
-          );
-          if (p != null) onChanged(p.toIso8601String().split('T').first);
-        },
-        child: Container(
-          height: _kH,
-          alignment: Alignment.centerLeft,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            border: Border.all(color: AppColors.slate900),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(children: [
-            Expanded(
-              child: Text(
-                value.isEmpty ? 'Pick date' : value,
-                style: AppTextStyles.input.copyWith(
-                  fontSize: 12,
-                  color: value.isEmpty ? AppColors.slate400 : AppColors.slate700,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            Icon(Icons.calendar_today_outlined,
-                size: 13, color: value.isEmpty ? AppColors.slate300 : AppColors.slate500),
-          ]),
+  State<_DateField> createState() => _DateFieldState();
+}
+
+class _DateFieldState extends State<_DateField> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: _formatDisplay(widget.value));
+  }
+
+  @override
+  void didUpdateWidget(covariant _DateField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && !_ctrl.text.contains('/')) {
+      _ctrl.text = _formatDisplay(widget.value);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  static String _formatDisplay(String iso) {
+    if (iso.isEmpty) return '';
+    if (iso.contains('-') && iso.length == 10) {
+      final p = iso.split('-');
+      return '${p[2]}/${p[1]}/${p[0]}';
+    }
+    return iso;
+  }
+
+  static String _parseInput(String input) {
+    if (input.isEmpty) return '';
+    final parts = input.split('/');
+    if (parts.length == 3 && parts[0].length == 2 && parts[1].length == 2 && parts[2].length == 4) {
+      try {
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        final year = int.parse(parts[2]);
+        if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
+          return '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+        }
+      } catch (e) {
+        // Invalid parse
+      }
+    }
+    return '';
+  }
+
+  Future<void> _pickDate() async {
+    final p = await showDatePicker(
+      context: context,
+      initialDate: DateTime.tryParse(widget.value) ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (p != null) {
+      final iso = p.toIso8601String().split('T').first;
+      widget.onChanged(iso);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: _kH,
+    child: TextField(
+      controller: _ctrl,
+      keyboardType: TextInputType.text,
+      inputFormatters: [
+        _DateInputFormatter(),
+      ],
+      style: AppTextStyles.input.copyWith(fontSize: 12),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'dd/mm/yyyy',
+        hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400, fontSize: 12),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppColors.slate900),
         ),
-      );
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+        ),
+        suffixIcon: IconButton(
+          splashRadius: 16,
+          onPressed: _pickDate,
+          icon: const Icon(Icons.calendar_today_outlined, size: 13, color: AppColors.slate500),
+          tooltip: 'Pick from calendar',
+        ),
+      ),
+      onChanged: (input) {
+        final iso = _parseInput(input);
+        if (iso.isNotEmpty) {
+          widget.onChanged(iso);
+        }
+      },
+    ),
+  );
+}
+
+// Custom formatter to enforce dd/mm/yyyy format
+class _DateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String text = newValue.text;
+
+    // Remove any characters that are not digits or slashes
+    text = text.replaceAll(RegExp(r'[^0-9/]'), '');
+
+    // If input is complete (dd/mm/yyyy = 10 chars), don't allow more input
+    if (oldValue.text.length == 10 && text.length > 10) {
+      return oldValue;
+    }
+
+    // Auto-format: insert slashes after dd and dd/mm
+    if (text.length >= 2 && !text.contains('/')) {
+      text = '${text.substring(0, 2)}/${text.substring(2)}';
+    } else if (text.length == 5 && text.split('/').length == 2) {
+      final parts = text.split('/');
+      if (parts[0].length == 2 && parts[1].length == 2) {
+        text = '${parts[0]}/${parts[1]}/';
+      }
+    }
+
+    // Validate structure: dd/mm/yyyy
+    final parts = text.split('/');
+    if (parts.length > 3) {
+      return oldValue; // Don't allow more than 3 parts
+    }
+
+    // Validate each part length
+    if (parts.isNotEmpty && parts[0].length > 2) {
+      parts[0] = parts[0].substring(0, 2);
+    }
+    if (parts.length > 1 && parts[1].length > 2) {
+      parts[1] = parts[1].substring(0, 2);
+    }
+    if (parts.length > 2 && parts[2].length > 4) {
+      parts[2] = parts[2].substring(0, 4);
+    }
+
+    text = parts.join('/');
+
+    // Update cursor position
+    int cursorPos = newValue.selection.baseOffset;
+    if (cursorPos > text.length) {
+      cursorPos = text.length;
+    }
+
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: cursorPos),
+    );
+  }
 }
 
 // ── Auto-filled Info ──────────────────────────────────────────────────────────
