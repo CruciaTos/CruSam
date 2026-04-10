@@ -4,34 +4,122 @@ import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
-class BankDisbursementPreview extends StatelessWidget {
-  static const double a4Width = 793.7;
-  static const double a4Height = 1122.5;
-  static const int _rowsPerPage = 30;
+// ── Column width configuration ─────────────────────────────────────────────────
+// Nine columns matching the bank disbursement table header order.
+// Default total ≈ 739 px, which fits inside A4 content width (~743 px at
+// default 20 px margins, minus 10 px for TableBorder.all vertical lines).
+class BankColWidths {
+  final double amount;
+  final double debitAc;
+  final double ifsc;
+  final double creditAc;
+  final double code;
+  final double beneficiary;
+  final double place;
+  final double bank;
+  final double debitName;
 
-  final VoucherModel voucher;
+  const BankColWidths({
+    this.amount      = 62,
+    this.debitAc     = 97,
+    this.ifsc        = 82,
+    this.creditAc    = 97,
+    this.code        = 38,
+    this.beneficiary = 112,
+    this.place       = 76,
+    this.bank        = 97,
+    this.debitName   = 78,
+  });
+
+  BankColWidths copyWith({
+    double? amount, double? debitAc, double? ifsc,  double? creditAc,
+    double? code,   double? beneficiary, double? place,
+    double? bank,   double? debitName,
+  }) => BankColWidths(
+    amount:      amount      ?? this.amount,
+    debitAc:     debitAc     ?? this.debitAc,
+    ifsc:        ifsc        ?? this.ifsc,
+    creditAc:    creditAc    ?? this.creditAc,
+    code:        code        ?? this.code,
+    beneficiary: beneficiary ?? this.beneficiary,
+    place:       place       ?? this.place,
+    bank:        bank        ?? this.bank,
+    debitName:   debitName   ?? this.debitName,
+  );
+
+  /// Ordered (label, width) pairs — consumed by the settings panel.
+  List<(String label, double width)> get entries => [
+    ('Amount',      amount),
+    ('Debit A/c',   debitAc),
+    ('IFSC',        ifsc),
+    ('Credit A/c',  creditAc),
+    ('Code',        code),
+    ('Beneficiary', beneficiary),
+    ('Place',       place),
+    ('Bank',        bank),
+    ('Debit Name',  debitName),
+  ];
+
+  /// Applies a new width by column index (0–8).
+  BankColWidths withIndex(int index, double value) => copyWith(
+    amount:      index == 0 ? value : null,
+    debitAc:     index == 1 ? value : null,
+    ifsc:        index == 2 ? value : null,
+    creditAc:    index == 3 ? value : null,
+    code:        index == 4 ? value : null,
+    beneficiary: index == 5 ? value : null,
+    place:       index == 6 ? value : null,
+    bank:        index == 7 ? value : null,
+    debitName:   index == 8 ? value : null,
+  );
+
+  double get totalWidth =>
+      amount + debitAc + ifsc + creditAc + code + beneficiary + place + bank + debitName;
+
+  /// Flutter [TableColumnWidth] map — plug directly into [Table.columnWidths].
+  Map<int, TableColumnWidth> get tableColumnWidths => {
+    0: FixedColumnWidth(amount),
+    1: FixedColumnWidth(debitAc),
+    2: FixedColumnWidth(ifsc),
+    3: FixedColumnWidth(creditAc),
+    4: FixedColumnWidth(code),
+    5: FixedColumnWidth(beneficiary),
+    6: FixedColumnWidth(place),
+    7: FixedColumnWidth(bank),
+    8: FixedColumnWidth(debitName),
+  };
+}
+
+// ── Preview widget ─────────────────────────────────────────────────────────────
+class BankDisbursementPreview extends StatelessWidget {
+  static const double a4Width    = 793.7;
+  static const double a4Height   = 1122.5;
+  static const int    _rowsPerPage = 30;
+
+  final VoucherModel       voucher;
   final CompanyConfigModel config;
-  final EdgeInsets margins;
+  final EdgeInsets         margins;
+  final BankColWidths      colWidths;
 
   const BankDisbursementPreview({
     super.key,
     required this.voucher,
     required this.config,
-    this.margins = const EdgeInsets.all(20),
+    this.margins   = const EdgeInsets.all(20),
+    this.colWidths = const BankColWidths(),
   });
 
   static List<Widget> buildPdfPages({
-    required VoucherModel voucher,
+    required VoucherModel       voucher,
     required CompanyConfigModel config,
-    EdgeInsets margins = const EdgeInsets.all(20),
+    EdgeInsets                  margins   = const EdgeInsets.all(20),
+    BankColWidths               colWidths = const BankColWidths(),
   }) {
-    final preview = BankDisbursementPreview(
-      voucher: voucher,
-      config: config,
-      margins: margins,
+    final preview    = BankDisbursementPreview(
+      voucher: voucher, config: config, margins: margins, colWidths: colWidths,
     );
     final sortedRows = _sorted(voucher.rows);
-    final rowPages = _chunkRows(sortedRows);
+    final rowPages   = _chunkRows(sortedRows);
 
     final idbiOther = sortedRows
         .where((r) => !r.ifscCode.startsWith('IDIB'))
@@ -43,12 +131,12 @@ class BankDisbursementPreview extends StatelessWidget {
     return List<Widget>.generate(
       rowPages.length,
       (i) => preview._buildPage(
-        width: a4Width,
-        height: a4Height,
-        rows: rowPages[i],
+        width:       a4Width,
+        height:      a4Height,
+        rows:        rowPages[i],
         showSummary: i == rowPages.length - 1,
-        idbiOther: idbiOther,
-        idbiIdbi: idbiIdbi,
+        idbiOther:   idbiOther,
+        idbiIdbi:    idbiIdbi,
       ),
     );
   }
@@ -56,45 +144,36 @@ class BankDisbursementPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pages = buildPdfPages(
-      voucher: voucher,
-      config: config,
-      margins: margins,
+      voucher: voucher, config: config, margins: margins, colWidths: colWidths,
     );
-
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < pages.length; i++) ...[
-          Align(
-            alignment: Alignment.topCenter,
-            child: pages[i],
-          ),
+          Align(alignment: Alignment.topCenter, child: pages[i]),
           if (i != pages.length - 1) const SizedBox(height: 32),
         ],
       ],
     );
   }
 
+  // ── Single A4 page ─────────────────────────────────────────────────────────
   Widget _buildPage({
     required double width,
     required double height,
     required List<VoucherRowModel> rows,
-    required bool showSummary,
+    required bool   showSummary,
     required double idbiOther,
     required double idbiIdbi,
   }) {
     return Container(
-      width: width,
+      width:  width,
       height: height,
       clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
+        boxShadow: [
+          BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
       child: Padding(
@@ -108,9 +187,10 @@ class BankDisbursementPreview extends StatelessWidget {
                 child: Text(
                   'AARTI ENTERPRISES : TRAVEL EXPENSES',
                   style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      decoration: TextDecoration.underline),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -126,32 +206,32 @@ class BankDisbursementPreview extends StatelessWidget {
     );
   }
 
+  // ── Table ──────────────────────────────────────────────────────────────────
   Widget _buildTable(List<VoucherRowModel> rows, {required bool showTotal}) {
     const headers = [
-      'Amount',
-      'Debit A/c',
-      'IFSC',
-      'Credit A/c',
-      'Code',
-      'Beneficiary',
-      'Place',
-      'Bank',
-      'Debit Name'
+      'Amount', 'Debit A/c', 'IFSC', 'Credit A/c',
+      'Code', 'Beneficiary', 'Place', 'Bank', 'Debit Name',
     ];
+
     return Table(
-      border: TableBorder.all(color: Colors.black),
+      border:       TableBorder.all(color: Colors.black),
+      columnWidths: colWidths.tableColumnWidths,
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
+        // Header
         TableRow(
           decoration: const BoxDecoration(color: Color(0xFFF1F5F9)),
           children: headers
               .map((h) => Padding(
                     padding: const EdgeInsets.all(4),
                     child: Text(h,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 9)),
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 9),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1),
                   ))
               .toList(),
         ),
+        // Data rows
         ...rows.map((r) => TableRow(children: [
               _c(r.amount.toStringAsFixed(2), bold: true),
               _c(config.accountNo, mono: true),
@@ -163,6 +243,7 @@ class BankDisbursementPreview extends StatelessWidget {
               _c(r.bankDetails),
               _c(config.companyName),
             ])),
+        // Totals row
         if (showTotal)
           TableRow(
             decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
@@ -170,10 +251,11 @@ class BankDisbursementPreview extends StatelessWidget {
               _c(voucher.baseTotal.toStringAsFixed(2), bold: true),
               Padding(
                 padding: const EdgeInsets.all(4),
-                child: TableCell(
-                  child: Text(numberToWords(voucher.baseTotal),
-                      style: const TextStyle(
-                          fontStyle: FontStyle.italic, fontSize: 9)),
+                child: Text(
+                  numberToWords(voucher.baseTotal),
+                  style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 9),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
                 ),
               ),
               ...List.generate(7, (_) => _c('')),
@@ -183,6 +265,27 @@ class BankDisbursementPreview extends StatelessWidget {
     );
   }
 
+  // ── Summary block ──────────────────────────────────────────────────────────
+  Widget _buildSummary(double idbiOther, double idbiIdbi) => Container(
+        width: 280,
+        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
+        child: Column(children: [
+          _summaryRow('1', 'From IDBI to Other Bank', idbiOther.toStringAsFixed(2)),
+          _summaryRow('2', 'From IDBI to IDBI Bank',  idbiIdbi.toStringAsFixed(2)),
+          Container(
+            color: const Color(0xFFF1F5F9),
+            padding: const EdgeInsets.all(6),
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              const Text('Total',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9)),
+              Text(voucher.baseTotal.toStringAsFixed(2),
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 9)),
+            ]),
+          ),
+        ]),
+      );
+
+  // ── Cell helpers ───────────────────────────────────────────────────────────
   static Widget _c(String t, {bool mono = false, bool bold = false}) => Padding(
         padding: const EdgeInsets.all(3),
         child: Text(
@@ -192,30 +295,9 @@ class BankDisbursementPreview extends StatelessWidget {
             fontFamily: mono ? 'monospace' : null,
             fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
           ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
-      );
-
-  Widget _buildSummary(double idbiOther, double idbiIdbi) => Container(
-        width: 280,
-        decoration: BoxDecoration(border: Border.all(color: Colors.black)),
-        child: Column(children: [
-          _summaryRow('1', 'From IDBI to Other Bank', idbiOther.toStringAsFixed(2)),
-          _summaryRow('2', 'From IDBI to IDBI Bank', idbiIdbi.toStringAsFixed(2)),
-          Container(
-            color: const Color(0xFFF1F5F9),
-            padding: const EdgeInsets.all(6),
-            child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Total',
-                      style:
-                          TextStyle(fontWeight: FontWeight.w700, fontSize: 9)),
-                  Text(voucher.baseTotal.toStringAsFixed(2),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 9)),
-                ]),
-          ),
-        ]),
       );
 
   static Widget _summaryRow(String n, String label, String value) => Container(
@@ -231,6 +313,7 @@ class BankDisbursementPreview extends StatelessWidget {
         ]),
       );
 
+  // ── Helpers ────────────────────────────────────────────────────────────────
   static List<VoucherRowModel> _sorted(List<VoucherRowModel> rows) {
     final copy = [...rows];
     copy.sort((a, b) {
@@ -244,10 +327,9 @@ class BankDisbursementPreview extends StatelessWidget {
 
   static List<List<VoucherRowModel>> _chunkRows(List<VoucherRowModel> rows) {
     if (rows.isEmpty) return const [[]];
-
     final chunks = <List<VoucherRowModel>>[];
     for (var i = 0; i < rows.length; i += _rowsPerPage) {
-      final end = i + _rowsPerPage > rows.length ? rows.length : i + _rowsPerPage;
+      final end = (i + _rowsPerPage).clamp(0, rows.length);
       chunks.add(rows.sublist(i, end));
     }
     return chunks;

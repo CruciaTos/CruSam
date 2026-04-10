@@ -13,15 +13,17 @@ import 'tax_invoice_preview.dart';
 import 'voucher_pdf_preview.dart';
 import 'bank_disbursement_preview.dart';
 
-enum PreviewType { invoice, bank }
+export 'voucher_pdf_preview.dart'     show VoucherColWidths;
+export 'bank_disbursement_preview.dart' show BankColWidths;
 
-// Which preview the margin panel is currently targeting
+enum PreviewType   { invoice, bank }
 enum _MarginTarget { taxInvoice, voucherPdf }
+enum _ActivePanel  { none, margins, columns }
 
 class InvoicePreviewDialog extends StatefulWidget {
-  final VoucherNotifier notifier;
+  final VoucherNotifier    notifier;
   final CompanyConfigModel config;
-  final PreviewType type;
+  final PreviewType        type;
 
   const InvoicePreviewDialog({
     super.key,
@@ -40,7 +42,8 @@ class InvoicePreviewDialog extends StatefulWidget {
         context: context,
         barrierColor: Colors.black54,
         builder: (_) => InvoicePreviewDialog(
-            notifier: notifier, config: config, type: type),
+          notifier: notifier, config: config, type: type,
+        ),
       );
 
   @override
@@ -49,10 +52,17 @@ class InvoicePreviewDialog extends StatefulWidget {
 
 class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   bool _exporting = false;
-  final MarginSettingsNotifier _marginNotifier1 = MarginSettingsNotifier(); // TaxInvoice
-  final MarginSettingsNotifier _marginNotifier2 = MarginSettingsNotifier(); // VoucherPdf
-  bool _showMarginPanel = false;
+
+  // Margin notifiers
+  final MarginSettingsNotifier _marginNotifier1 = MarginSettingsNotifier();
+  final MarginSettingsNotifier _marginNotifier2 = MarginSettingsNotifier();
   _MarginTarget _marginTarget = _MarginTarget.taxInvoice;
+
+  // Column widths — one for each preview type
+  VoucherColWidths _voucherColWidths = const VoucherColWidths();
+  BankColWidths    _bankColWidths    = const BankColWidths();
+
+  _ActivePanel _activePanel = _ActivePanel.none;
 
   @override
   void initState() {
@@ -71,6 +81,10 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   MarginSettingsNotifier get _activeMarginNotifier =>
       _marginTarget == _MarginTarget.taxInvoice ? _marginNotifier1 : _marginNotifier2;
 
+  void _togglePanel(_ActivePanel panel) =>
+      setState(() => _activePanel = _activePanel == panel ? _ActivePanel.none : panel);
+
+  // ── Exports ────────────────────────────────────────────────────────────────
   Future<void> _exportExcel() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -78,29 +92,59 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
       final voucher = widget.notifier.enriched;
       final path = widget.type == PreviewType.invoice
           ? await ExcelExportService.exportTaxInvoice(voucher, widget.config)
-          : await ExcelExportService.exportBankDisbursement(
-              voucher, widget.config);
-
+          : await ExcelExportService.exportBankDisbursement(voucher, widget.config);
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(path)],
-        subject: widget.type == PreviewType.invoice
-            ? 'Tax Invoice'
-            : 'Bank Disbursement',
+        subject: widget.type == PreviewType.invoice ? 'Tax Invoice' : 'Bank Disbursement',
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Export failed: $e'),
-          backgroundColor: Colors.red.shade700,
-        ),
+        SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
   }
 
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final voucher = widget.notifier.enriched;
+      if (widget.type == PreviewType.invoice) {
+        await PdfExportService.exportInvoiceBundle(
+          context: context,
+          voucher: voucher,
+          config: widget.config,
+          taxInvoiceMargins: _marginsFrom(_marginNotifier1),
+          voucherMargins:    _marginsFrom(_marginNotifier2),
+        );
+      } else {
+        await PdfExportService.exportBankDisbursement(
+          context: context,
+          voucher: voucher,
+          config: widget.config,
+          margins: _marginsFrom(_marginNotifier1),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('PDF export failed: $e'),
+            backgroundColor: Colors.red.shade700),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  static EdgeInsets _marginsFrom(MarginSettingsNotifier n) => EdgeInsets.fromLTRB(
+        n.settings.left, n.settings.top, n.settings.right, n.settings.bottom,
+      );
+
+  // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: widget.notifier,
@@ -112,100 +156,63 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
               width: double.infinity,
               child: Column(
                 children: [
-                  // ── Header bar ──────────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg,
-                      vertical: AppSpacing.md,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: AppColors.slate50,
-                      border: Border(
-                          bottom: BorderSide(color: AppColors.slate200)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            widget.type == PreviewType.invoice
-                                ? 'Tax Invoice & Voucher Preview'
-                                : 'Bank Disbursement Sheet',
-                            style: AppTextStyles.h4,
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            _showMarginPanel
-                                ? Icons.margin
-                                : Icons.format_indent_increase,
-                            size: 18,
-                            color: _showMarginPanel
-                                ? AppColors.indigo600
-                                : AppColors.slate500,
-                          ),
-                          tooltip: 'Adjust Margins',
-                          onPressed: () =>
-                              setState(() => _showMarginPanel = !_showMarginPanel),
-                        ),
-                        const SizedBox(width: 8),
-                        _exporting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : OutlinedButton.icon(
-                                onPressed: _exportPdf,
-                                icon: const Icon(Icons.picture_as_pdf_outlined,
-                                    size: 16),
-                                label: const Text('Save PDF'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red.shade700,
-                                  side: BorderSide(color: Colors.red.shade400),
-                                ),
-                              ),
-                        const SizedBox(width: 8),
-                        _exporting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : OutlinedButton.icon(
-                                onPressed: _exportExcel,
-                                icon: const Icon(Icons.table_chart_outlined,
-                                    size: 16),
-                                label: const Text('Export Excel'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.green.shade700,
-                                  side: BorderSide(color: Colors.green.shade400),
-                                ),
-                              ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                          label: const Text('Close'),
-                        ),
-                      ],
-                    ),
+                  // ── Header ─────────────────────────────────────────────
+                  _HeaderBar(
+                    type:           widget.type,
+                    exporting:      _exporting,
+                    activePanel:    _activePanel,
+                    onToggleMargins: () => _togglePanel(_ActivePanel.margins),
+                    onToggleColumns: () => _togglePanel(_ActivePanel.columns),
+                    onExportPdf:    _exportPdf,
+                    onExportExcel:  _exportExcel,
+                    onClose: () => Navigator.pop(context),
                   ),
-                  // ── Preview content ─────────────────────────────────────
+
+                  // ── Body ───────────────────────────────────────────────
                   Expanded(
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_showMarginPanel)
+                        // Margin panel
+                        if (_activePanel == _ActivePanel.margins)
                           ListenableBuilder(
                             listenable: _activeMarginNotifier,
                             builder: (_, __) => _MarginPanel(
                               notifier: _activeMarginNotifier,
-                              // Only show target selector for invoice type (has 2 pages)
-                              showTargetSelector: widget.type == PreviewType.invoice,
+                              showTargetSelector:
+                                  widget.type == PreviewType.invoice,
                               target: _marginTarget,
                               onTargetChanged: (t) =>
                                   setState(() => _marginTarget = t),
                             ),
                           ),
+
+                        // Column width panel — generic, fed different data
+                        // depending on which preview type is active.
+                        if (_activePanel == _ActivePanel.columns)
+                          widget.type == PreviewType.invoice
+                              ? _ColWidthPanel(
+                                  entries: _voucherColWidths.entries,
+                                  totalWidth: _voucherColWidths.totalWidth,
+                                  onChanged: (i, v) => setState(
+                                      () => _voucherColWidths =
+                                          _voucherColWidths.withIndex(i, v)),
+                                  onReset: () => setState(
+                                      () => _voucherColWidths =
+                                          const VoucherColWidths()),
+                                )
+                              : _ColWidthPanel(
+                                  entries: _bankColWidths.entries,
+                                  totalWidth: _bankColWidths.totalWidth,
+                                  onChanged: (i, v) => setState(
+                                      () => _bankColWidths =
+                                          _bankColWidths.withIndex(i, v)),
+                                  onReset: () => setState(
+                                      () => _bankColWidths =
+                                          const BankColWidths()),
+                                ),
+
+                        // Preview area
                         Expanded(
                           child: ListenableBuilder(
                             listenable: Listenable.merge(
@@ -220,35 +227,22 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                       ? Column(children: [
                                           TaxInvoicePreview(
                                             voucher: voucher,
-                                            config: widget.config,
-                                            margins: EdgeInsets.fromLTRB(
-                                              _marginNotifier1.settings.left,
-                                              _marginNotifier1.settings.top,
-                                              _marginNotifier1.settings.right,
-                                              _marginNotifier1.settings.bottom,
-                                            ),
+                                            config:  widget.config,
+                                            margins: _marginsFrom(_marginNotifier1),
                                           ),
                                           const SizedBox(height: 32),
                                           VoucherPdfPreview(
-                                            voucher: voucher,
-                                            config: widget.config,
-                                            margins: EdgeInsets.fromLTRB(
-                                              _marginNotifier2.settings.left,
-                                              _marginNotifier2.settings.top,
-                                              _marginNotifier2.settings.right,
-                                              _marginNotifier2.settings.bottom,
-                                            ),
+                                            voucher:   voucher,
+                                            config:    widget.config,
+                                            colWidths: _voucherColWidths,
+                                            margins:   _marginsFrom(_marginNotifier2),
                                           ),
                                         ])
                                       : BankDisbursementPreview(
-                                          voucher: voucher,
-                                          config: widget.config,
-                                          margins: EdgeInsets.fromLTRB(
-                                            _marginNotifier1.settings.left,
-                                            _marginNotifier1.settings.top,
-                                            _marginNotifier1.settings.right,
-                                            _marginNotifier1.settings.bottom,
-                                          ),
+                                          voucher:   voucher,
+                                          config:    widget.config,
+                                          colWidths: _bankColWidths,
+                                          margins:   _marginsFrom(_marginNotifier1),
                                         ),
                                 ),
                               ),
@@ -264,63 +258,292 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
           );
         },
       );
-
-  Future<void> _exportPdf() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final voucher = widget.notifier.enriched;
-
-      if (widget.type == PreviewType.invoice) {
-        await PdfExportService.exportInvoiceBundle(
-          context: context,
-          voucher: voucher,
-          config: widget.config,
-          taxInvoiceMargins: EdgeInsets.fromLTRB(
-            _marginNotifier1.settings.left,
-            _marginNotifier1.settings.top,
-            _marginNotifier1.settings.right,
-            _marginNotifier1.settings.bottom,
-          ),
-          voucherMargins: EdgeInsets.fromLTRB(
-            _marginNotifier2.settings.left,
-            _marginNotifier2.settings.top,
-            _marginNotifier2.settings.right,
-            _marginNotifier2.settings.bottom,
-          ),
-        );
-      } else {
-        await PdfExportService.exportBankDisbursement(
-          context: context,
-          voucher: voucher,
-          config: widget.config,
-          margins: EdgeInsets.fromLTRB(
-            _marginNotifier1.settings.left,
-            _marginNotifier1.settings.top,
-            _marginNotifier1.settings.right,
-            _marginNotifier1.settings.bottom,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('PDF export failed: $e'),
-            backgroundColor: Colors.red.shade700),
-      );
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
 }
 
-// ── Margin Panel ──────────────────────────────────────────────────────────────
+// ── Header bar ─────────────────────────────────────────────────────────────────
+class _HeaderBar extends StatelessWidget {
+  final PreviewType  type;
+  final bool         exporting;
+  final _ActivePanel activePanel;
+  final VoidCallback onToggleMargins;
+  final VoidCallback onToggleColumns;
+  final VoidCallback onExportPdf;
+  final VoidCallback onExportExcel;
+  final VoidCallback onClose;
 
+  const _HeaderBar({
+    required this.type,
+    required this.exporting,
+    required this.activePanel,
+    required this.onToggleMargins,
+    required this.onToggleColumns,
+    required this.onExportPdf,
+    required this.onExportExcel,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+        decoration: const BoxDecoration(
+          color: AppColors.slate50,
+          border: Border(bottom: BorderSide(color: AppColors.slate200)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                type == PreviewType.invoice
+                    ? 'Tax Invoice & Voucher Preview'
+                    : 'Bank Disbursement Sheet',
+                style: AppTextStyles.h4,
+              ),
+            ),
+
+            // Adjust margins
+            _PanelToggleButton(
+              icon:    Icons.format_indent_increase,
+              tooltip: 'Adjust Margins',
+              active:  activePanel == _ActivePanel.margins,
+              onTap:   onToggleMargins,
+            ),
+
+            const SizedBox(width: 4),
+
+            // Column widths — shown for both preview types
+            _PanelToggleButton(
+              icon:    Icons.view_column_outlined,
+              tooltip: 'Column Widths',
+              active:  activePanel == _ActivePanel.columns,
+              onTap:   onToggleColumns,
+            ),
+
+            const SizedBox(width: 8),
+
+            if (exporting)
+              const SizedBox(
+                  width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+            else ...[
+              OutlinedButton.icon(
+                onPressed: onExportPdf,
+                icon:  const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                label: const Text('Save PDF'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade700,
+                  side: BorderSide(color: Colors.red.shade400),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: onExportExcel,
+                icon:  const Icon(Icons.table_chart_outlined, size: 16),
+                label: const Text('Export Excel'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.green.shade700,
+                  side: BorderSide(color: Colors.green.shade400),
+                ),
+              ),
+            ],
+
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: onClose,
+              icon:  const Icon(Icons.close, size: 16),
+              label: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+}
+
+class _PanelToggleButton extends StatelessWidget {
+  final IconData    icon;
+  final String      tooltip;
+  final bool        active;
+  final VoidCallback onTap;
+
+  const _PanelToggleButton({
+    required this.icon,
+    required this.tooltip,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        icon: Icon(icon, size: 18,
+            color: active ? AppColors.indigo600 : AppColors.slate500),
+        tooltip: tooltip,
+        onPressed: onTap,
+        style: active
+            ? IconButton.styleFrom(
+                backgroundColor: AppColors.indigo50,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(AppSpacing.radius)),
+              )
+            : null,
+      );
+}
+
+// ── Generic column-width panel ─────────────────────────────────────────────────
+// Decoupled from any specific widths class. The parent passes:
+//   • entries    — ordered (label, currentWidth) list
+//   • totalWidth — sum of all current widths (for the indicator line)
+//   • onChanged  — called with (columnIndex, newValue) on every keystroke
+//   • onReset    — resets to defaults (parent rebuilds with const defaults)
+class _ColWidthPanel extends StatefulWidget {
+  final List<(String, double)>          entries;
+  final double                          totalWidth;
+  final void Function(int, double)      onChanged;
+  final VoidCallback                    onReset;
+
+  const _ColWidthPanel({
+    required this.entries,
+    required this.totalWidth,
+    required this.onChanged,
+    required this.onReset,
+  });
+
+  @override
+  State<_ColWidthPanel> createState() => _ColWidthPanelState();
+}
+
+class _ColWidthPanelState extends State<_ColWidthPanel> {
+  late List<TextEditingController> _ctrls;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrls = _buildCtrls(widget.entries);
+  }
+
+  List<TextEditingController> _buildCtrls(List<(String, double)> entries) =>
+      entries.map((e) => TextEditingController(text: e.$2.toStringAsFixed(0))).toList();
+
+  @override
+  void didUpdateWidget(covariant _ColWidthPanel old) {
+    super.didUpdateWidget(old);
+    // When entries count changes (switching invoice ↔ bank), rebuild controllers.
+    if (old.entries.length != widget.entries.length) {
+      for (final c in _ctrls) c.dispose();
+      _ctrls = _buildCtrls(widget.entries);
+      return;
+    }
+    // Sync values if a reset happened externally (text unchanged by user).
+    for (var i = 0; i < widget.entries.length; i++) {
+      final newText = widget.entries[i].$2.toStringAsFixed(0);
+      if (_ctrls[i].text != newText) _ctrls[i].text = newText;
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls) c.dispose();
+    super.dispose();
+  }
+
+  void _onReset() {
+    widget.onReset();
+    // Controllers are synced in didUpdateWidget after the parent rebuilds.
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 168,
+        decoration: const BoxDecoration(
+          border: Border(right: BorderSide(color: AppColors.slate200)),
+          color: AppColors.slate50,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Panel header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: const BoxDecoration(
+                  border:
+                      Border(bottom: BorderSide(color: AppColors.slate200))),
+              child: Row(children: [
+                Expanded(
+                    child: Text('Column Widths', style: AppTextStyles.label)),
+                Tooltip(
+                  message: 'Reset to defaults',
+                  child: InkWell(
+                    onTap: _onReset,
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Icon(Icons.restart_alt,
+                        size: 15, color: AppColors.slate400),
+                  ),
+                ),
+              ]),
+            ),
+
+            // Total width indicator
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Text(
+                'Total: ${widget.totalWidth.toStringAsFixed(0)} px',
+                style: AppTextStyles.small.copyWith(
+                  color: AppColors.slate500,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+
+            // One row per column
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                itemCount: widget.entries.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (_, i) {
+                  final label = widget.entries[i].$1;
+                  return Row(children: [
+                    SizedBox(
+                      width: 68,
+                      child: Text(label,
+                          style: AppTextStyles.small,
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: TextField(
+                          controller: _ctrls[i],
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                          style: AppTextStyles.input,
+                          textAlign: TextAlign.right,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            suffixText: 'px',
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
+                          ),
+                          onChanged: (v) {
+                            final val = double.tryParse(v);
+                            if (val != null && val >= 10)
+                              widget.onChanged(i, val);
+                          },
+                        ),
+                      ),
+                    ),
+                  ]);
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+}
+
+// ── Margin panel ───────────────────────────────────────────────────────────────
 class _MarginPanel extends StatefulWidget {
-  final MarginSettingsNotifier notifier;
-  final bool showTargetSelector;
-  final _MarginTarget target;
+  final MarginSettingsNotifier       notifier;
+  final bool                         showTargetSelector;
+  final _MarginTarget                target;
   final void Function(_MarginTarget) onTargetChanged;
 
   const _MarginPanel({
@@ -344,40 +567,32 @@ class _MarginPanelState extends State<_MarginPanel> {
   }
 
   Map<String, TextEditingController> _buildCtrls(MarginSettings s) => {
-        'top': TextEditingController(text: s.top.toStringAsFixed(1)),
+        'top':    TextEditingController(text: s.top.toStringAsFixed(1)),
         'bottom': TextEditingController(text: s.bottom.toStringAsFixed(1)),
-        'left': TextEditingController(text: s.left.toStringAsFixed(1)),
-        'right': TextEditingController(text: s.right.toStringAsFixed(1)),
+        'left':   TextEditingController(text: s.left.toStringAsFixed(1)),
+        'right':  TextEditingController(text: s.right.toStringAsFixed(1)),
       };
 
-  void _disposeCtrls() {
-    for (final c in _ctrls.values) c.dispose();
-  }
+  void _disposeCtrls() { for (final c in _ctrls.values) c.dispose(); }
 
-  // When target switches, rebuild controllers from the new notifier's settings
   @override
-  void didUpdateWidget(covariant _MarginPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.notifier != widget.notifier) {
+  void didUpdateWidget(covariant _MarginPanel old) {
+    super.didUpdateWidget(old);
+    if (old.notifier != widget.notifier) {
       _disposeCtrls();
       _ctrls = _buildCtrls(widget.notifier.settings);
     }
   }
 
   @override
-  void dispose() {
-    _disposeCtrls();
-    super.dispose();
-  }
+  void dispose() { _disposeCtrls(); super.dispose(); }
 
-  void _apply() {
-    widget.notifier.update(MarginSettings(
-      top: double.tryParse(_ctrls['top']!.text) ?? 24,
-      bottom: double.tryParse(_ctrls['bottom']!.text) ?? 24,
-      left: double.tryParse(_ctrls['left']!.text) ?? 24,
-      right: double.tryParse(_ctrls['right']!.text) ?? 24,
-    ));
-  }
+  void _apply() => widget.notifier.update(MarginSettings(
+        top:    double.tryParse(_ctrls['top']!.text)    ?? 24,
+        bottom: double.tryParse(_ctrls['bottom']!.text) ?? 24,
+        left:   double.tryParse(_ctrls['left']!.text)   ?? 24,
+        right:  double.tryParse(_ctrls['right']!.text)  ?? 24,
+      ));
 
   @override
   Widget build(BuildContext context) => Container(
@@ -392,23 +607,18 @@ class _MarginPanelState extends State<_MarginPanel> {
           children: [
             Text('Margins (px)', style: AppTextStyles.label),
             const SizedBox(height: 12),
-
-            // ── Target selector (only shown for invoice type) ─────────
             if (widget.showTargetSelector) ...[
               _TargetSelector(
-                current: widget.target,
+                current:   widget.target,
                 onChanged: widget.onTargetChanged,
               ),
               const SizedBox(height: 12),
             ],
-
             _MarginDiagram(notifier: widget.notifier),
             const SizedBox(height: 16),
             for (final side in ['top', 'bottom', 'left', 'right']) ...[
-              Text(
-                side[0].toUpperCase() + side.substring(1),
-                style: AppTextStyles.small,
-              ),
+              Text(side[0].toUpperCase() + side.substring(1),
+                  style: AppTextStyles.small),
               const SizedBox(height: 4),
               SizedBox(
                 height: 34,
@@ -417,25 +627,21 @@ class _MarginPanelState extends State<_MarginPanel> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   style: AppTextStyles.input,
-                  decoration:
-                      const InputDecoration(isDense: true, suffixText: 'px'),
+                  decoration: const InputDecoration(
+                      isDense: true, suffixText: 'px'),
                   onChanged: (_) => _apply(),
                 ),
               ),
               const SizedBox(height: 8),
             ],
-            const SizedBox(height: 4),
           ],
         ),
       );
 }
 
-// ── Target Selector widget ────────────────────────────────────────────────────
-
 class _TargetSelector extends StatelessWidget {
-  final _MarginTarget current;
+  final _MarginTarget                current;
   final void Function(_MarginTarget) onChanged;
-
   const _TargetSelector({required this.current, required this.onChanged});
 
   @override
@@ -444,28 +650,14 @@ class _TargetSelector extends StatelessWidget {
           border: Border.all(color: AppColors.slate200),
           borderRadius: BorderRadius.circular(AppSpacing.radius),
         ),
-        child: Column(
-          children: [
-            _tile(
-              label: 'Tax Invoice',
-              sub: 'Bill',
-              target: _MarginTarget.taxInvoice,
-            ),
-            const Divider(height: 1, thickness: 1, color: AppColors.slate200),
-            _tile(
-              label: 'Voucher',
-              sub: 'Expenses Statement',
-              target: _MarginTarget.voucherPdf,
-            ),
-          ],
-        ),
+        child: Column(children: [
+          _tile('Tax Invoice', 'Bill',               _MarginTarget.taxInvoice),
+          const Divider(height: 1, thickness: 1, color: AppColors.slate200),
+          _tile('Voucher',     'Expenses Statement', _MarginTarget.voucherPdf),
+        ]),
       );
 
-  Widget _tile({
-    required String label,
-    required String sub,
-    required _MarginTarget target,
-  }) {
+  Widget _tile(String label, String sub, _MarginTarget target) {
     final selected = current == target;
     return InkWell(
       onTap: () => onChanged(target),
@@ -477,47 +669,36 @@ class _TargetSelector extends StatelessWidget {
           color: selected ? AppColors.indigo50 : Colors.transparent,
           borderRadius: BorderRadius.circular(AppSpacing.radius),
         ),
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
-              size: 14,
-              color: selected ? AppColors.indigo600 : AppColors.slate400,
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
+        child: Row(children: [
+          Icon(
+            selected
+                ? Icons.radio_button_checked
+                : Icons.radio_button_unchecked,
+            size: 14,
+            color: selected ? AppColors.indigo600 : AppColors.slate400,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: AppTextStyles.small.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: selected
-                          ? AppColors.indigo600
-                          : AppColors.slate700,
-                    ),
-                  ),
-                  Text(
-                    sub,
-                    style: AppTextStyles.small.copyWith(
-                      fontSize: 10,
-                      color: AppColors.slate400,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+                  Text(label,
+                      style: AppTextStyles.small.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: selected
+                            ? AppColors.indigo600
+                            : AppColors.slate700,
+                      )),
+                  Text(sub,
+                      style: AppTextStyles.small.copyWith(
+                          fontSize: 10, color: AppColors.slate400)),
+                ]),
+          ),
+        ]),
       ),
     );
   }
 }
-
-// ── Margin Diagram ────────────────────────────────────────────────────────────
 
 class _MarginDiagram extends StatelessWidget {
   final MarginSettingsNotifier notifier;
@@ -528,14 +709,10 @@ class _MarginDiagram extends StatelessWidget {
         listenable: notifier,
         builder: (_, __) {
           final s = notifier.settings;
-          const maxM = 80.0;
-          const boxW = 80.0;
-          const boxH = 100.0;
-
+          const maxM = 80.0, boxW = 80.0, boxH = 100.0;
           return Center(
             child: SizedBox(
-              width: boxW,
-              height: boxH,
+              width: boxW, height: boxH,
               child: Stack(children: [
                 Container(
                   decoration: BoxDecoration(
@@ -544,10 +721,10 @@ class _MarginDiagram extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  top: (s.top / maxM * 20).clamp(2, 30),
+                  top:    (s.top    / maxM * 20).clamp(2, 30),
                   bottom: (s.bottom / maxM * 20).clamp(2, 30),
-                  left: (s.left / maxM * 20).clamp(2, 30),
-                  right: (s.right / maxM * 20).clamp(2, 30),
+                  left:   (s.left   / maxM * 20).clamp(2, 30),
+                  right:  (s.right  / maxM * 20).clamp(2, 30),
                   child: Container(
                     color: AppColors.slate100,
                     child: Column(
@@ -557,7 +734,8 @@ class _MarginDiagram extends StatelessWidget {
                         (_) => Padding(
                           padding: const EdgeInsets.symmetric(
                               vertical: 2, horizontal: 3),
-                          child: Container(height: 3, color: AppColors.slate300),
+                          child: Container(
+                              height: 3, color: AppColors.slate300),
                         ),
                       ),
                     ),
