@@ -51,7 +51,6 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   bool _exporting = false;
   final MarginSettingsNotifier _marginNotifier1 = MarginSettingsNotifier(); // TaxInvoice
   final MarginSettingsNotifier _marginNotifier2 = MarginSettingsNotifier(); // VoucherPdf
-  final GlobalKey _previewKey = GlobalKey();
   bool _showMarginPanel = false;
   _MarginTarget _marginTarget = _MarginTarget.taxInvoice;
 
@@ -149,23 +148,22 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                               setState(() => _showMarginPanel = !_showMarginPanel),
                         ),
                         const SizedBox(width: 8),
-                        if (widget.type == PreviewType.invoice)
-                          _exporting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : OutlinedButton.icon(
-                                  onPressed: _exportPdf,
-                                  icon: const Icon(Icons.picture_as_pdf_outlined,
-                                      size: 16),
-                                  label: const Text('Save PDF'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: Colors.red.shade700,
-                                    side: BorderSide(color: Colors.red.shade400),
-                                  ),
+                        _exporting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : OutlinedButton.icon(
+                                onPressed: _exportPdf,
+                                icon: const Icon(Icons.picture_as_pdf_outlined,
+                                    size: 16),
+                                label: const Text('Save PDF'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red.shade700,
+                                  side: BorderSide(color: Colors.red.shade400),
                                 ),
+                              ),
                         const SizedBox(width: 8),
                         _exporting
                             ? const SizedBox(
@@ -220,17 +218,14 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                       const BoxConstraints(maxWidth: 800),
                                   child: widget.type == PreviewType.invoice
                                       ? Column(children: [
-                                          RepaintBoundary(
-                                            key: _previewKey,
-                                            child: TaxInvoicePreview(
-                                              voucher: voucher,
-                                              config: widget.config,
-                                              margins: EdgeInsets.fromLTRB(
-                                                _marginNotifier1.settings.left,
-                                                _marginNotifier1.settings.top,
-                                                _marginNotifier1.settings.right,
-                                                _marginNotifier1.settings.bottom,
-                                              ),
+                                          TaxInvoicePreview(
+                                            voucher: voucher,
+                                            config: widget.config,
+                                            margins: EdgeInsets.fromLTRB(
+                                              _marginNotifier1.settings.left,
+                                              _marginNotifier1.settings.top,
+                                              _marginNotifier1.settings.right,
+                                              _marginNotifier1.settings.bottom,
                                             ),
                                           ),
                                           const SizedBox(height: 32),
@@ -245,17 +240,14 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                             ),
                                           ),
                                         ])
-                                      : RepaintBoundary(
-                                          key: _previewKey,
-                                          child: BankDisbursementPreview(
-                                            voucher: voucher,
-                                            config: widget.config,
-                                            margins: EdgeInsets.fromLTRB(
-                                              _marginNotifier1.settings.left,
-                                              _marginNotifier1.settings.top,
-                                              _marginNotifier1.settings.right,
-                                              _marginNotifier1.settings.bottom,
-                                            ),
+                                      : BankDisbursementPreview(
+                                          voucher: voucher,
+                                          config: widget.config,
+                                          margins: EdgeInsets.fromLTRB(
+                                            _marginNotifier1.settings.left,
+                                            _marginNotifier1.settings.top,
+                                            _marginNotifier1.settings.right,
+                                            _marginNotifier1.settings.bottom,
                                           ),
                                         ),
                                 ),
@@ -277,13 +269,39 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      await PdfExportService.exportAndShare(
-        previewKey: _previewKey,
-        billNo: widget.notifier.enriched.billNo,
-        subject: widget.type == PreviewType.invoice
-            ? 'Tax Invoice'
-            : 'Bank Disbursement',
-      );
+      final voucher = widget.notifier.enriched;
+
+      if (widget.type == PreviewType.invoice) {
+        await PdfExportService.exportInvoiceBundle(
+          context: context,
+          voucher: voucher,
+          config: widget.config,
+          taxInvoiceMargins: EdgeInsets.fromLTRB(
+            _marginNotifier1.settings.left,
+            _marginNotifier1.settings.top,
+            _marginNotifier1.settings.right,
+            _marginNotifier1.settings.bottom,
+          ),
+          voucherMargins: EdgeInsets.fromLTRB(
+            _marginNotifier2.settings.left,
+            _marginNotifier2.settings.top,
+            _marginNotifier2.settings.right,
+            _marginNotifier2.settings.bottom,
+          ),
+        );
+      } else {
+        await PdfExportService.exportBankDisbursement(
+          context: context,
+          voucher: voucher,
+          config: widget.config,
+          margins: EdgeInsets.fromLTRB(
+            _marginNotifier1.settings.left,
+            _marginNotifier1.settings.top,
+            _marginNotifier1.settings.right,
+            _marginNotifier1.settings.bottom,
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -429,14 +447,14 @@ class _TargetSelector extends StatelessWidget {
         child: Column(
           children: [
             _tile(
-              label: 'Page 1',
-              sub: 'Tax Invoice',
+              label: 'Tax Invoice',
+              sub: 'Bill',
               target: _MarginTarget.taxInvoice,
             ),
             const Divider(height: 1, thickness: 1, color: AppColors.slate200),
             _tile(
-              label: 'Page 2',
-              sub: 'Voucher PDF',
+              label: 'Voucher',
+              sub: 'Expenses Statement',
               target: _MarginTarget.voucherPdf,
             ),
           ],

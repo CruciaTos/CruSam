@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
-import '../../../core/theme/app_spacing.dart';
 
 /// Excel-style Tax Invoice Preview – A4 print ready.
 class TaxInvoicePreview extends StatelessWidget {
+  static const double a4Width = 793.7;
+  static const double a4Height = 1122.5;
+
   final VoucherModel voucher;
   final CompanyConfigModel config;
   final EdgeInsets margins;
@@ -37,15 +39,29 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _wRate = 50.0;
   static const _wAmt = 90.0;
 
-  @override
-  Widget build(BuildContext context) {
-    const double a4Width = 793.7;
-    const double a4Height = 1122.5; // 297mm at 96 PPI
+  static List<Widget> buildPdfPages({
+    required VoucherModel voucher,
+    required CompanyConfigModel config,
+    EdgeInsets margins = const EdgeInsets.all(24),
+  }) {
+    final preview = TaxInvoicePreview(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+    );
 
-    return Center(
-      child: Container(
-        width: a4Width,
-        height: a4Height,
+    return [
+      preview._buildPage(width: a4Width, height: a4Height),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: _buildPage(width: a4Width, height: a4Height));
+
+  Widget _buildPage({required double width, required double height}) => Container(
+        width: width,
+        height: height,
         clipBehavior:
             Clip.hardEdge, // hard clip — nothing bleeds outside the page
         decoration: BoxDecoration(
@@ -80,9 +96,7 @@ class TaxInvoicePreview extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 
   // ── HEADER ─────────────────────────────────────────────────────────────────
   Widget _header() => Row(

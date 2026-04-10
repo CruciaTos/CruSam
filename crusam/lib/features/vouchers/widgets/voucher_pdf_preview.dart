@@ -5,6 +5,10 @@ import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
 class VoucherPdfPreview extends StatelessWidget {
+  static const double a4Width = 793.7;
+  static const double a4Height = 1122.5;
+  static const int _rowsPerPage = 30;
+
   final VoucherModel voucher;
   final CompanyConfigModel config;
   final EdgeInsets margins;
@@ -21,78 +25,109 @@ class VoucherPdfPreview extends StatelessWidget {
   static const _hdrBg = Color(0xFFE3E8F4);
   static const _body = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
-  @override
-  Widget build(BuildContext context) {
-    const double a4Width = 793.7;
-    const double a4Height = 1122.5;
+  static List<Widget> buildPdfPages({
+    required VoucherModel voucher,
+    required CompanyConfigModel config,
+    EdgeInsets margins = const EdgeInsets.all(24),
+  }) {
+    final preview = VoucherPdfPreview(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+    );
+    final sortedRows = _sorted(voucher.rows);
+    final rowPages = _chunkRows(sortedRows);
 
-    return Center(
-      child: Container(
+    return List<Widget>.generate(
+      rowPages.length,
+      (i) => preview._buildPage(
         width: a4Width,
         height: a4Height,
-        clipBehavior: Clip.hardEdge,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: margins,
-          child: DefaultTextStyle(
-            style: _body,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'AARTI ENTERPRISES : ${voucher.title.isEmpty ? "Expenses Statement" : voucher.title}',
-                      style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
-                    ),
-                    Text(
-                      voucher.deptCode,
-                      style: _body.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-                const Divider(color: _black),
-                const SizedBox(height: 8),
-                _buildTable(),
+        rows: rowPages[i],
+        startIndex: i * _rowsPerPage,
+        showTotal: i == rowPages.length - 1,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = buildPdfPages(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < pages.length; i++) ...[
+          Align(
+            alignment: Alignment.topCenter,
+            child: pages[i],
+          ),
+          if (i != pages.length - 1) const SizedBox(height: 32),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildPage({
+    required double width,
+    required double height,
+    required List<VoucherRowModel> rows,
+    required int startIndex,
+    required bool showTotal,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: margins,
+        child: DefaultTextStyle(
+          style: _body,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'AARTI ENTERPRISES : ${voucher.title.isEmpty ? "Expenses Statement" : voucher.title}',
+                    style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
+                  ),
+                  Text(
+                    voucher.deptCode,
+                    style: _body.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+              const Divider(color: _black),
+              const SizedBox(height: 8),
+              _buildTable(rows, startIndex),
+              if (showTotal) ...[
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          formatCurrency(voucher.baseTotal),
-                          style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 11),
-                        ),
-                        Text(
-                          numberToWords(voucher.baseTotal),
-                          style: _body.copyWith(fontStyle: FontStyle.italic),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                _buildTotalSection(),
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTable() {
-    final sorted = _sorted(voucher.rows);
+  Widget _buildTable(List<VoucherRowModel> rows, int startIndex) {
     const headers = ['Sr.', 'Debit A/c', 'IFSC', 'Credit A/c', 'Code', 'Name', 'Place', 'Bank', 'Fr.', 'To', 'Amount'];
     return Table(
       border: TableBorder.all(color: _black),
@@ -113,11 +148,11 @@ class VoucherPdfPreview extends StatelessWidget {
                   ))
               .toList(),
         ),
-        ...sorted.asMap().entries.map((e) {
+        ...rows.asMap().entries.map((e) {
           final i = e.key;
           final r = e.value;
           return TableRow(children: [
-            _c('${i + 1}'),
+            _c('${startIndex + i + 1}'),
             _c(config.accountNo, mono: true),
             _c(r.ifscCode, mono: true),
             _c(r.accountNumber, mono: true),
@@ -133,6 +168,25 @@ class VoucherPdfPreview extends StatelessWidget {
       ],
     );
   }
+
+  Widget _buildTotalSection() => Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                formatCurrency(voucher.baseTotal),
+                style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 11),
+              ),
+              Text(
+                numberToWords(voucher.baseTotal),
+                style: _body.copyWith(fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ],
+      );
 
   static Widget _c(String t, {bool mono = false, bool right = false}) => Padding(
         padding: const EdgeInsets.all(2),
@@ -161,5 +215,16 @@ class VoucherPdfPreview extends StatelessWidget {
       return a.fromDate.compareTo(b.fromDate);
     });
     return copy;
+  }
+
+  static List<List<VoucherRowModel>> _chunkRows(List<VoucherRowModel> rows) {
+    if (rows.isEmpty) return const [[]];
+
+    final chunks = <List<VoucherRowModel>>[];
+    for (var i = 0; i < rows.length; i += _rowsPerPage) {
+      final end = i + _rowsPerPage > rows.length ? rows.length : i + _rowsPerPage;
+      chunks.add(rows.sublist(i, end));
+    }
+    return chunks;
   }
 }

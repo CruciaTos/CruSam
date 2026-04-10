@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element_parameter
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:particles_network/particles_network.dart';

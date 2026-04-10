@@ -3,9 +3,12 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
-import '../../../core/theme/app_spacing.dart';
 
 class BankDisbursementPreview extends StatelessWidget {
+  static const double a4Width = 793.7;
+  static const double a4Height = 1122.5;
+  static const int _rowsPerPage = 30;
+
   final VoucherModel voucher;
   final CompanyConfigModel config;
   final EdgeInsets margins;
@@ -17,67 +20,113 @@ class BankDisbursementPreview extends StatelessWidget {
     this.margins = const EdgeInsets.all(20),
   });
 
-  @override
-  Widget build(BuildContext context) {
-    const double a4Width = 793.7;
-    const double a4Height = 1122.5; // 297mm at 96 PPI
+  static List<Widget> buildPdfPages({
+    required VoucherModel voucher,
+    required CompanyConfigModel config,
+    EdgeInsets margins = const EdgeInsets.all(20),
+  }) {
+    final preview = BankDisbursementPreview(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+    );
+    final sortedRows = _sorted(voucher.rows);
+    final rowPages = _chunkRows(sortedRows);
 
-    final idbiOther = voucher.rows
+    final idbiOther = sortedRows
         .where((r) => !r.ifscCode.startsWith('IDIB'))
         .fold(0.0, (a, r) => a + r.amount);
-    final idbiIdbi = voucher.rows
+    final idbiIdbi = sortedRows
         .where((r) => r.ifscCode.startsWith('IDIB'))
         .fold(0.0, (a, r) => a + r.amount);
 
-    return Center(
-      child: Container(
+    return List<Widget>.generate(
+      rowPages.length,
+      (i) => preview._buildPage(
         width: a4Width,
         height: a4Height,
-        clipBehavior: Clip.hardEdge,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
+        rows: rowPages[i],
+        showSummary: i == rowPages.length - 1,
+        idbiOther: idbiOther,
+        idbiIdbi: idbiIdbi,
+      ),
+    );
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final pages = buildPdfPages(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+    );
 
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < pages.length; i++) ...[
+          Align(
+            alignment: Alignment.topCenter,
+            child: pages[i],
+          ),
+          if (i != pages.length - 1) const SizedBox(height: 32),
+        ],
+      ],
+    );
+  }
 
-        
-        child: Padding(
-          padding: margins,
-          child: DefaultTextStyle(
-            style: const TextStyle(fontSize: 10, color: Colors.black),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Center(
-                  child: Text(
-                    'AARTI ENTERPRISES : TRAVEL EXPENSES',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        decoration: TextDecoration.underline),
-                  ),
+  Widget _buildPage({
+    required double width,
+    required double height,
+    required List<VoucherRowModel> rows,
+    required bool showSummary,
+    required double idbiOther,
+    required double idbiIdbi,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: margins,
+        child: DefaultTextStyle(
+          style: const TextStyle(fontSize: 10, color: Colors.black),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Center(
+                child: Text(
+                  'AARTI ENTERPRISES : TRAVEL EXPENSES',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      decoration: TextDecoration.underline),
                 ),
-                const SizedBox(height: 16),
-                _buildTable(),
+              ),
+              const SizedBox(height: 16),
+              _buildTable(rows, showTotal: showSummary),
+              if (showSummary) ...[
                 const SizedBox(height: 16),
                 _buildSummary(idbiOther, idbiIdbi),
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTable() {
-    final sorted = _sorted(voucher.rows);
+  Widget _buildTable(List<VoucherRowModel> rows, {required bool showTotal}) {
     const headers = [
       'Amount',
       'Debit A/c',
@@ -103,7 +152,7 @@ class BankDisbursementPreview extends StatelessWidget {
                   ))
               .toList(),
         ),
-        ...sorted.map((r) => TableRow(children: [
+        ...rows.map((r) => TableRow(children: [
               _c(r.amount.toStringAsFixed(2), bold: true),
               _c(config.accountNo, mono: true),
               _c(r.ifscCode, mono: true),
@@ -114,21 +163,22 @@ class BankDisbursementPreview extends StatelessWidget {
               _c(r.bankDetails),
               _c(config.companyName),
             ])),
-        TableRow(
-          decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
-          children: [
-            _c(voucher.baseTotal.toStringAsFixed(2), bold: true),
-            Padding(
-              padding: const EdgeInsets.all(4),
-              child: TableCell(
-                child: Text(numberToWords(voucher.baseTotal),
-                    style:
-                        const TextStyle(fontStyle: FontStyle.italic, fontSize: 9)),
+        if (showTotal)
+          TableRow(
+            decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
+            children: [
+              _c(voucher.baseTotal.toStringAsFixed(2), bold: true),
+              Padding(
+                padding: const EdgeInsets.all(4),
+                child: TableCell(
+                  child: Text(numberToWords(voucher.baseTotal),
+                      style: const TextStyle(
+                          fontStyle: FontStyle.italic, fontSize: 9)),
+                ),
               ),
-            ),
-            ...List.generate(7, (_) => _c('')),
-          ],
-        ),
+              ...List.generate(7, (_) => _c('')),
+            ],
+          ),
       ],
     );
   }
@@ -190,5 +240,16 @@ class BankDisbursementPreview extends StatelessWidget {
       return a.fromDate.compareTo(b.fromDate);
     });
     return copy;
+  }
+
+  static List<List<VoucherRowModel>> _chunkRows(List<VoucherRowModel> rows) {
+    if (rows.isEmpty) return const [[]];
+
+    final chunks = <List<VoucherRowModel>>[];
+    for (var i = 0; i < rows.length; i += _rowsPerPage) {
+      final end = i + _rowsPerPage > rows.length ? rows.length : i + _rowsPerPage;
+      chunks.add(rows.sublist(i, end));
+    }
+    return chunks;
   }
 }
