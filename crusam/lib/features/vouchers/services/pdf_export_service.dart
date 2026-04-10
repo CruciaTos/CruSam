@@ -92,7 +92,7 @@ class PdfExportService {
           pageFormat: PdfPageFormat.a4,
           margin: pw.EdgeInsets.zero,
           build: (_) => pw.SizedBox.expand(
-            child: pw.Image(pdfImage, fit: pw.BoxFit.fill),
+            child: pw.Image(pdfImage, fit: pw.BoxFit.contain),
           ),
         ),
       );

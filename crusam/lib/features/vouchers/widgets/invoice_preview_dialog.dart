@@ -8,10 +8,14 @@ import '../../../data/models/company_config_model.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
 import '../notifiers/margin_settings_notifier.dart';
+import '../notifiers/voucher_column_widths_notifier.dart';
+import '../notifiers/bank_column_widths_notifier.dart';
 import '../services/pdf_export_service.dart';
 import 'tax_invoice_preview.dart';
 import 'voucher_pdf_preview.dart';
 import 'bank_disbursement_preview.dart';
+import 'package:crusam/data/models/bank_column_widths_model.dart'; 
+import 'package:crusam/data/models/voucher_column_widths_model.dart';
 
 export 'voucher_pdf_preview.dart'     show VoucherColWidths;
 export 'bank_disbursement_preview.dart' show BankColWidths;
@@ -58,9 +62,9 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   final MarginSettingsNotifier _marginNotifier2 = MarginSettingsNotifier();
   _MarginTarget _marginTarget = _MarginTarget.taxInvoice;
 
-  // Column widths — one for each preview type
-  VoucherColWidths _voucherColWidths = const VoucherColWidths();
-  BankColWidths    _bankColWidths    = const BankColWidths();
+  // Column width notifiers — load from database
+  late final VoucherColumnWidthsNotifier _voucherColWidthsNotifier;
+  late final BankColumnWidthsNotifier _bankColWidthsNotifier;
 
   _ActivePanel _activePanel = _ActivePanel.none;
 
@@ -69,12 +73,21 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     super.initState();
     _marginNotifier1.load();
     _marginNotifier2.load();
+    
+    // Initialize column width notifiers
+    _voucherColWidthsNotifier = VoucherColumnWidthsNotifier();
+    _bankColWidthsNotifier = BankColumnWidthsNotifier();
+    
+    _voucherColWidthsNotifier.load();
+    _bankColWidthsNotifier.load();
   }
 
   @override
   void dispose() {
     _marginNotifier1.dispose();
     _marginNotifier2.dispose();
+    _voucherColWidthsNotifier.dispose();
+    _bankColWidthsNotifier.dispose();
     super.dispose();
   }
 
@@ -191,32 +204,38 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                         // depending on which preview type is active.
                         if (_activePanel == _ActivePanel.columns)
                           widget.type == PreviewType.invoice
-                              ? _ColWidthPanel(
-                                  entries: _voucherColWidths.entries,
-                                  totalWidth: _voucherColWidths.totalWidth,
-                                  onChanged: (i, v) => setState(
-                                      () => _voucherColWidths =
-                                          _voucherColWidths.withIndex(i, v)),
-                                  onReset: () => setState(
-                                      () => _voucherColWidths =
-                                          const VoucherColWidths()),
+                              ? ListenableBuilder(
+                                  listenable: _voucherColWidthsNotifier,
+                                  builder: (_, __) => _ColWidthPanel(
+                                    entries: _voucherColWidthsNotifier.settings.entries,
+                                    totalWidth: _voucherColWidthsNotifier.settings.totalWidth,
+                                    onChanged: (i, v) => _updateVoucherColumnWidth(i, v),
+                                    onReset: () => _voucherColWidthsNotifier.update(
+                                      const VoucherColumnWidthsSettings(),
+                                    ),
+                                  ),
                                 )
-                              : _ColWidthPanel(
-                                  entries: _bankColWidths.entries,
-                                  totalWidth: _bankColWidths.totalWidth,
-                                  onChanged: (i, v) => setState(
-                                      () => _bankColWidths =
-                                          _bankColWidths.withIndex(i, v)),
-                                  onReset: () => setState(
-                                      () => _bankColWidths =
-                                          const BankColWidths()),
+                              : ListenableBuilder(
+                                  listenable: _bankColWidthsNotifier,
+                                  builder: (_, __) => _ColWidthPanel(
+                                    entries: _bankColWidthsNotifier.settings.entries,
+                                    totalWidth: _bankColWidthsNotifier.settings.totalWidth,
+                                    onChanged: (i, v) => _updateBankColumnWidth(i, v),
+                                    onReset: () => _bankColWidthsNotifier.update(
+                                      const BankColumnWidthsSettings(),
+                                    ),
+                                  ),
                                 ),
 
                         // Preview area
                         Expanded(
                           child: ListenableBuilder(
-                            listenable: Listenable.merge(
-                                [_marginNotifier1, _marginNotifier2]),
+                            listenable: Listenable.merge([
+                              _marginNotifier1,
+                              _marginNotifier2,
+                              _voucherColWidthsNotifier,
+                              _bankColWidthsNotifier,
+                            ]),
                             builder: (_, __) => SingleChildScrollView(
                               padding: const EdgeInsets.all(AppSpacing.xxl),
                               child: Center(
@@ -234,14 +253,18 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                           VoucherPdfPreview(
                                             voucher:   voucher,
                                             config:    widget.config,
-                                            colWidths: _voucherColWidths,
+                                            colWidths: _voucherColumnWidthsToVoucherColWidths(
+                                              _voucherColWidthsNotifier.settings,
+                                            ),
                                             margins:   _marginsFrom(_marginNotifier2),
                                           ),
                                         ])
                                       : BankDisbursementPreview(
                                           voucher:   voucher,
                                           config:    widget.config,
-                                          colWidths: _bankColWidths,
+                                          colWidths: _bankColumnWidthsToBankColWidths(
+                                            _bankColWidthsNotifier.settings,
+                                          ),
                                           margins:   _marginsFrom(_marginNotifier1),
                                         ),
                                 ),
@@ -258,6 +281,74 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
           );
         },
       );
+
+  // Convert settings models to preview widget models
+  VoucherColWidths _voucherColumnWidthsToVoucherColWidths(
+    VoucherColumnWidthsSettings settings,
+  ) =>
+      VoucherColWidths(
+        sr: settings.sr,
+        debitAc: settings.debitAc,
+        ifsc: settings.ifsc,
+        creditAc: settings.creditAc,
+        code: settings.code,
+        name: settings.name,
+        place: settings.place,
+        bank: settings.bank,
+        from: settings.from,
+        to: settings.to,
+        amount: settings.amount,
+      );
+
+  BankColWidths _bankColumnWidthsToBankColWidths(
+    BankColumnWidthsSettings settings,
+  ) =>
+      BankColWidths(
+        amount: settings.amount,
+        debitAc: settings.debitAc,
+        ifsc: settings.ifsc,
+        creditAc: settings.creditAc,
+        code: settings.code,
+        beneficiary: settings.beneficiary,
+        place: settings.place,
+        bank: settings.bank,
+        debitName: settings.debitName,
+      );
+
+  // Update methods that save to database
+  void _updateVoucherColumnWidth(int index, double value) {
+    final current = _voucherColWidthsNotifier.settings;
+    final updated = current.copyWith(
+      sr: index == 0 ? value : current.sr,
+      debitAc: index == 1 ? value : current.debitAc,
+      ifsc: index == 2 ? value : current.ifsc,
+      creditAc: index == 3 ? value : current.creditAc,
+      code: index == 4 ? value : current.code,
+      name: index == 5 ? value : current.name,
+      place: index == 6 ? value : current.place,
+      bank: index == 7 ? value : current.bank,
+      from: index == 8 ? value : current.from,
+      to: index == 9 ? value : current.to,
+      amount: index == 10 ? value : current.amount,
+    );
+    _voucherColWidthsNotifier.update(updated);
+  }
+
+  void _updateBankColumnWidth(int index, double value) {
+    final current = _bankColWidthsNotifier.settings;
+    final updated = current.copyWith(
+      amount: index == 0 ? value : current.amount,
+      debitAc: index == 1 ? value : current.debitAc,
+      ifsc: index == 2 ? value : current.ifsc,
+      creditAc: index == 3 ? value : current.creditAc,
+      code: index == 4 ? value : current.code,
+      beneficiary: index == 5 ? value : current.beneficiary,
+      place: index == 6 ? value : current.place,
+      bank: index == 7 ? value : current.bank,
+      debitName: index == 8 ? value : current.debitName,
+    );
+    _bankColWidthsNotifier.update(updated);
+  }
 }
 
 // ── Header bar ─────────────────────────────────────────────────────────────────

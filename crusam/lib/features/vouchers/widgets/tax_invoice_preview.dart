@@ -82,15 +82,15 @@ class TaxInvoicePreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),   // reduced from 4
                 _divider(0.8),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),   // reduced from 10
                 _taxInvoiceLabel(),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),   // reduced from 8
                 _billToSection(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),  // reduced from 12
                 _itemTable(),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),  // reduced from 16
                 _belowTableSection(),
               ],
             ),
@@ -110,7 +110,7 @@ class TaxInvoicePreview extends StatelessWidget {
 
   Widget _logo() => SizedBox(
     width: 110,
-    height: 90,
+    height: 75,   // reduced from 90
     child: Image.asset(
       'assets/images/aarti_logo.png',
       fit: BoxFit.contain,
@@ -146,7 +146,7 @@ class TaxInvoicePreview extends StatelessWidget {
     ],
   );
 
-  Widget _divider(double t) => Divider(color: _black, thickness: t, height: 6);
+  Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);   // reduced from 6
 
   Widget _taxInvoiceLabel() => Center(
     child: Text(
@@ -167,7 +167,7 @@ class TaxInvoicePreview extends StatelessWidget {
   // ══════════════════════════════════════════════════════════════════════════
   Widget _billToSection() => Container(
     decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -299,12 +299,12 @@ class TaxInvoicePreview extends StatelessWidget {
             Container(
               width: descW,
               decoration: const BoxDecoration(border: Border(right: _bSide)),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),   // reduced from 12
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(voucher.itemDescription, style: _body),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 6),   // reduced from 12
                   const Text(
                     '( Vouchers attached with this original bill )',
                     style: TextStyle(
@@ -355,7 +355,7 @@ class TaxInvoicePreview extends StatelessWidget {
           Container(
             width: bankInfoW,
             decoration: const BoxDecoration(border: Border(right: _bSide)),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -428,23 +428,23 @@ class TaxInvoicePreview extends StatelessWidget {
 
   /// Single label:value row inside bank info left block.
   Widget _bankLine(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 2),
+    padding: const EdgeInsets.only(bottom: 1),   // reduced from 2
     child: Row(
       children: [
         SizedBox(
-          width: 90, // increased from 72 to accommodate larger font
+          width: 90,
           child: Text(
             label,
             style: _body.copyWith(
               fontWeight: FontWeight.w600,
-              fontSize: 12, // larger size for label
+              fontSize: 12,
             ),
           ),
         ),
         Flexible(
           child: Text(
             ':  $value',
-            style: _body.copyWith(fontSize: 12), // larger size for value
+            style: _body.copyWith(fontSize: 12),
           ),
         ),
       ],
@@ -464,7 +464,7 @@ class TaxInvoicePreview extends StatelessWidget {
         Container(
           width: labelW,
           decoration: const BoxDecoration(border: Border(right: _bSide)),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),   // reduced from 4
           child: Text(
             label,
             textAlign: TextAlign.right,
@@ -476,7 +476,7 @@ class TaxInvoicePreview extends StatelessWidget {
         SizedBox(
           width: _wAmt,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),   // reduced from 4
             child: Text(
               value,
               textAlign: TextAlign.right,
@@ -501,7 +501,7 @@ class TaxInvoicePreview extends StatelessWidget {
         Container(
           width: labelW,
           decoration: const BoxDecoration(border: Border(right: _bSide)),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),   // reduced from 6
           child: Text(
             label,
             textAlign: TextAlign.right,
@@ -511,7 +511,7 @@ class TaxInvoicePreview extends StatelessWidget {
         SizedBox(
           width: _wAmt,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
             child: Text(
               value,
               textAlign: TextAlign.right,
@@ -527,7 +527,7 @@ class TaxInvoicePreview extends StatelessWidget {
   Widget _declarationRow() => Container(
     decoration: const BoxDecoration(border: Border(top: _bSide)),
     width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),   // reduced from 5
     child: Text(
       config.declarationText,
       style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 8.5),
@@ -610,7 +610,7 @@ class TaxInvoicePreview extends StatelessWidget {
           const SizedBox(height: 4),
           SizedBox(
             width: 200,
-            height: 130,
+            height: 90,   // reduced from 130
             child: Image.asset(
               'assets/images/aarti_signature.png',
               fit: BoxFit.contain,
@@ -651,7 +651,7 @@ class _FallbackLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: 110,
-    height: 90,
+    height: 75,   // reduced from 90 to match _logo
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(52),
       border: Border.all(color: const Color(0xFF1A237E), width: 3),

@@ -1,6 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import '../models/employee_model.dart';
 import '../models/margin_settings_model.dart';
+import '../models/voucher_column_widths_model.dart';
+import '../models/bank_column_widths_model.dart';
 import '../seeds/employee_seed_data.dart';
 
 class DatabaseHelper {
@@ -44,6 +46,8 @@ class DatabaseHelper {
     await _ensureColumn(db, 'employees', 'basic_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'gross_salary', 'REAL DEFAULT 0');
+    await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
+    await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
   }
 
   Future<void> _ensureColumn(
@@ -121,7 +125,9 @@ class DatabaseHelper {
       margin_top REAL DEFAULT 24,
       margin_bottom REAL DEFAULT 24,
       margin_left REAL DEFAULT 24,
-      margin_right REAL DEFAULT 24
+      margin_right REAL DEFAULT 24,
+      voucher_col_widths TEXT,
+      bank_col_widths TEXT
     )''');
 
     await db.execute('''CREATE TABLE IF NOT EXISTS users(
@@ -352,6 +358,48 @@ class DatabaseHelper {
     await db.insert('pdf_settings', {
       'id': 1,
       ...s.toMap(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // --- Voucher Column Widths ---
+  Future<VoucherColumnWidthsSettings> getVoucherColumnWidths() async {
+    final rows = await (await database).query(
+      'pdf_settings',
+      where: 'id=1',
+      limit: 1,
+    );
+    if (rows.isEmpty) return const VoucherColumnWidthsSettings();
+    final json = rows.first['voucher_col_widths'] as String?;
+    if (json == null || json.isEmpty) return const VoucherColumnWidthsSettings();
+    return VoucherColumnWidthsSettings.fromJson(json);
+  }
+
+  Future<void> saveVoucherColumnWidths(VoucherColumnWidthsSettings s) async {
+    final db = await database;
+    await db.insert('pdf_settings', {
+      'id': 1,
+      'voucher_col_widths': s.toJson(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // --- Bank Column Widths ---
+  Future<BankColumnWidthsSettings> getBankColumnWidths() async {
+    final rows = await (await database).query(
+      'pdf_settings',
+      where: 'id=1',
+      limit: 1,
+    );
+    if (rows.isEmpty) return const BankColumnWidthsSettings();
+    final json = rows.first['bank_col_widths'] as String?;
+    if (json == null || json.isEmpty) return const BankColumnWidthsSettings();
+    return BankColumnWidthsSettings.fromJson(json);
+  }
+
+  Future<void> saveBankColumnWidths(BankColumnWidthsSettings s) async {
+    final db = await database;
+    await db.insert('pdf_settings', {
+      'id': 1,
+      'bank_col_widths': s.toJson(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
