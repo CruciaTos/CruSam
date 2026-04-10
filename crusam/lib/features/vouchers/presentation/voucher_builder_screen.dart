@@ -367,6 +367,7 @@ class _MetadataCardState extends State<_MetadataCard> {
   late final TextEditingController _clientCtrl  = TextEditingController();
   late final TextEditingController _gstnCtrl    = TextEditingController();
   late final TextEditingController _addressCtrl = TextEditingController();
+  late final TextEditingController _poCtrl      = TextEditingController();
   late final ItemDescriptionNotifier _descNotifier = ItemDescriptionNotifier();
 
   @override
@@ -393,6 +394,7 @@ class _MetadataCardState extends State<_MetadataCard> {
     if (_clientCtrl.text  != c.clientName)    _clientCtrl.text  = c.clientName;
     if (_gstnCtrl.text    != c.clientGstin)   _gstnCtrl.text    = c.clientGstin;
     if (_addressCtrl.text != c.clientAddress) _addressCtrl.text = c.clientAddress;
+    if (_poCtrl.text      != c.poNo)          _poCtrl.text      = c.poNo;
   }
 
   void _onVoucherChanged() {
@@ -401,6 +403,7 @@ class _MetadataCardState extends State<_MetadataCard> {
         _dateCtrl.text    != c.date         ||
         _clientCtrl.text  != c.clientName   ||
         _gstnCtrl.text    != c.clientGstin  ||
+        _poCtrl.text      != c.poNo         ||
         _addressCtrl.text != c.clientAddress) {
       _syncFromNotifier(c);
     }
@@ -413,6 +416,7 @@ class _MetadataCardState extends State<_MetadataCard> {
     _dateCtrl.dispose();
     _clientCtrl.dispose();
     _gstnCtrl.dispose();
+    _poCtrl.dispose();
     _addressCtrl.dispose();
     _descNotifier.dispose();
     super.dispose();
@@ -498,34 +502,46 @@ class _MetadataCardState extends State<_MetadataCard> {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                    flex: 3,
-                    child: _lf(
-                      'Client Name',
-                      TextField(
-                        controller: _clientCtrl,
-                        onChanged: (v) => widget.notifier
-                            .update((c) => c.copyWith(clientName: v)),
-                        style: AppTextStyles.input,
-                      ),
-                    )),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                    flex: 2,
-                    child: _lf(
-                      'Client GSTIN',
-                      TextField(
-                        controller: _gstnCtrl,
-                        onChanged: (v) => widget.notifier
-                            .update((c) => c.copyWith(clientGstin: v)),
-                        style: AppTextStyles.input,
-                      ),
-                    )),
-              ],
-            ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                        flex: 3,
+                        child: _lf(
+                          'Client Name',
+                          TextField(
+                            controller: _clientCtrl,
+                            onChanged: (v) => widget.notifier
+                                .update((c) => c.copyWith(clientName: v)),
+                            style: AppTextStyles.input,
+                          ),
+                        )),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                        flex: 2,
+                        child: _lf(
+                          'Client GSTIN',
+                          TextField(
+                            controller: _gstnCtrl,
+                            onChanged: (v) => widget.notifier
+                                .update((c) => c.copyWith(clientGstin: v)),
+                            style: AppTextStyles.input,
+                          ),
+                        )),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                        flex: 2,
+                        child: _lf(
+                          'PO No.',
+                          TextField(
+                            controller: _poCtrl,
+                            onChanged: (v) => widget.notifier
+                                .update((c) => c.copyWith(poNo: v)),
+                            style: AppTextStyles.input,
+                          ),
+                        )),
+                  ],
+                ),
             const SizedBox(height: AppSpacing.md),
             _lf(
               'Client Address',

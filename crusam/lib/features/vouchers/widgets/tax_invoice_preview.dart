@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
+import '../../../core/theme/app_spacing.dart';
 
 /// Excel-style Tax Invoice Preview – A4 print ready.
 class TaxInvoicePreview extends StatelessWidget {
@@ -47,9 +48,9 @@ class TaxInvoicePreview extends StatelessWidget {
         height: a4Height,
         clipBehavior:
             Clip.hardEdge, // hard clip — nothing bleeds outside the page
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: Color(0x33000000),
               blurRadius: 12,

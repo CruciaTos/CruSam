@@ -34,6 +34,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     'branch':        TextEditingController(),
     'zone':          TextEditingController(),
     'dateOfJoining': TextEditingController(),
+    'basicCharges':  TextEditingController(),
+    'otherCharges':  TextEditingController(),
   };
 
   @override
@@ -55,6 +57,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       _ctrl['branch']!.text        = m.branch;
       _ctrl['zone']!.text          = m.zone;
       _ctrl['dateOfJoining']!.text = m.dateOfJoining;
+      _ctrl['basicCharges']!.text = m.basicCharges == 0 ? '' : m.basicCharges.toStringAsFixed(2);
+      _ctrl['otherCharges']!.text = m.otherCharges == 0 ? '' : m.otherCharges.toStringAsFixed(2);
     }
   }
 
@@ -97,6 +101,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         branch:        _ctrl['branch']!.text.trim(),
         zone:          _ctrl['zone']!.text.trim(),
         dateOfJoining: _ctrl['dateOfJoining']!.text.trim(),
+        basicCharges:  double.tryParse(_ctrl['basicCharges']!.text.trim()) ?? 0,
+        otherCharges:  double.tryParse(_ctrl['otherCharges']!.text.trim()) ?? 0,
       );
       if (widget.employee?['id'] != null) {
         await DatabaseHelper.instance.updateEmployee(widget.employee!['id'] as int, emp.toMap());
@@ -236,6 +242,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                       _field('branch', 'Branch', cap: TextCapitalization.words),
                       _field('zone', 'Zone', cap: TextCapitalization.words),
                       _field('dateOfJoining', 'Date of Joining', readOnly: true, onTap: _pickDate),
+                      Row(children: [
+                        Expanded(child: _field('basicCharges', 'Basic Charges', type: TextInputType.numberWithOptions(decimal: true))),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(child: _field('otherCharges', 'Other Charges', type: TextInputType.numberWithOptions(decimal: true))),
+                      ]),
                       const SizedBox(height: AppSpacing.md),
                       if (widget.employee == null)
                         SizedBox(

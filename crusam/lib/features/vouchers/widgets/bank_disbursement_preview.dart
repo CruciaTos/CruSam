@@ -3,6 +3,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
+import '../../../core/theme/app_spacing.dart';
 
 class BankDisbursementPreview extends StatelessWidget {
   final VoucherModel voucher;
@@ -33,9 +34,9 @@ class BankDisbursementPreview extends StatelessWidget {
         width: a4Width,
         height: a4Height,
         clipBehavior: Clip.hardEdge,
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: Colors.white,
-          boxShadow: [
+          boxShadow: const [
             BoxShadow(
               color: Color(0x33000000),
               blurRadius: 12,

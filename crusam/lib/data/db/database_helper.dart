@@ -41,6 +41,9 @@ class DatabaseHelper {
     await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
     await _ensureColumn(db, 'voucher_rows', 'employee_id', 'TEXT');
+    await _ensureColumn(db, 'employees', 'basic_charges', 'REAL DEFAULT 0');
+    await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
+    await _ensureColumn(db, 'employees', 'gross_salary', 'REAL DEFAULT 0');
   }
 
   Future<void> _ensureColumn(
@@ -62,6 +65,9 @@ class DatabaseHelper {
       sr_no INTEGER, name TEXT, pf_no TEXT, uan_no TEXT, code TEXT,
       ifsc_code TEXT, account_number TEXT, aarti_ac_no TEXT, sb_code TEXT,
       bank_details TEXT, branch TEXT, zone TEXT, date_of_joining TEXT,
+      basic_charges REAL DEFAULT 0,
+      other_charges REAL DEFAULT 0,
+      gross_salary REAL DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''');
 

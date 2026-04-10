@@ -13,6 +13,10 @@ class EmployeeModel {
   final String branch;
   final String zone;
   final String dateOfJoining;
+  final double basicCharges;
+  final double otherCharges;
+
+  double get grossSalary => basicCharges + otherCharges;
 
   const EmployeeModel({
     this.id,
@@ -29,6 +33,8 @@ class EmployeeModel {
     this.branch = '',
     this.zone = '',
     this.dateOfJoining = '',
+    this.basicCharges = 0,
+    this.otherCharges = 0,
   });
 
   factory EmployeeModel.fromMap(Map<String, dynamic> m) => EmployeeModel(
@@ -46,6 +52,8 @@ class EmployeeModel {
     branch:        (m['branch']         as String?) ?? '',
     zone:          (m['zone']           as String?) ?? '',
     dateOfJoining: (m['date_of_joining']as String?) ?? '',
+    basicCharges:  (m['basic_charges']  as num?)?.toDouble() ?? 0,
+    otherCharges:  (m['other_charges']  as num?)?.toDouble() ?? 0,
   );
 
   Map<String, dynamic> toMap() => {
@@ -63,12 +71,16 @@ class EmployeeModel {
     'branch':         branch,
     'zone':           zone,
     'date_of_joining':dateOfJoining,
+    'basic_charges':  basicCharges,
+    'other_charges':  otherCharges,
+    'gross_salary':   grossSalary,
   };
 
   EmployeeModel copyWith({
     int? id, int? srNo, String? name, String? pfNo, String? uanNo,
     String? code, String? ifscCode, String? accountNumber, String? aartiAcNo,
-    String? sbCode, String? bankDetails, String? branch, String? zone, String? dateOfJoining,
+    String? sbCode, String? bankDetails, String? branch, String? zone,
+    String? dateOfJoining, double? basicCharges, double? otherCharges,
   }) => EmployeeModel(
     id: id ?? this.id, srNo: srNo ?? this.srNo, name: name ?? this.name,
     pfNo: pfNo ?? this.pfNo, uanNo: uanNo ?? this.uanNo, code: code ?? this.code,
@@ -76,5 +88,7 @@ class EmployeeModel {
     aartiAcNo: aartiAcNo ?? this.aartiAcNo, sbCode: sbCode ?? this.sbCode,
     bankDetails: bankDetails ?? this.bankDetails, branch: branch ?? this.branch,
     zone: zone ?? this.zone, dateOfJoining: dateOfJoining ?? this.dateOfJoining,
+    basicCharges: basicCharges ?? this.basicCharges,
+    otherCharges: otherCharges ?? this.otherCharges,
   );
 }
