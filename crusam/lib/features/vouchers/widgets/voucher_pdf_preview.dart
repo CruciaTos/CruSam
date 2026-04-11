@@ -6,9 +6,9 @@ import '../../../shared/utils/format_utils.dart';
 
 // ── Column width configuration ─────────────────────────────────────────────────
 // Each field maps to one column in the voucher table (left→right order).
-// Widths are logical pixels. The eleven columns should fit inside:
-//   a4Width − margins.horizontal − 12px (TableBorder.all at 1px × 12 lines)
-// Default total ≈ 721px which leaves a comfortable margin.
+// Widths are logical pixels. The ten columns should fit inside:
+//   a4Width − margins.horizontal − 12px (TableBorder.all at 1px × 10 lines)
+// Default total ≈ 631px (removed bank column).
 class VoucherColWidths {
   final double sr;
   final double debitAc;
@@ -17,7 +17,6 @@ class VoucherColWidths {
   final double code;
   final double name;
   final double place;
-  final double bank;
   final double from;
   final double to;
   final double amount;
@@ -30,7 +29,6 @@ class VoucherColWidths {
     this.code     = 34,
     this.name     = 105,
     this.place    = 72,
-    this.bank     = 90,
     this.from     = 44,
     this.to       = 44,
     this.amount   = 58,
@@ -38,7 +36,7 @@ class VoucherColWidths {
 
   VoucherColWidths copyWith({
     double? sr,       double? debitAc, double? ifsc,   double? creditAc,
-    double? code,     double? name,    double? place,   double? bank,
+    double? code,     double? name,    double? place,
     double? from,     double? to,      double? amount,
   }) => VoucherColWidths(
     sr:       sr       ?? this.sr,
@@ -48,7 +46,6 @@ class VoucherColWidths {
     code:     code     ?? this.code,
     name:     name     ?? this.name,
     place:    place    ?? this.place,
-    bank:     bank     ?? this.bank,
     from:     from     ?? this.from,
     to:       to       ?? this.to,
     amount:   amount   ?? this.amount,
@@ -64,45 +61,42 @@ class VoucherColWidths {
     ('Code',       code),
     ('Name',       name),
     ('Place',      place),
-    ('Bank',       bank),
     ('Fr.',        from),
     ('To',         to),
     ('Amount',     amount),
   ];
 
-  /// Applies a new width by index (0–10).  Used by the panel's onChanged.
+  /// Applies a new width by index (0–9). Used by the panel's onChanged.
   VoucherColWidths withIndex(int index, double value) {
     return copyWith(
-      sr:       index == 0  ? value : null,
-      debitAc:  index == 1  ? value : null,
-      ifsc:     index == 2  ? value : null,
-      creditAc: index == 3  ? value : null,
-      code:     index == 4  ? value : null,
-      name:     index == 5  ? value : null,
-      place:    index == 6  ? value : null,
-      bank:     index == 7  ? value : null,
-      from:     index == 8  ? value : null,
-      to:       index == 9  ? value : null,
-      amount:   index == 10 ? value : null,
+      sr:       index == 0 ? value : null,
+      debitAc:  index == 1 ? value : null,
+      ifsc:     index == 2 ? value : null,
+      creditAc: index == 3 ? value : null,
+      code:     index == 4 ? value : null,
+      name:     index == 5 ? value : null,
+      place:    index == 6 ? value : null,
+      from:     index == 7 ? value : null,
+      to:       index == 8 ? value : null,
+      amount:   index == 9 ? value : null,
     );
   }
 
   double get totalWidth =>
-      sr + debitAc + ifsc + creditAc + code + name + place + bank + from + to + amount;
+      sr + debitAc + ifsc + creditAc + code + name + place + from + to + amount;
 
   /// Flutter [TableColumnWidth] map — plug directly into [Table.columnWidths].
   Map<int, TableColumnWidth> get tableColumnWidths => {
-    0:  FixedColumnWidth(sr),
-    1:  FixedColumnWidth(debitAc),
-    2:  FixedColumnWidth(ifsc),
-    3:  FixedColumnWidth(creditAc),
-    4:  FixedColumnWidth(code),
-    5:  FixedColumnWidth(name),
-    6:  FixedColumnWidth(place),
-    7:  FixedColumnWidth(bank),
-    8:  FixedColumnWidth(from),
-    9:  FixedColumnWidth(to),
-    10: FixedColumnWidth(amount),
+    0: FixedColumnWidth(sr),
+    1: FixedColumnWidth(debitAc),
+    2: FixedColumnWidth(ifsc),
+    3: FixedColumnWidth(creditAc),
+    4: FixedColumnWidth(code),
+    5: FixedColumnWidth(name),
+    6: FixedColumnWidth(place),
+    7: FixedColumnWidth(from),
+    8: FixedColumnWidth(to),
+    9: FixedColumnWidth(amount),
   };
 }
 
@@ -261,7 +255,7 @@ class VoucherPdfPreview extends StatelessWidget {
   Widget _buildTable(List<VoucherRowModel> rows, int startIndex) {
     const headers = [
       'Sr.', 'Debit A/c', 'IFSC', 'Credit A/c',
-      'Code', 'Name', 'Place', 'Bank', 'Fr.', 'To', 'Amount',
+      'Code', 'Name', 'Place', 'Fr.', 'To', 'Amount',
     ];
 
     return Table(
@@ -284,7 +278,6 @@ class VoucherPdfPreview extends StatelessWidget {
             _c(r.sbCode),
             _c(r.employeeName),
             _c(r.branch),
-            _c(voucher.title),
             _c(_fmtDate(r.fromDate)),
             _c(_fmtDate(r.toDate)),
             _c(r.amount.toStringAsFixed(2), right: true),

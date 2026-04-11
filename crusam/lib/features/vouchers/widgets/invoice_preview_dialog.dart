@@ -294,7 +294,6 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
         code: settings.code,
         name: settings.name,
         place: settings.place,
-        bank: settings.bank,
         from: settings.from,
         to: settings.to,
         amount: settings.amount,

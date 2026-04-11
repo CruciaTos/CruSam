@@ -355,10 +355,8 @@ class DatabaseHelper {
 
   Future<void> saveMarginSettings(MarginSettings s) async {
     final db = await database;
-    await db.insert('pdf_settings', {
-      'id': 1,
-      ...s.toMap(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _ensurePdfSettingsRow(db);
+    await db.update('pdf_settings', s.toMap(), where: 'id=1');
   }
 
   // --- Voucher Column Widths ---
@@ -376,10 +374,8 @@ class DatabaseHelper {
 
   Future<void> saveVoucherColumnWidths(VoucherColumnWidthsSettings s) async {
     final db = await database;
-    await db.insert('pdf_settings', {
-      'id': 1,
-      'voucher_col_widths': s.toJson(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _ensurePdfSettingsRow(db);
+    await db.update('pdf_settings', {'voucher_col_widths': s.toJson()}, where: 'id=1');
   }
 
   // --- Bank Column Widths ---
@@ -397,10 +393,14 @@ class DatabaseHelper {
 
   Future<void> saveBankColumnWidths(BankColumnWidthsSettings s) async {
     final db = await database;
-    await db.insert('pdf_settings', {
-      'id': 1,
-      'bank_col_widths': s.toJson(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _ensurePdfSettingsRow(db);
+    await db.update('pdf_settings', {'bank_col_widths': s.toJson()}, where: 'id=1');
+  }
+
+  // --- Private helper for pdf_settings row ---
+  Future<void> _ensurePdfSettingsRow(Database db) async {
+    final rows = await db.query('pdf_settings', where: 'id=1', limit: 1);
+    if (rows.isEmpty) await db.insert('pdf_settings', {'id': 1});
   }
 
   // --- Item Descriptions ---
