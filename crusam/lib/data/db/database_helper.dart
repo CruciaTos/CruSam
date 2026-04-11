@@ -35,7 +35,6 @@ class DatabaseHelper {
   Future<void> _migrate(Database db) async {
     await _createTables(db);
 
-    // Existing DBs may have older vouchers schema; ensure missing columns are added.
     await _ensureColumn(db, 'vouchers', 'bill_no', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'po_no', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'item_description', 'TEXT');
@@ -46,6 +45,8 @@ class DatabaseHelper {
     await _ensureColumn(db, 'employees', 'basic_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'gross_salary', 'REAL DEFAULT 0');
+    // ── NEW: gender column – added via migration so existing DBs are updated ──
+    await _ensureColumn(db, 'employees', 'gender', "TEXT DEFAULT 'M'");
     await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
   }
@@ -72,6 +73,7 @@ class DatabaseHelper {
       basic_charges REAL DEFAULT 0,
       other_charges REAL DEFAULT 0,
       gross_salary REAL DEFAULT 0,
+      gender TEXT DEFAULT 'M',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''');
 
@@ -198,7 +200,6 @@ class DatabaseHelper {
       }
     }
 
-    // Seed employees once if table is empty
     final empRows = await db.query('employees', columns: ['id'], limit: 1);
     if (empRows.isEmpty) {
       final batch = db.batch();
@@ -397,7 +398,6 @@ class DatabaseHelper {
     await db.update('pdf_settings', {'bank_col_widths': s.toJson()}, where: 'id=1');
   }
 
-  // --- Private helper for pdf_settings row ---
   Future<void> _ensurePdfSettingsRow(Database db) async {
     final rows = await db.query('pdf_settings', where: 'id=1', limit: 1);
     if (rows.isEmpty) await db.insert('pdf_settings', {'id': 1});
@@ -459,7 +459,6 @@ class DatabaseHelper {
       await db.delete('auth_session', where: 'id=1');
       return;
     }
-
     await db.insert('auth_session', {
       'id': 1,
       'user_id': userId,

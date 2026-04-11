@@ -9,7 +9,6 @@ import '../services/employee_excel_import_service.dart';
 import '../notifiers/employee_notifier.dart';
 import 'employee_form_screen.dart';
 
-// ── Per-column width config ────────────────────────────────────────────────────
 class _ColDef {
   final String label;
   double width;
@@ -31,9 +30,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   bool _isImporting = false;
   bool _showColPanel = false;
 
-  // Editable column widths — user can open the panel and resize each
   final _cols = [
     _ColDef('Sr.',          48),
+    _ColDef('Gender',       72),   // ← NEW
     _ColDef('Name',        180),
     _ColDef('PF No.',      140),
     _ColDef('UAN No.',     130),
@@ -48,7 +47,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     _ColDef('Gross ₹',     110),
   ];
 
-  // table horizontal margin (left + right of content area)
   double _tableMarginH = 12;
   double _tableMarginV = 8;
 
@@ -79,7 +77,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   );
 
   Future<void> _goToForm([EmployeeModel? emp]) async {
-    await showDialog(
+    final result = await showDialog(
       context: context,
       barrierColor: Colors.black45,
       barrierDismissible: false,
@@ -88,7 +86,11 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
         child: EmployeeFormScreen(employee: emp?.toMap()),
       ),
     );
-    _notifier.load();
+    // Always reload so both master-data and salary screens see fresh data
+    await _notifier.load();
+    if (_search.text.isNotEmpty) {
+      _notifier.search(_search.text);
+    }
   }
 
   Future<void> _onImportExcel() async {
@@ -154,7 +156,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
           child: ListView(
             padding: const EdgeInsets.all(12),
             children: [
-              // Margin controls
               Text('Table Margins', style: AppTextStyles.small.copyWith(fontWeight: FontWeight.w600, color: AppColors.slate700)),
               const SizedBox(height: 6),
               Row(children: [
@@ -272,11 +273,8 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
 
                 final colBtn = OutlinedButton.icon(
                   onPressed: () => setState(() => _showColPanel = !_showColPanel),
-                  icon: Icon(
-                    Icons.tune,
-                    size: 18,
-                    color: _showColPanel ? AppColors.indigo600 : null,
-                  ),
+                  icon: Icon(Icons.tune, size: 18,
+                      color: _showColPanel ? AppColors.indigo600 : null),
                   label: const Text('Columns'),
                 );
 
@@ -348,7 +346,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                 color: AppColors.slate50,
                 border: Border(bottom: BorderSide(color: AppColors.slate200)),
               ),
-              child: Text('Double-tap an employee row to edit or delete', style: AppTextStyles.small),
+              child: Text('Double-tap a row to edit or delete', style: AppTextStyles.small),
             ),
             Expanded(
               child: MouseRegion(
@@ -383,26 +381,27 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   );
 
   Widget _buildTable() {
-    // Header
     final headerCells = _cols.map((c) => _th(c.label, c.width)).toList();
 
-    // Data rows
     final dataRows = _notifier.filtered.map((e) {
+      final isFemale = e.gender.toUpperCase() == 'F';
       return TableRow(
         children: [
           _doubleTapToEdit(e, _td(e.srNo.toString(), _cols[0].width)),
-          _doubleTapToEdit(e, _td(e.name, _cols[1].width, bold: true)),
-          _doubleTapToEdit(e, _td(e.pfNo, _cols[2].width)),
-          _doubleTapToEdit(e, _td(e.uanNo, _cols[3].width)),
-          _doubleTapToEdit(e, _td(e.code, _cols[4].width)),
-          _doubleTapToEdit(e, _tdMono(e.ifscCode, _cols[5].width)),
-          _doubleTapToEdit(e, _tdMono(e.accountNumber, _cols[6].width)),
-          _doubleTapToEdit(e, _td(e.bankDetails, _cols[7].width)),
-          _doubleTapToEdit(e, _td(e.branch, _cols[8].width)),
-          _doubleTapToEdit(e, _td(e.zone, _cols[9].width)),
-          _doubleTapToEdit(e, _tdNum(e.basicCharges, _cols[10].width)),
-          _doubleTapToEdit(e, _tdNum(e.otherCharges, _cols[11].width)),
-          _doubleTapToEdit(e, _tdNum(e.grossSalary, _cols[12].width)),
+          // Gender badge cell
+          _doubleTapToEdit(e, _tdGender(isFemale, _cols[1].width)),
+          _doubleTapToEdit(e, _td(e.name, _cols[2].width, bold: true)),
+          _doubleTapToEdit(e, _td(e.pfNo, _cols[3].width)),
+          _doubleTapToEdit(e, _td(e.uanNo, _cols[4].width)),
+          _doubleTapToEdit(e, _td(e.code, _cols[5].width)),
+          _doubleTapToEdit(e, _tdMono(e.ifscCode, _cols[6].width)),
+          _doubleTapToEdit(e, _tdMono(e.accountNumber, _cols[7].width)),
+          _doubleTapToEdit(e, _td(e.bankDetails, _cols[8].width)),
+          _doubleTapToEdit(e, _td(e.branch, _cols[9].width)),
+          _doubleTapToEdit(e, _td(e.zone, _cols[10].width)),
+          _doubleTapToEdit(e, _tdNum(e.basicCharges, _cols[11].width)),
+          _doubleTapToEdit(e, _tdNum(e.otherCharges, _cols[12].width)),
+          _doubleTapToEdit(e, _tdNum(e.grossSalary, _cols[13].width)),
         ],
       );
     }).toList();
@@ -437,6 +436,30 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
         value,
         style: AppTextStyles.body.copyWith(fontWeight: bold ? FontWeight.w600 : FontWeight.w400),
         overflow: TextOverflow.ellipsis,
+      ),
+    ),
+  );
+
+  static Widget _tdGender(bool isFemale, double width) => SizedBox(
+    width: width,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: isFemale ? const Color(0xFFFCE7F3) : const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            isFemale ? 'F' : 'M',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isFemale ? const Color(0xFFBE185D) : AppColors.blue600,
+            ),
+          ),
+        ),
       ),
     ),
   );
