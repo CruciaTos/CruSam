@@ -15,6 +15,7 @@ class EmployeeModel {
   final String dateOfJoining;
   final double basicCharges;
   final double otherCharges;
+  final String gender; // 'M' | 'F'
 
   double get grossSalary => basicCharges + otherCharges;
 
@@ -35,11 +36,12 @@ class EmployeeModel {
     this.dateOfJoining = '',
     this.basicCharges = 0,
     this.otherCharges = 0,
+    this.gender = 'M',
   });
 
   factory EmployeeModel.fromMap(Map<String, dynamic> m) => EmployeeModel(
     id:            m['id'] as int?,
-    srNo:          (m['sr_no'] as int?) ?? 0,
+    srNo:          (m['sr_no']          as int?)    ?? 0,
     name:          (m['name']           as String?) ?? '',
     pfNo:          (m['pf_no']          as String?) ?? '',
     uanNo:         (m['uan_no']         as String?) ?? '',
@@ -54,6 +56,7 @@ class EmployeeModel {
     dateOfJoining: (m['date_of_joining']as String?) ?? '',
     basicCharges:  (m['basic_charges']  as num?)?.toDouble() ?? 0,
     otherCharges:  (m['other_charges']  as num?)?.toDouble() ?? 0,
+    gender:        (m['gender']         as String?) ?? 'M',
   );
 
   Map<String, dynamic> toMap() => {
@@ -74,13 +77,14 @@ class EmployeeModel {
     'basic_charges':  basicCharges,
     'other_charges':  otherCharges,
     'gross_salary':   grossSalary,
+    'gender':         gender,
   };
 
   EmployeeModel copyWith({
     int? id, int? srNo, String? name, String? pfNo, String? uanNo,
     String? code, String? ifscCode, String? accountNumber, String? aartiAcNo,
     String? sbCode, String? bankDetails, String? branch, String? zone,
-    String? dateOfJoining, double? basicCharges, double? otherCharges,
+    String? dateOfJoining, double? basicCharges, double? otherCharges, String? gender,
   }) => EmployeeModel(
     id: id ?? this.id, srNo: srNo ?? this.srNo, name: name ?? this.name,
     pfNo: pfNo ?? this.pfNo, uanNo: uanNo ?? this.uanNo, code: code ?? this.code,
@@ -90,5 +94,6 @@ class EmployeeModel {
     zone: zone ?? this.zone, dateOfJoining: dateOfJoining ?? this.dateOfJoining,
     basicCharges: basicCharges ?? this.basicCharges,
     otherCharges: otherCharges ?? this.otherCharges,
+    gender: gender ?? this.gender,
   );
 }
