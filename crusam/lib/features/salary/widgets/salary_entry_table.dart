@@ -214,7 +214,7 @@ class SalaryEntryTable extends StatelessWidget {
     );
   }
 
-  // ── Totals footer ──────────────────────────────────────────────────────────
+  // ── Totals footer (now at top) ─────────────────────────────────────────────
   Widget _totalsFooter() {
     final totalPf     = employees.fold(0, (s, e) => s + _pf(e));
     final totalEsic   = employees.fold(0, (s, e) => s + _esic(e));
@@ -228,7 +228,9 @@ class SalaryEntryTable extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.slate900,
-        border: Border(top: BorderSide(color: AppColors.slate700)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.slate700), // bottom border to separate from info bar
+        ),
       ),
       child: Wrap(
         spacing: 24,
@@ -269,7 +271,9 @@ class SalaryEntryTable extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppSpacing.radius),
         child: Column(children: [
-          // Info bar
+          // 1️⃣ Totals box at the top
+          _totalsFooter(),
+          // 2️⃣ Info bar (month, days, employee count)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             color: AppColors.slate50,
@@ -281,7 +285,7 @@ class SalaryEntryTable extends StatelessWidget {
             ]),
           ),
           const Divider(height: 1, color: AppColors.slate200),
-          // Table
+          // 3️⃣ Scrollable table
           Expanded(
             child: Scrollbar(
               controller: hScroll,
@@ -313,7 +317,6 @@ class SalaryEntryTable extends StatelessWidget {
               ),
             ),
           ),
-          _totalsFooter(),
         ]),
       ),
     );
