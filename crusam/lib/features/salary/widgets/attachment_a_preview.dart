@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/company_config_model.dart';
+import '../../../core/theme/app_text_styles.dart'; // Adjust path as needed
 
 /// Tax Invoice Preview – A4 print-ready.
 /// Format perfectly mirrors the provided Tax Invoice template.
 class AttachmentAPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
-
 
   final CompanyConfigModel config;
   final EdgeInsets margins;
@@ -235,7 +235,7 @@ class AttachmentAPreview extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _headerCell('Sr.\nNo', 5),
-                  _headerCell('Item Description', 65), // Increased flex to absorb removed columns
+                  _headerCell('Item Description', 65),
                   _headerCell('QTY', 6),
                   _headerCell('RATE', 9),
                   _headerCell('AMOUNT', 15, rightBorder: false),
@@ -244,7 +244,7 @@ class AttachmentAPreview extends StatelessWidget {
             ),
             _divider(0.75),
 
-            // 2. Item Rows (ConstrainedBox pushes footer down slightly for aesthetics)
+            // 2. Item Rows
             IntrinsicHeight(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 180),
@@ -301,11 +301,19 @@ class AttachmentAPreview extends StatelessWidget {
                     flex: 30,
                     child: Column(
                       children: [
-                        _totalRow('Total amount\nbefore Tax', '0.00'),
-                        _totalRow('Add : CGST 9%', '0.00'),
-                        _totalRow('Add : SGST 9%', '0.00'),
-                        _totalRow('Total Tax\nAmount', '0.00'),
-                        _totalRow('Round Up', '+0.00'),
+                        // Removed "Total amount before Tax"
+                        // Removed "Total Tax Amount"
+                        _multilineTotalRow(
+                          firstLine: 'P.F : 13.61 %',
+                          secondLine: '(Total Basic Salary)',
+                          value: '0.00',
+                        ),
+                        _multilineTotalRow(
+                          firstLine: 'ESIC : 3.25 %',
+                          secondLine: '(Total Gross Salary of Eligibles)',
+                          value: '0.00',
+                        ),
+                        _roundUpRow('Round Up', '+0.00'),
                         _totalRow('Total Amount\nafter Tax', '₹ 0.00', isBold: true, bgColor: _grandBg, isLast: true),
                       ],
                     ),
@@ -356,7 +364,6 @@ class AttachmentAPreview extends StatelessWidget {
         ),
       );
 
-  // Custom handler to safely render the italicized "(Vouchers attached...)" segment
   Widget _itemCellDesc(String text, int flex, {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
     final parts = text.split('(Vouchers');
     return Expanded(
@@ -413,7 +420,7 @@ class AttachmentAPreview extends StatelessWidget {
                   ),
                 ),
               ),
-              Container(width: 0.75, color: _black), // Internal vertical divider
+              Container(width: 0.75, color: _black),
               Expanded(
                 flex: 1,
                 child: Container(
@@ -422,6 +429,95 @@ class AttachmentAPreview extends StatelessWidget {
                   child: Text(
                     value,
                     style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  // ── Multi‑line row for PF / ESIC ──────────────────────────────────────────
+  Widget _multilineTotalRow({
+    required String firstLine,
+    required String secondLine,
+    required String value,
+  }) => Expanded(
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: _bSide),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  alignment: Alignment.centerRight,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        firstLine,
+                        textAlign: TextAlign.right,
+                        style: AppTextStyles.bodyMedium.copyWith(fontSize: 8), // using bodyMedium
+                      ),
+                      Text(
+                        secondLine,
+                        textAlign: TextAlign.right,
+                        style: _body.copyWith(fontSize: 7, fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(width: 0.75, color: _black),
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    value,
+                    style: _body.copyWith(fontSize: 9),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  // ── Round Up row with bodyMedium style ─────────────────────────────────────
+  Widget _roundUpRow(String label, String value) => Expanded(
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: _bSide),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.right,
+                    style: AppTextStyles.bodyMedium.copyWith(fontSize: 8),
+                  ),
+                ),
+              ),
+              Container(width: 0.75, color: _black),
+              Expanded(
+                flex: 1,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    value,
+                    style: _body.copyWith(fontSize: 9),
                   ),
                 ),
               ),
@@ -450,7 +546,7 @@ class AttachmentAPreview extends StatelessWidget {
             children: [
               Text('For AARTI ENTERPRISES',
                   style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
-              const SizedBox(height: 45), // Dedicated empty space for the physical signature
+              const SizedBox(height: 45),
               Text('Partner', style: _body.copyWith(fontSize: 8.5)),
             ],
           ),

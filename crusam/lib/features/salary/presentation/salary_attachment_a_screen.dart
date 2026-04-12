@@ -84,6 +84,8 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
       );
 }
 
+
+
 // ── Preview dialog ─────────────────────────────────────────────────────────────
 class _AttachmentAPreviewDialog extends StatelessWidget {
   final CompanyConfigModel config;

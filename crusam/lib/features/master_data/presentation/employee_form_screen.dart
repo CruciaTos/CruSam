@@ -247,13 +247,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
               child: Form(
                 key: _formKey,
                 child: Column(children: [
-                  Row(children: [
-                    Expanded(child: _field('srNo', 'Sr. No.',
-                        type: TextInputType.number,
-                        fmt: [FilteringTextInputFormatter.digitsOnly])),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(child: _field('code', 'Code')),
-                  ]),
+                  // Sr. No. field removed from UI; code field now takes full width
+                  _field('code', 'Code'),
                   _field('name', 'Name', required: true, cap: TextCapitalization.words),
                   _genderToggle(),
                   _field('pfNo', 'PF No.'),

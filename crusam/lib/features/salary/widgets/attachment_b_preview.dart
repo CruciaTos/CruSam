@@ -7,8 +7,6 @@ class AttachmentBPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
-
-
   final CompanyConfigModel config;
   final EdgeInsets margins;
 
@@ -236,7 +234,7 @@ class AttachmentBPreview extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _headerCell('Sr.\nNo', 5),
-                  _headerCell('Item Description', 65), // Increased flex to absorb removed columns
+                  _headerCell('Item Description', 65),
                   _headerCell('QTY', 6),
                   _headerCell('RATE', 9),
                   _headerCell('AMOUNT', 15, rightBorder: false),
@@ -245,7 +243,7 @@ class AttachmentBPreview extends StatelessWidget {
             ),
             _divider(0.75),
 
-            // 2. Item Rows (ConstrainedBox pushes footer down slightly for aesthetics)
+            // 2. Item Row (with placeholder rate = 1753)
             IntrinsicHeight(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 180),
@@ -254,16 +252,16 @@ class AttachmentBPreview extends StatelessWidget {
                   children: [
                     _itemCell('1', 5),
                     _itemCellDesc(itemDescription, 65, align: Alignment.topLeft),
-                    _itemCell('', 6),
-                    _itemCell('', 9),
-                    _itemCell('0.00', 15, rightBorder: false, align: Alignment.topRight),
+                    _itemCell('1', 6),               // QTY placeholder
+                    _itemCell('1753.00', 9),          // RATE = 1753
+                    _itemCell('1753.00', 15, rightBorder: false, align: Alignment.topRight),
                   ],
                 ),
               ),
             ),
             _divider(0.75),
 
-            // 3. Totals Area
+            // 3. Totals Area (simplified – only bank details and total)
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -297,17 +295,12 @@ class AttachmentBPreview extends StatelessWidget {
                     ),
                   ),
                   Container(width: 0.75, color: _black), // Vertical Separator
-                  // Right Side (Totals Calculations)
+                  // Right Side (Only Total)
                   Expanded(
                     flex: 30,
                     child: Column(
                       children: [
-                        _totalRow('Total amount\nbefore Tax', '0.00'),
-                        _totalRow('Add : CGST 9%', '0.00'),
-                        _totalRow('Add : SGST 9%', '0.00'),
-                        _totalRow('Total Tax\nAmount', '0.00'),
-                        _totalRow('Round Up', '+0.00'),
-                        _totalRow('Total Amount\nafter Tax', '₹ 0.00', isBold: true, bgColor: _grandBg, isLast: true),
+                        _totalRowSimple('Total', '₹ 1753.00', isBold: true, bgColor: _grandBg),
                       ],
                     ),
                   ),
@@ -394,37 +387,24 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  Widget _totalRow(String label, String value, {bool isBold = false, Color? bgColor, bool isLast = false}) => Expanded(
+  // New simplified total row (no tax breakdown)
+  Widget _totalRowSimple(String label, String value, {bool isBold = false, Color? bgColor}) => Expanded(
         child: Container(
           decoration: BoxDecoration(
             color: bgColor,
-            border: isLast ? null : const Border(bottom: _bSide),
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+          alignment: Alignment.centerRight,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                flex: 1,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.right,
-                    style: _body.copyWith(fontSize: 8, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
-                  ),
-                ),
+              Text(
+                label,
+                style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
               ),
-              Container(width: 0.75, color: _black), // Internal vertical divider
-              Expanded(
-                flex: 1,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    value,
-                    style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
-                  ),
-                ),
+              Text(
+                value,
+                style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
               ),
             ],
           ),

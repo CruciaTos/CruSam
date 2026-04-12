@@ -16,7 +16,7 @@ class DatabaseHelper {
     final path = '${await getDatabasesPath()}/aarti.db';
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await _createTables(db);
@@ -45,10 +45,45 @@ class DatabaseHelper {
     await _ensureColumn(db, 'employees', 'basic_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'gross_salary', 'REAL DEFAULT 0');
-    // ── NEW: gender column – added via migration so existing DBs are updated ──
     await _ensureColumn(db, 'employees', 'gender', "TEXT DEFAULT 'M'");
     await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
+
+    // Backfill charges for existing employees that have 0 values
+    await _backfillEmployeeCharges(db);
+  }
+
+  /// Updates basic_charges and other_charges for existing employees that have
+  /// 0 values, by matching against the seed data via PF number or UAN number.
+  /// This fixes DBs created before charges were stored in the seed.
+  Future<void> _backfillEmployeeCharges(Database db) async {
+    for (final seed in kEmployeeSeedData) {
+      final basic = (seed['basic_charges'] as num?)?.toDouble() ?? 0;
+      final other = (seed['other_charges'] as num?)?.toDouble() ?? 0;
+      if (basic == 0 && other == 0) continue;
+
+      final gross = basic + other;
+      final pfNo  = (seed['pf_no']  as String? ?? '').trim();
+      final uanNo = (seed['uan_no'] as String? ?? '').trim();
+
+      // Match by PF number (skip incomplete ones like 'MH/212395/' with no suffix)
+      if (pfNo.isNotEmpty && !pfNo.endsWith('/') && pfNo.length > 12) {
+        await db.rawUpdate(
+          'UPDATE employees SET basic_charges=?, other_charges=?, gross_salary=? '
+          'WHERE pf_no=? AND (basic_charges IS NULL OR basic_charges=0)',
+          [basic, other, gross, pfNo],
+        );
+      }
+
+      // Match by UAN number as fallback
+      if (uanNo.isNotEmpty) {
+        await db.rawUpdate(
+          'UPDATE employees SET basic_charges=?, other_charges=?, gross_salary=? '
+          'WHERE uan_no=? AND (basic_charges IS NULL OR basic_charges=0)',
+          [basic, other, gross, uanNo],
+        );
+      }
+    }
   }
 
   Future<void> _ensureColumn(
