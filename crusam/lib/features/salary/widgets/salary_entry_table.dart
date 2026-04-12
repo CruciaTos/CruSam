@@ -157,7 +157,7 @@ class SalaryEntryTable extends StatelessWidget {
       ),
       children: [
         // Sr. No.
-        _cTxt(e.srNo == 0 ? '—' : e.srNo.toString()),
+        _cTxt((idx + 1).toString()),
         // Name
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),

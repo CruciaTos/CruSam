@@ -13,6 +13,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Changrabandha',
     'zone': 'East',
     'date_of_joining': '20/01/2012',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -28,6 +30,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Rrb, Orissa Gramya Bank',
     'zone': 'East',
     'date_of_joining': '25/05/2013',
+    'basic_charges': 14756.0,
+    'other_charges': 19763.0,
   },
   {
     'sr_no': 0,
@@ -42,7 +46,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Chettikulam',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -58,6 +64,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Nelamangala, Bangalore',
     'zone': 'South',
     'date_of_joining': '10/06/2025',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -72,7 +80,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Punjab National Bank',
     'branch': 'Ludhiana',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -88,6 +98,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Focal Point, Ludhiana',
     'zone': 'North',
     'date_of_joining': '05/04/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 17244.0,
   },
   {
     'sr_no': 0,
@@ -102,7 +114,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Canara Bank',
     'branch': 'Airoli, Navi-Mumbai',
     'zone': 'West',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 49635.0,
   },
   {
     'sr_no': 0,
@@ -118,6 +132,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Goregaon-West, Mumbai',
     'zone': 'West',
     'date_of_joining': '01/10/2009',
+    'basic_charges': 14756.0,
+    'other_charges': 35540.0,
   },
   {
     'sr_no': 0,
@@ -133,6 +149,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Malad - East, Mumbai',
     'zone': 'West',
     'date_of_joining': '01/10/2009',
+    'basic_charges': 14756.0,
+    'other_charges': 21144.0,
   },
   {
     'sr_no': 0,
@@ -148,6 +166,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Andheri -East, Mumbai',
     'zone': 'West',
     'date_of_joining': '01/10/2009',
+    'basic_charges': 14756.0,
+    'other_charges': 30342.0,
   },
   {
     'sr_no': 0,
@@ -163,6 +183,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Goregaon-West, Mumbai',
     'zone': 'West',
     'date_of_joining': '23/03/2010',
+    'basic_charges': 14756.0,
+    'other_charges': 25621.0,
   },
   {
     'sr_no': 0,
@@ -178,6 +200,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Newada',
     'zone': 'North',
     'date_of_joining': '10/02/2014',
+    'basic_charges': 14756.0,
+    'other_charges': 17866.0,
   },
   {
     'sr_no': 0,
@@ -193,6 +217,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jaisinghpur',
     'zone': 'North',
     'date_of_joining': '20/02/2014',
+    'basic_charges': 14756.0,
+    'other_charges': 18079.0,
   },
   {
     'sr_no': 0,
@@ -208,6 +234,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Adharwadi, Kalyan West',
     'zone': 'West',
     'date_of_joining': '01/10/2009',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -223,6 +251,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Krishnagar - WB',
     'zone': 'East',
     'date_of_joining': '08/05/2014',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -238,6 +268,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jalalpur, UP',
     'zone': 'North',
     'date_of_joining': '13/05/2015',
+    'basic_charges': 14756.0,
+    'other_charges': 13327.0,
   },
   {
     'sr_no': 0,
@@ -252,7 +284,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Central Bank Of India',
     'branch': 'Sansat, Post Hatserand, W-Bengal',
     'zone': 'East',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 7125.0,
   },
   {
     'sr_no': 0,
@@ -268,6 +302,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Haridasmati,Murshidabad',
     'zone': 'East',
     'date_of_joining': '21/08/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -283,6 +319,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bhanokhar, Rajasthan',
     'zone': 'North',
     'date_of_joining': '10/03/2016',
+    'basic_charges': 14756.0,
+    'other_charges': 10182.0,
   },
   {
     'sr_no': 0,
@@ -298,6 +336,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Paonta Sahib, Sirmour',
     'zone': 'North',
     'date_of_joining': '20/06/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -313,6 +353,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Ichchapuram, A.P.',
     'zone': 'West',
     'date_of_joining': '03/10/2017',
+    'basic_charges': 14756.0,
+    'other_charges': 11301.0,
   },
   {
     'sr_no': 0,
@@ -328,6 +370,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kolimigundla, A.P.',
     'zone': 'South',
     'date_of_joining': '04/10/2017',
+    'basic_charges': 14756.0,
+    'other_charges': 5256.0,
   },
   {
     'sr_no': 0,
@@ -343,6 +387,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sangareddy',
     'zone': 'South',
     'date_of_joining': '03/11/2017',
+    'basic_charges': 14756.0,
+    'other_charges': 8414.0,
   },
   {
     'sr_no': 0,
@@ -358,6 +404,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Janghaibazar, Dist Allahabad',
     'zone': 'North',
     'date_of_joining': '02/01/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 5834.0,
   },
   {
     'sr_no': 0,
@@ -372,7 +420,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Kaveri Grameena Bank',
     'branch': 'Devanur',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -388,6 +438,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bisalehalli',
     'zone': 'South',
     'date_of_joining': '05/04/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 13494.0,
   },
   {
     'sr_no': 0,
@@ -403,6 +455,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Koilkuntla',
     'zone': 'South',
     'date_of_joining': '10/01/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 3244.0,
   },
   {
     'sr_no': 0,
@@ -418,6 +472,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Pedavadlapudi',
     'zone': 'South',
     'date_of_joining': '01/04/2018',
+    'basic_charges': 14756.0,
+    'other_charges': 21402.0,
   },
   {
     'sr_no': 0,
@@ -433,6 +489,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Thittachery',
     'zone': 'South',
     'date_of_joining': '21/05/2018',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -448,6 +506,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sangareddy',
     'zone': 'South',
     'date_of_joining': '01/06/2018',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -463,6 +523,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bidadi, Karnataka',
     'zone': 'South',
     'date_of_joining': '12/06/2018',
+    'basic_charges': 14756.0,
+    'other_charges': 19614.0,
   },
   {
     'sr_no': 0,
@@ -478,6 +540,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Vizianagaram,Phoolbagh',
     'zone': 'South',
     'date_of_joining': '15/02/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 7244.0,
   },
   {
     'sr_no': 0,
@@ -492,7 +556,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Union Bank Of India',
     'branch': 'Rajapuram, AP.',
     'zone': 'West',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 17891.0,
   },
   {
     'sr_no': 0,
@@ -508,6 +574,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Najafgarh Road,Delhi 110041',
     'zone': 'North',
     'date_of_joining': '01/04/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 8680.0,
   },
   {
     'sr_no': 0,
@@ -522,7 +590,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Koregaon',
     'zone': 'West',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -537,7 +607,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'The Kalyan Janata Sahakari Bank Ltd.',
     'branch': 'Kalyan West',
     'zone': 'West',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 26803.0,
   },
   {
     'sr_no': 0,
@@ -553,6 +625,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bhiwadi II, Rajasthan',
     'zone': 'West',
     'date_of_joining': '02/05/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 12695.0,
   },
   {
     'sr_no': 0,
@@ -567,7 +641,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Karur Vysya Bank',
     'branch': 'Kanchipuram,Tamil Nadu',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 24153.0,
   },
   {
     'sr_no': 0,
@@ -582,7 +658,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Indian Bank',
     'branch': 'Arni',
     'zone': 'West',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -597,7 +675,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Baraut',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 16721.0,
   },
   {
     'sr_no': 0,
@@ -612,7 +692,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Jhajjar',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 17434.0,
   },
   {
     'sr_no': 0,
@@ -627,7 +709,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Bank Of India',
     'branch': 'Jamalpur',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 16660.0,
   },
   {
     'sr_no': 0,
@@ -642,7 +726,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Ssi Singasandra',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -658,6 +744,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Uchchain',
     'zone': 'West',
     'date_of_joining': '20/06/2017',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -673,6 +761,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Dombivali - East',
     'zone': 'West',
     'date_of_joining': '01/12/2021',
+    'basic_charges': 14756.0,
+    'other_charges': 27121.0,
   },
   {
     'sr_no': 0,
@@ -688,6 +778,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Padgha, Bhivandi',
     'zone': 'West',
     'date_of_joining': '01/06/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 6514.0,
   },
   {
     'sr_no': 0,
@@ -703,6 +795,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Margao, Goa',
     'zone': 'West',
     'date_of_joining': '04/06/2018',
+    'basic_charges': 14756.0,
+    'other_charges': 18082.0,
   },
   {
     'sr_no': 0,
@@ -718,6 +812,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bodinayakkanur',
     'zone': 'South',
     'date_of_joining': '16/07/2020',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -732,7 +828,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Canara Bank',
     'branch': 'Nagercoil, Tamilnadu',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -747,7 +845,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Budge Budge,Kolkata',
     'zone': 'East',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -763,6 +863,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Baruat.UP- 250611',
     'zone': 'North',
     'date_of_joining': '18/02/2019',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -778,6 +880,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Nallampalli,Tamilnadu',
     'zone': 'South',
     'date_of_joining': '06/05/2019',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -793,6 +897,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Charial Bazar, West Bengal',
     'zone': 'North',
     'date_of_joining': '17/05/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 4323.0,
   },
   {
     'sr_no': 0,
@@ -808,6 +914,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Saket, Thane',
     'zone': 'West',
     'date_of_joining': '09/06/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 12180.0,
   },
   {
     'sr_no': 0,
@@ -823,6 +931,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kadiyam, East Godavari, A.P',
     'zone': 'South',
     'date_of_joining': '17/08/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 8199.0,
   },
   {
     'sr_no': 0,
@@ -838,6 +948,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bhanokhar, Rajasthan',
     'zone': 'North',
     'date_of_joining': '30/05/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 11815.0,
   },
   {
     'sr_no': 0,
@@ -853,6 +965,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kalyan West',
     'zone': 'West',
     'date_of_joining': '23/09/2017',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -868,6 +982,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Aligarh',
     'zone': 'North',
     'date_of_joining': '14/10/2022',
+    'basic_charges': 14756.0,
+    'other_charges': 11906.0,
   },
   {
     'sr_no': 0,
@@ -883,8 +999,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kalasapura, Karnataka',
     'zone': 'South',
     'date_of_joining': '01/07/2019',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
-  // ── UPDATED: name, code, DOJ changed ──
   {
     'sr_no': 0,
     'name': 'Shri Bhagwan Khatri',
@@ -899,8 +1016,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Ismaila, Haryana - 124517',
     'zone': 'North',
     'date_of_joining': '30/03/2026',
+    'basic_charges': 952.0,
+    'other_charges': 930.0,
   },
-  // ── UPDATED: IFSC, account, branch changed ──
   {
     'sr_no': 0,
     'name': 'Kanubaigari Husan Valli',
@@ -915,6 +1033,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jammalamadugu - 516434',
     'zone': 'South',
     'date_of_joining': '26/08/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 1577.0,
   },
   {
     'sr_no': 0,
@@ -930,6 +1050,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Siyana',
     'zone': 'North',
     'date_of_joining': '05/08/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 16442.0,
   },
   {
     'sr_no': 0,
@@ -945,6 +1067,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Ramachandrapuram - Andhra Pradesh',
     'zone': 'South',
     'date_of_joining': '01/08/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 32234.0,
   },
   {
     'sr_no': 0,
@@ -960,6 +1084,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Chandranagar, Palakkad',
     'zone': 'South',
     'date_of_joining': '19/08/2019',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -975,6 +1101,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Aajampura',
     'zone': 'South',
     'date_of_joining': '28/08/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 24730.0,
   },
   {
     'sr_no': 0,
@@ -989,7 +1117,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Punjab National Bank',
     'branch': 'Siyana',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 16442.0,
   },
   {
     'sr_no': 0,
@@ -1005,6 +1135,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bakrahat, West Bengal',
     'zone': 'East',
     'date_of_joining': '01/06/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 11680.0,
   },
   {
     'sr_no': 0,
@@ -1019,7 +1151,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Bank Of Baroda',
     'branch': 'Gosaiganj, UP',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1035,6 +1169,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Aryavart, Gb-Gomti Nagar',
     'zone': 'North',
     'date_of_joining': '26/04/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1050,6 +1186,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Nanjangud, Mysore',
     'zone': 'South',
     'date_of_joining': '13/11/2019',
+    'basic_charges': 14756.0,
+    'other_charges': 10244.0,
   },
   {
     'sr_no': 0,
@@ -1065,6 +1203,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Nazarathpettai, TN',
     'zone': 'South',
     'date_of_joining': '17/02/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 3244.0,
   },
   {
     'sr_no': 0,
@@ -1080,6 +1220,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jammalamadugu Town, AP',
     'zone': 'South',
     'date_of_joining': '25/02/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 2244.0,
   },
   {
     'sr_no': 0,
@@ -1095,6 +1237,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Dilsukhnagar, Telangana',
     'zone': 'South',
     'date_of_joining': '05/02/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 3244.0,
   },
   {
     'sr_no': 0,
@@ -1110,6 +1254,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bidadi SME, Karnataka',
     'zone': 'South',
     'date_of_joining': '06/01/2025',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1125,6 +1271,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Nelamangala',
     'zone': 'South',
     'date_of_joining': '21/12/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1140,6 +1288,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Chandakavate, Dist :Bijapur',
     'zone': 'South',
     'date_of_joining': '20/08/2025',
+    'basic_charges': 6664.0,
+    'other_charges': 1465.0,
   },
   {
     'sr_no': 0,
@@ -1155,6 +1305,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Dhaulana, Dist.Ghaziabad. UP',
     'zone': 'North',
     'date_of_joining': '18/08/2025',
+    'basic_charges': 14756.0,
+    'other_charges': 12180.0,
   },
   {
     'sr_no': 0,
@@ -1170,8 +1322,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Mehnagar,Dist.Azamgarh,UP',
     'zone': 'North',
     'date_of_joining': '15/08/2025',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
-  // ── UPDATED: code F&B → P&S ──
   {
     'sr_no': 0,
     'name': 'Elavarasan R',
@@ -1186,6 +1339,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Elathagiri, Krishnagiri, TN',
     'zone': 'South',
     'date_of_joining': '03/11/2025',
+    'basic_charges': 12852.0,
+    'other_charges': 9737.0,
   },
   {
     'sr_no': 0,
@@ -1201,6 +1356,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Ghaziabad (UP)',
     'zone': 'North',
     'date_of_joining': '27/08/2020',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1216,6 +1373,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kanchipuram,Tamil Nadu',
     'zone': 'South',
     'date_of_joining': '16/08/2021',
+    'basic_charges': 14756.0,
+    'other_charges': 24153.0,
   },
   {
     'sr_no': 0,
@@ -1231,6 +1390,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Oragadam Branch',
     'zone': 'South',
     'date_of_joining': '13/09/2021',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1246,6 +1407,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Mungra Badshahpur, UP',
     'zone': 'North',
     'date_of_joining': '22/01/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1261,6 +1424,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kadiam Branch',
     'zone': 'South',
     'date_of_joining': '15/03/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1276,6 +1441,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sangareddy',
     'zone': 'South',
     'date_of_joining': '28/03/2022',
+    'basic_charges': 14756.0,
+    'other_charges': 3609.0,
   },
   {
     'sr_no': 0,
@@ -1291,6 +1458,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Signa,P.O. Jhikra',
     'zone': 'East',
     'date_of_joining': '21/03/2022',
+    'basic_charges': 14756.0,
+    'other_charges': 14955.0,
   },
   {
     'sr_no': 0,
@@ -1306,6 +1475,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bodinayakanur,Dist Theni, TN',
     'zone': 'South',
     'date_of_joining': '15/06/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1321,6 +1492,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kadiam Branch',
     'zone': 'South',
     'date_of_joining': '27/07/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1336,6 +1509,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Mawana Khurd Branch',
     'zone': 'North',
     'date_of_joining': '29/07/2022',
+    'basic_charges': 14756.0,
+    'other_charges': 9839.0,
   },
   {
     'sr_no': 0,
@@ -1351,6 +1526,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Behrampur,Gurgaon Haryana',
     'zone': 'North',
     'date_of_joining': '12/12/2022',
+    'basic_charges': 14756.0,
+    'other_charges': 7607.0,
   },
   {
     'sr_no': 0,
@@ -1366,6 +1543,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'ADB, Narsapur Branch',
     'zone': 'South',
     'date_of_joining': '01/12/2022',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1381,6 +1560,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'PO-Budgebudge, West Bengal',
     'zone': 'East',
     'date_of_joining': '12/01/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 9463.0,
   },
   {
     'sr_no': 0,
@@ -1396,6 +1577,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'EKA, Firozabad, UP',
     'zone': 'North',
     'date_of_joining': '16/02/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1411,6 +1594,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Dr.Mukherjee Nagar, Delhi - 110009',
     'zone': 'North',
     'date_of_joining': '05/02/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 14244.0,
   },
   {
     'sr_no': 0,
@@ -1426,6 +1611,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Mahoba UP 210427',
     'zone': 'North',
     'date_of_joining': '18/02/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 7244.0,
   },
   {
     'sr_no': 0,
@@ -1441,6 +1628,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bhogasamudram AP- 515411',
     'zone': 'South',
     'date_of_joining': '16/02/2026',
+    'basic_charges': 10948.0,
+    'other_charges': 2407.0,
   },
   {
     'sr_no': 0,
@@ -1456,8 +1645,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kutubpur, Bulandshahr Up 203150',
     'zone': 'North',
     'date_of_joining': '02/02/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 9244.0,
   },
-  // ── UPDATED: code I&L → AP ──
   {
     'sr_no': 0,
     'name': 'Mukul Prajapati',
@@ -1472,6 +1662,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kurawar, Udaipur Rajasthan',
     'zone': 'North',
     'date_of_joining': '02/02/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 9215.0,
   },
   {
     'sr_no': 0,
@@ -1487,6 +1679,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Dharu Hera - Haryana',
     'zone': 'North',
     'date_of_joining': '11/04/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 12470.0,
   },
   {
     'sr_no': 0,
@@ -1502,6 +1696,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sector-78, Noida',
     'zone': 'North',
     'date_of_joining': '20/04/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1517,6 +1713,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jammalamadugu, Andhrapradesh',
     'zone': 'South',
     'date_of_joining': '17/08/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1532,6 +1730,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kadakola, Karnataka',
     'zone': 'South',
     'date_of_joining': '07/08/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 3559.0,
   },
   {
     'sr_no': 0,
@@ -1547,6 +1747,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Quila Road, Allahabd, UP',
     'zone': 'North',
     'date_of_joining': '05/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 10244.0,
   },
   {
     'sr_no': 0,
@@ -1561,7 +1763,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Canara Bank',
     'branch': 'Kalapathar, Cuttak, Orissa',
     'zone': 'East',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 7310.0,
   },
   {
     'sr_no': 0,
@@ -1577,6 +1781,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sikandarpur Ballia',
     'zone': 'North',
     'date_of_joining': '17/04/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 7404.0,
   },
   {
     'sr_no': 0,
@@ -1592,6 +1798,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Gunsheela Pandwera, UP',
     'zone': 'North',
     'date_of_joining': '20/02/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1607,6 +1815,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Bichhochh, Rajasthan',
     'zone': 'North',
     'date_of_joining': '25/05/2023',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1622,6 +1832,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Tarsali Road, Vadodara',
     'zone': 'West',
     'date_of_joining': '28/11/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 8274.0,
   },
   {
     'sr_no': 0,
@@ -1637,6 +1849,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Tripurantakam, Andhra Pradesh',
     'zone': 'South',
     'date_of_joining': '17/01/2024',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1652,6 +1866,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Chinhat, Dist- Lucknow, UP',
     'zone': 'North',
     'date_of_joining': '26/02/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 7180.0,
   },
   {
     'sr_no': 0,
@@ -1667,6 +1883,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kutubpur, UP 203150',
     'zone': 'North',
     'date_of_joining': '01/11/2023',
+    'basic_charges': 14756.0,
+    'other_charges': 13199.0,
   },
   {
     'sr_no': 0,
@@ -1682,6 +1900,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sankaranainar Kovil, TN',
     'zone': 'South',
     'date_of_joining': '01/03/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 4324.0,
   },
   {
     'sr_no': 0,
@@ -1697,6 +1917,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jammalamadugu Town, Kadapa, (AP)',
     'zone': 'South',
     'date_of_joining': '21/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 744.0,
   },
   {
     'sr_no': 0,
@@ -1712,6 +1934,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Melsithampur(Vallam), TN',
     'zone': 'South',
     'date_of_joining': '01/04/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 10291.0,
   },
   {
     'sr_no': 0,
@@ -1727,8 +1951,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Koti, Hyderabad, (AP)',
     'zone': 'South',
     'date_of_joining': '16/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
-  // ── UPDATED: code I&L → AP ──
   {
     'sr_no': 0,
     'name': 'Dipak Prusty',
@@ -1743,6 +1968,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kantapada, Odisha',
     'zone': 'East',
     'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 9180.0,
   },
   {
     'sr_no': 0,
@@ -1758,6 +1985,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Phulpur(Allahabad - UP)',
     'zone': 'North',
     'date_of_joining': '01/07/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 9994.0,
   },
   {
     'sr_no': 0,
@@ -1773,8 +2002,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Phulpur(Allahabad - UP)',
     'zone': 'North',
     'date_of_joining': '01/07/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 16604.0,
   },
-  // ── UPDATED: code I&L → AP ──
   {
     'sr_no': 0,
     'name': 'Prajwal Chandrashekhar Suramwar',
@@ -1789,6 +2019,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Mahal, Budhwar Bazar, Nagpur',
     'zone': 'West',
     'date_of_joining': '15/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 10244.0,
   },
   {
     'sr_no': 0,
@@ -1804,8 +2036,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Thiruvanthapuram, Kerala',
     'zone': 'South',
     'date_of_joining': '05/08/2024',
+    'basic_charges': 14756.0,
+    'other_charges': 4684.0,
   },
-  // ── NEW ──
   {
     'sr_no': 0,
     'name': 'Boya Venugopal',
@@ -1819,7 +2052,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Koikuntla, Kurnool, A.P.',
     'zone': 'South',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 3244.0,
   },
   {
     'sr_no': 0,
@@ -1834,7 +2069,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Dinara, Dist.Rohtas, Bihar',
     'zone': '',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 15413.0,
   },
   {
     'sr_no': 0,
@@ -1849,7 +2086,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Punjab National Bank',
     'branch': 'Uluberia, Howrah, W.B.',
     'zone': '',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 12180.0,
   },
   {
     'sr_no': 0,
@@ -1865,6 +2104,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jalpaiguri (West Bengal)',
     'zone': 'East',
     'date_of_joining': '12/08/2024',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1880,6 +2121,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Sector-28, Chandigarh',
     'zone': 'North',
     'date_of_joining': '02/12/2025',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
   {
     'sr_no': 0,
@@ -1895,6 +2138,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Kollegala, Karnataka, 571440',
     'zone': 'South',
     'date_of_joining': '25/03/2026',
+    'basic_charges': 3332.0,
+    'other_charges': 55.0,
   },
   {
     'sr_no': 0,
@@ -1910,6 +2155,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'branch': 'Jammalamadugu, Andhrapradesh',
     'zone': 'South',
     'date_of_joining': '03/03/2026',
+    'basic_charges': 13804.0,
+    'other_charges': 8648.0,
   },
   {
     'sr_no': 0,
@@ -1924,7 +2171,9 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'Bank Of Baroda',
     'branch': 'Sector-22, Rohini, Delhi',
     'zone': 'North',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 14756.0,
+    'other_charges': 7680.0,
   },
   {
     'sr_no': 0,
@@ -1939,6 +2188,8 @@ const List<Map<String, dynamic>> kEmployeeSeedData = [
     'bank_details': 'State Bank Of India',
     'branch': 'Dahisar - West',
     'zone': 'Office',
-    'date_of_joining': '',
+    'date_of_joining': '01/01/2026',
+    'basic_charges': 0.0,
+    'other_charges': 0.0,
   },
 ];
