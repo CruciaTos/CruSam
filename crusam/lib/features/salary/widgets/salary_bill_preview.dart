@@ -95,7 +95,7 @@ class SalaryBillPreview extends StatelessWidget {
                 const SizedBox(height: 6),
                 _divider(0.75),
                 const SizedBox(height: 12),
-                _centreLabel('Attachment B'),
+                _centreLabel('Salary Invoice'),
                 const SizedBox(height: 12),
                 _billingInfo(),
                 const SizedBox(height: 12),

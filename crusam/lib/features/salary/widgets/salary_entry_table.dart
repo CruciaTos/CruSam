@@ -13,6 +13,7 @@ class SalaryEntryTable extends StatelessWidget {
   final bool isMsw;
   final bool isFeb;
   final Map<int, TextEditingController> daysCtrls;
+  final Map<int, FocusNode> daysFocusNodes;
   final VoidCallback onDaysChanged;
   final String monthName;
 
@@ -30,6 +31,7 @@ class SalaryEntryTable extends StatelessWidget {
     required this.isMsw,
     required this.isFeb,
     required this.daysCtrls,
+    required this.daysFocusNodes,
     required this.onDaysChanged,
     required this.monthName,
     this.totalsBarGap = 8,
@@ -38,10 +40,10 @@ class SalaryEntryTable extends StatelessWidget {
     this.totalsBarBottomPadding = 10,
   });
 
-  // ── Calculations (unchanged) ────────────────────────────────────────────────
+  // ── Calculations ────────────────────────────────────────────────────────────
   int _days(EmployeeModel e) {
     final ctrl = daysCtrls[e.id!];
-    return (int.tryParse(ctrl?.text ?? '') ?? totalDays).clamp(0, totalDays);
+    return (int.tryParse(ctrl?.text ?? '') ?? 0).clamp(0, totalDays);
   }
 
   double _earnedBasic(EmployeeModel e) =>
@@ -79,7 +81,16 @@ class SalaryEntryTable extends StatelessWidget {
   int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
   double _net(EmployeeModel e) => _earnedGross(e) - _td(e);
 
-  // ── Column widths (increased) ───────────────────────────────────────────────
+  // ── Focus navigation ────────────────────────────────────────────────────────
+  void _focusNextEmployee(EmployeeModel current) {
+    final idx = employees.indexOf(current);
+    if (idx >= 0 && idx < employees.length - 1) {
+      final nextId = employees[idx + 1].id;
+      if (nextId != null) daysFocusNodes[nextId]?.requestFocus();
+    }
+  }
+
+  // ── Column widths ───────────────────────────────────────────────────────────
   Map<int, TableColumnWidth> _colWidths() {
     final cols = <double>[
       48.0,   // Sr.
@@ -106,7 +117,7 @@ class SalaryEntryTable extends StatelessWidget {
         .fold(0.0, (a, b) => a + b);
   }
 
-  // ── Headers (already centered) ──────────────────────────────────────────────
+  // ── Headers ──────────────────────────────────────────────────────────────────
   List<Widget> _headers() {
     final labels = [
       'Sr.', 'Name', 'Gender',
@@ -127,7 +138,7 @@ class SalaryEntryTable extends StatelessWidget {
     )).toList();
   }
 
-  // ── Data rows – all content centered, days field perfectly centered ─────────
+  // ── Data rows ────────────────────────────────────────────────────────────────
   TableRow _dataRow(EmployeeModel e, int idx) {
     final bg = idx.isEven ? AppColors.white : const Color(0xFFF8FAFC);
     final pf = _pf(e);
@@ -147,7 +158,7 @@ class SalaryEntryTable extends StatelessWidget {
       children: [
         // Sr. No.
         _cTxt(e.srNo == 0 ? '—' : e.srNo.toString()),
-        // Name – centered
+        // Name
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Center(
@@ -172,9 +183,7 @@ class SalaryEntryTable extends StatelessWidget {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
-                color: isFemale
-                    ? const Color(0xFFBE185D)
-                    : AppColors.blue600,
+                color: isFemale ? const Color(0xFFBE185D) : AppColors.blue600,
               ),
             ),
           ),
@@ -182,7 +191,7 @@ class SalaryEntryTable extends StatelessWidget {
         _cNum(e.basicCharges),
         _cNum(e.otherCharges),
         _cNum(e.grossSalary, bold: true),
-        // ✅ Days input – perfectly centered (vertical + horizontal)
+        // Days input — empty by default, Enter moves to next row
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Align(
@@ -190,8 +199,10 @@ class SalaryEntryTable extends StatelessWidget {
             child: _DaysField(
               key: ValueKey('d_${e.id}_${month}_$year'),
               controller: daysCtrls[e.id!]!,
+              focusNode: daysFocusNodes[e.id],
               max: totalDays,
               onChanged: (_) => onDaysChanged(),
+              onSubmitted: () => _focusNextEmployee(e),
             ),
           ),
         ),
@@ -232,7 +243,7 @@ class SalaryEntryTable extends StatelessWidget {
     );
   }
 
-  // ── Totals bar – unchanged ─────────────────────────────────────────────────
+  // ── Totals bar ──────────────────────────────────────────────────────────────
   Widget _totalsBar(double totalWidth) {
     final totalPf = employees.fold(0, (s, e) => s + _pf(e));
     final totalEsic = employees.fold(0, (s, e) => s + _esic(e));
@@ -286,7 +297,7 @@ class SalaryEntryTable extends StatelessWidget {
     ],
   );
 
-  // ── Build ──────────────────────────────────────────────────────────────────
+  // ── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final totalWidth = _totalTableWidth;
@@ -345,13 +356,11 @@ class SalaryEntryTable extends StatelessWidget {
     );
   }
 
-  // ── Cell helpers – all text centered ───────────────────────────────────────
+  // ── Cell helpers ────────────────────────────────────────────────────────────
   static Widget _cTxt(String t) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
     child: Center(
-      child: Text(t,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.body),
+      child: Text(t, textAlign: TextAlign.center, style: AppTextStyles.body),
     ),
   );
 
@@ -394,23 +403,26 @@ class SalaryEntryTable extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(label,
-          style: TextStyle(
-              fontSize: 14, color: color, fontWeight: FontWeight.w600)),
+          style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w600)),
     ),
   );
 }
 
-// ── Days input field – updated with vertical alignment fix ──────────────────
+// ── Days input field ───────────────────────────────────────────────────────────
 class _DaysField extends StatelessWidget {
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final int max;
   final ValueChanged<String> onChanged;
+  final VoidCallback? onSubmitted;
 
   const _DaysField({
     super.key,
     required this.controller,
+    this.focusNode,
     required this.max,
     required this.onChanged,
+    this.onSubmitted,
   });
 
   @override
@@ -419,18 +431,19 @@ class _DaysField extends StatelessWidget {
     width: 70,
     child: TextField(
       controller: controller,
+      focusNode: focusNode,
       textAlign: TextAlign.center,
-      textAlignVertical: TextAlignVertical.center, // ✅ KEY FIX
+      textAlignVertical: TextAlignVertical.center,
       keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.next,
       inputFormatters: [
         FilteringTextInputFormatter.digitsOnly,
-        _MaxValueFormatter(max),
+        _MaxValueFormatter(),   // ← updated: no argument, 2‑digit limit only
       ],
       style: AppTextStyles.input.copyWith(fontSize: 13),
       decoration: InputDecoration(
         isDense: true,
-        hintText: max.toString(),
-        // ✅ FIX: balance vertical padding
+        hintText: '0',
         contentPadding: const EdgeInsets.symmetric(vertical: 8),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
@@ -442,23 +455,24 @@ class _DaysField extends StatelessWidget {
         ),
       ),
       onChanged: onChanged,
+      onSubmitted: (value) {
+        final v = int.tryParse(value) ?? 0;
+        if (v > max) {
+          controller.clear();   // reset to empty
+          onChanged('');        // trigger recalculation → shows — in row
+        }
+        onSubmitted?.call();    // always move focus to next employee
+      },
     ),
   );
 }
 
+// ── Max value formatter (2‑digit limit only) ──────────────────────────────────
 class _MaxValueFormatter extends TextInputFormatter {
-  final int max;
-  const _MaxValueFormatter(this.max);
-
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue _, TextEditingValue n) {
-    final v = int.tryParse(n.text);
-    if (v != null && v > max) {
-      final s = max.toString();
-      return TextEditingValue(
-          text: s, selection: TextSelection.collapsed(offset: s.length));
-    }
-    return n;
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.length > 2) return oldValue; // 2‑digit limit only
+    return newValue;
   }
 }

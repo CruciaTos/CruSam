@@ -20,6 +20,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   int _year  = DateTime.now().year;
 
   final Map<int, TextEditingController> _daysCtrls = {};
+  final Map<int, FocusNode> _daysFocusNodes = {};           // ← NEW
 
   static const _months = [
     'January','February','March','April','May','June',
@@ -39,6 +40,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   @override
   void dispose() {
     for (final c in _daysCtrls.values) c.dispose();
+    for (final f in _daysFocusNodes.values) f.dispose();    // ← NEW
     super.dispose();
   }
 
@@ -52,7 +54,9 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     for (final e in emps) {
       final id = e.id;
       if (id == null) continue;
-      _daysCtrls[id] ??= TextEditingController(text: _totalDays.toString());
+      // Start empty — user fills in days present manually
+      _daysCtrls[id]    ??= TextEditingController();         // ← CHANGED (was pre-filled)
+      _daysFocusNodes[id] ??= FocusNode();                   // ← NEW
     }
     if (mounted) setState(() { _employees = emps; _loading = false; });
   }
@@ -62,12 +66,13 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     setState(() {
       _month = month;
       _year  = year;
+      // Only clamp values that exceed the new month's day-count; leave empty as-is
       for (final e in _employees) {
         final id = e.id;
         if (id == null) continue;
         final ctrl = _daysCtrls[id];
         if (ctrl == null) continue;
-        final v = int.tryParse(ctrl.text) ?? newTotal;
+        final v = int.tryParse(ctrl.text) ?? 0;              // ← CHANGED (was ?? newTotal)
         if (v > newTotal) ctrl.text = newTotal.toString();
       }
     });
@@ -94,15 +99,16 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
       else
         Expanded(
           child: SalaryEntryTable(
-            employees:     _employees,
-            month:         _month,
-            year:          _year,
-            totalDays:     _totalDays,
-            isMsw:         _isMsw,
-            isFeb:         _isFeb,
-            daysCtrls:     _daysCtrls,
-            onDaysChanged: () => setState(() {}),
-            monthName:     _months[_month - 1],
+            employees:      _employees,
+            month:          _month,
+            year:           _year,
+            totalDays:      _totalDays,
+            isMsw:          _isMsw,
+            isFeb:          _isFeb,
+            daysCtrls:      _daysCtrls,
+            daysFocusNodes: _daysFocusNodes,               // ← NEW
+            onDaysChanged:  () => setState(() {}),
+            monthName:      _months[_month - 1],
           ),
         ),
     ]),

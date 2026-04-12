@@ -68,9 +68,7 @@ class AppRouter {
           ),
           GoRoute(
             path: '/salary-invoice',
-            pageBuilder: (c, s) => _buildPageTransition(
-              s, const ComingSoonScreen(feature: 'Salary Invoice'),
-            ),
+            pageBuilder: (c, s) => _buildPageTransition(s, const SalaryBillsScreen()), // ← Changed
           ),
           GoRoute(
             path: '/salary-bills',
