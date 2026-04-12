@@ -12,6 +12,9 @@ import '../../features/salary/presentation/salary_bills_screen.dart';
 import '../../features/salary/presentation/salary_statement_screen.dart';
 import '../../features/salary/presentation/salary_disbursements_screen.dart';
 import '../../features/salary/presentation/salary_preview_screen.dart';
+import '../../features/salary/presentation/salary_attachment_a_screen.dart';
+import '../../features/salary/presentation/salary_attachment_b_screen.dart';
+import '../../shared/widgets/coming_soon_screen.dart';
 
 class AppRouter {
   static final _root  = GlobalKey<NavigatorState>();
@@ -64,6 +67,12 @@ class AppRouter {
             pageBuilder: (c, s) => _buildPageTransition(s, const SalarySlipsScreen()),
           ),
           GoRoute(
+            path: '/salary-invoice',
+            pageBuilder: (c, s) => _buildPageTransition(
+              s, const ComingSoonScreen(feature: 'Salary Invoice'),
+            ),
+          ),
+          GoRoute(
             path: '/salary-bills',
             pageBuilder: (c, s) => _buildPageTransition(s, const SalaryBillsScreen()),
           ),
@@ -78,6 +87,14 @@ class AppRouter {
           GoRoute(
             path: '/salary-preview',
             pageBuilder: (c, s) => _buildPageTransition(s, const SalaryPreviewScreen()),
+          ),
+          GoRoute(
+            path: '/salary-attachment-a',
+            pageBuilder: (c, s) => _buildPageTransition(s, const SalaryAttachmentAScreen()),
+          ),
+          GoRoute(
+            path: '/salary-attachment-b',
+            pageBuilder: (c, s) => _buildPageTransition(s, const SalaryAttachmentBScreen()),
           ),
         ],
       ),
