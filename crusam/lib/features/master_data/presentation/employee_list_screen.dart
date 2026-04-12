@@ -380,15 +380,16 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     ),
   );
 
-  Widget _buildTable() {
+   Widget _buildTable() {
     final headerCells = _cols.map((c) => _th(c.label, c.width)).toList();
-
-    final dataRows = _notifier.filtered.map((e) {
+ 
+    final dataRows = _notifier.filtered.asMap().entries.map((entry) {
+      final idx = entry.key;
+      final e = entry.value;
       final isFemale = e.gender.toUpperCase() == 'F';
       return TableRow(
         children: [
-          _doubleTapToEdit(e, _td(e.srNo.toString(), _cols[0].width)),
-          // Gender badge cell
+          _doubleTapToEdit(e, _td((idx + 1).toString(), _cols[0].width)),
           _doubleTapToEdit(e, _tdGender(isFemale, _cols[1].width)),
           _doubleTapToEdit(e, _td(e.name, _cols[2].width, bold: true)),
           _doubleTapToEdit(e, _td(e.pfNo, _cols[3].width)),
@@ -405,9 +406,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
         ],
       );
     }).toList();
-
+ 
     final colWidths = { for (int i = 0; i < _cols.length; i++) i: FixedColumnWidth(_cols[i].width) };
-
+ 
     return Table(
       columnWidths: colWidths,
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,

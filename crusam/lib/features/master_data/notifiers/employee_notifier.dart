@@ -14,7 +14,9 @@ class EmployeeNotifier extends ChangeNotifier {
     notifyListeners();
     try {
       final maps = await DatabaseHelper.instance.getAllEmployees();
-      employees = filtered = maps.map(EmployeeModel.fromMap).toList();
+      employees = maps.map(EmployeeModel.fromMap).toList()
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      filtered = List.of(employees);
     } catch (e) {
       error = e.toString();
     } finally {
@@ -25,12 +27,13 @@ class EmployeeNotifier extends ChangeNotifier {
 
   void search(String q) {
     if (q.trim().isEmpty) {
-      filtered = employees;
+      filtered = List.of(employees);
     } else {
       final lower = q.toLowerCase();
       filtered = employees.where((e) =>
         e.name.toLowerCase().contains(lower) ||
         e.pfNo.toLowerCase().contains(lower)).toList();
+      // already sorted since employees is sorted
     }
     notifyListeners();
   }
@@ -54,9 +57,7 @@ class EmployeeNotifier extends ChangeNotifier {
 
     for (final employee in incoming) {
       final key = _dedupeKey(employee);
-      if (existingKeys.contains(key) || incomingKeys.contains(key)) {
-        continue;
-      }
+      if (existingKeys.contains(key) || incomingKeys.contains(key)) continue;
       incomingKeys.add(key);
       toInsert.add(employee);
     }
