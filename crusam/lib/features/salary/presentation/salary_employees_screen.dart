@@ -3,7 +3,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
-import '../../../features/master_data/notifiers/employee_notifier.dart';
+import '../../master_data/notifiers/employee_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import '../widgets/salary_entry_table.dart';
 
 class SalaryEmployeesScreen extends StatefulWidget {
@@ -13,13 +14,11 @@ class SalaryEmployeesScreen extends StatefulWidget {
 }
 
 class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
-  // Shared notifier — same source of truth as Employee Master Data
   final _employeeNotifier = EmployeeNotifier();
 
   int _month = DateTime.now().month;
   int _year  = DateTime.now().year;
 
-  // Keyed by employee DB id so controllers survive list re-sorts / filters
   final Map<int, TextEditingController> _daysCtrls     = {};
   final Map<int, FocusNode>             _daysFocusNodes = {};
 
@@ -37,6 +36,8 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     super.initState();
     _employeeNotifier.addListener(_syncControllers);
     _employeeNotifier.load();
+    // Sync initial month/year so SalarySlipsScreen always has data.
+    SalaryDataNotifier.instance.setMonthYear(_month, _year);
   }
 
   @override
@@ -48,8 +49,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     super.dispose();
   }
 
-  /// Called whenever the notifier's employee list changes (load, add, edit,
-  /// delete). Creates controllers for new employees and removes stale ones.
+  /// Called whenever the notifier's employee list changes.
   void _syncControllers() {
     if (!mounted) return;
 
@@ -58,7 +58,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
         .map((e) => e.id!)
         .toSet();
 
-    // Remove controllers for deleted employees
+    // Remove controllers for deleted employees.
     final staleIds = _daysCtrls.keys
         .where((id) => !liveIds.contains(id))
         .toList();
@@ -67,10 +67,17 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
       _daysFocusNodes.remove(id)?.dispose();
     }
 
-    // Add controllers for new employees (existing ones are untouched — days
-    // already entered by the user are preserved)
+    // Add controllers for new employees.  Each controller syncs its value
+    // into SalaryDataNotifier so SalarySlipsScreen updates in real-time.
     for (final id in liveIds) {
-      _daysCtrls[id]      ??= TextEditingController();
+      if (!_daysCtrls.containsKey(id)) {
+        final ctrl = TextEditingController();
+        ctrl.addListener(() {
+          final d = int.tryParse(ctrl.text) ?? 0;
+          SalaryDataNotifier.instance.setDays(id, d);
+        });
+        _daysCtrls[id] = ctrl;
+      }
       _daysFocusNodes[id] ??= FocusNode();
     }
 
@@ -82,15 +89,14 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     setState(() {
       _month = month;
       _year  = year;
-      // Clamp any value that now exceeds the new month's total; leave empty as-is
       for (final ctrl in _daysCtrls.values) {
         final v = int.tryParse(ctrl.text) ?? 0;
         if (v > newTotal) ctrl.text = newTotal.toString();
       }
     });
+    SalaryDataNotifier.instance.setMonthYear(month, year);
   }
 
-  /// Only employees with a non-empty name, preserving master-data sort order.
   List<EmployeeModel> get _activeEmployees => _employeeNotifier.employees
       .where((e) => e.name.trim().isNotEmpty)
       .toList();

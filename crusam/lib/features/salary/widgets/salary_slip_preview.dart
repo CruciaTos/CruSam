@@ -542,21 +542,6 @@ class SalarySlipPreview extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'This is a computer-generated salary slip and does not require a physical signature.',
-                      style: _body.copyWith(
-                        fontStyle: FontStyle.italic,
-                        fontSize: 8,
-                        color: const Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      config.declarationText,
-                      style: _body.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(width: 40),
