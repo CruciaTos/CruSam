@@ -3,8 +3,8 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
-import '../../master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/salary_entry_table.dart';
 
 class SalaryEmployeesScreen extends StatefulWidget {
@@ -14,7 +14,7 @@ class SalaryEmployeesScreen extends StatefulWidget {
 }
 
 class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
-  final _employeeNotifier = EmployeeNotifier();
+  final _ctrl = SalaryStateController.instance;
 
   int _month = DateTime.now().month;
   int _year  = DateTime.now().year;
@@ -34,49 +34,42 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   @override
   void initState() {
     super.initState();
-    _employeeNotifier.addListener(_syncControllers);
-    _employeeNotifier.load();
-    // Sync initial month/year so SalarySlipsScreen always has data.
+    _ctrl.addListener(_syncControllers);
+    _ctrl.loadEmployees();
     SalaryDataNotifier.instance.setMonthYear(_month, _year);
   }
 
   @override
   void dispose() {
-    _employeeNotifier.removeListener(_syncControllers);
-    _employeeNotifier.dispose();
+    _ctrl.removeListener(_syncControllers);
     for (final c in _daysCtrls.values)      c.dispose();
     for (final f in _daysFocusNodes.values) f.dispose();
     super.dispose();
   }
 
-  /// Called whenever the notifier's employee list changes.
   void _syncControllers() {
     if (!mounted) return;
 
-    final liveIds = _employeeNotifier.employees
+    final liveIds = _ctrl.employees
         .where((e) => e.id != null)
         .map((e) => e.id!)
         .toSet();
 
-    // Remove controllers for deleted employees.
-    final staleIds = _daysCtrls.keys
-        .where((id) => !liveIds.contains(id))
-        .toList();
+    final staleIds = _daysCtrls.keys.where((id) => !liveIds.contains(id)).toList();
     for (final id in staleIds) {
       _daysCtrls.remove(id)?.dispose();
       _daysFocusNodes.remove(id)?.dispose();
     }
 
-    // Add controllers for new employees.  Each controller syncs its value
-    // into SalaryDataNotifier so SalarySlipsScreen updates in real-time.
     for (final id in liveIds) {
       if (!_daysCtrls.containsKey(id)) {
-        final ctrl = TextEditingController();
-        ctrl.addListener(() {
-          final d = int.tryParse(ctrl.text) ?? 0;
+        final c = TextEditingController();
+        c.addListener(() {
+          final d = int.tryParse(c.text) ?? 0;
           SalaryDataNotifier.instance.setDays(id, d);
+          SalaryStateController.instance.notifyDaysChanged();
         });
-        _daysCtrls[id] = ctrl;
+        _daysCtrls[id] = c;
       }
       _daysFocusNodes[id] ??= FocusNode();
     }
@@ -89,107 +82,120 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     setState(() {
       _month = month;
       _year  = year;
-      for (final ctrl in _daysCtrls.values) {
-        final v = int.tryParse(ctrl.text) ?? 0;
-        if (v > newTotal) ctrl.text = newTotal.toString();
+      for (final c in _daysCtrls.values) {
+        final v = int.tryParse(c.text) ?? 0;
+        if (v > newTotal) c.text = newTotal.toString();
       }
     });
     SalaryDataNotifier.instance.setMonthYear(month, year);
   }
 
-  List<EmployeeModel> get _activeEmployees => _employeeNotifier.employees
-      .where((e) => e.name.trim().isNotEmpty)
-      .toList();
+  List<EmployeeModel> get _displayEmployees => _ctrl.filteredEmployees;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: _employeeNotifier,
-        builder: (context, _) {
-          final employees = _activeEmployees;
+    listenable: _ctrl,
+    builder: (context, _) {
+      final employees = _displayEmployees;
+      final code = _ctrl.selectedCompanyCode;
+      final title = code == 'All' ? 'Employee Salary' : 'Employee Salary - $code';
 
-          return Padding(
-            padding: const EdgeInsets.all(AppSpacing.pagePadding),
-            child: Column(
-              children: [
-                _Toolbar(
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.pagePadding),
+        child: Column(
+          children: [
+            _Toolbar(
+              title:          title,
+              month:          _month,
+              year:           _year,
+              months:         _months,
+              isMsw:          _isMsw,
+              isFeb:          _isFeb,
+              codes:          _ctrl.companyCodes,
+              selectedCode:   _ctrl.selectedCompanyCode,
+              onMonthChanged: (v) => _onMonthYearChange(v, _year),
+              onYearChanged:  (v) => _onMonthYearChange(_month, v),
+              onCodeChanged:  (c) => _ctrl.setCompanyCode(c),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            if (_ctrl.isLoading)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (employees.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.people_outline, size: 48, color: AppColors.slate300),
+                      const SizedBox(height: 12),
+                      Text('No employees found.', style: AppTextStyles.small),
+                      const SizedBox(height: 8),
+                      Text('Add employees in Employee Master Data first.',
+                          style: AppTextStyles.small.copyWith(color: AppColors.slate400)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: SalaryEntryTable(
+                  employees:      employees,
                   month:          _month,
                   year:           _year,
-                  months:         _months,
+                  totalDays:      _totalDays,
                   isMsw:          _isMsw,
                   isFeb:          _isFeb,
-                  onMonthChanged: (v) => _onMonthYearChange(v, _year),
-                  onYearChanged:  (v) => _onMonthYearChange(_month, v),
+                  daysCtrls:      _daysCtrls,
+                  daysFocusNodes: _daysFocusNodes,
+                  onDaysChanged:  () => setState(() {}),
+                  monthName:      _months[_month - 1],
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                if (_employeeNotifier.isLoading)
-                  const Expanded(child: Center(child: CircularProgressIndicator()))
-                else if (employees.isEmpty)
-                  Expanded(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.people_outline,
-                              size: 48, color: AppColors.slate300),
-                          const SizedBox(height: 12),
-                          Text('No employees found.',
-                              style: AppTextStyles.small),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Add employees in Employee Master Data first.',
-                            style: AppTextStyles.small
-                                .copyWith(color: AppColors.slate400),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  Expanded(
-                    child: SalaryEntryTable(
-                      employees:      employees,
-                      month:          _month,
-                      year:           _year,
-                      totalDays:      _totalDays,
-                      isMsw:          _isMsw,
-                      isFeb:          _isFeb,
-                      daysCtrls:      _daysCtrls,
-                      daysFocusNodes: _daysFocusNodes,
-                      onDaysChanged:  () => setState(() {}),
-                      monthName:      _months[_month - 1],
-                    ),
-                  ),
-              ],
-            ),
-          );
-        },
+              ),
+          ],
+        ),
       );
+    },
+  );
 }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 class _Toolbar extends StatelessWidget {
+  final String title;
   final int    month;
   final int    year;
   final List<String> months;
   final bool   isMsw;
   final bool   isFeb;
-  final ValueChanged<int> onMonthChanged;
-  final ValueChanged<int> onYearChanged;
+  final List<String> codes;
+  final String selectedCode;
+  final ValueChanged<int>    onMonthChanged;
+  final ValueChanged<int>    onYearChanged;
+  final ValueChanged<String> onCodeChanged;
 
   const _Toolbar({
+    required this.title,
     required this.month,
     required this.year,
     required this.months,
     required this.isMsw,
     required this.isFeb,
+    required this.codes,
+    required this.selectedCode,
     required this.onMonthChanged,
     required this.onYearChanged,
+    required this.onCodeChanged,
   });
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    Text('Employee Salary',
-        style: AppTextStyles.h3.copyWith(color: Colors.white)),
+    Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
+    const SizedBox(width: AppSpacing.md),
+    // Code filter chips
+    if (codes.isNotEmpty) ...[
+      _chip('All', selectedCode == 'All', () => onCodeChanged('All')),
+      ...codes.map((c) => _chip(c, selectedCode == c, () => onCodeChanged(c))),
+      const SizedBox(width: AppSpacing.md),
+    ],
     const Spacer(),
     SizedBox(
       width: 150, height: 40,
@@ -201,8 +207,7 @@ class _Toolbar extends StatelessWidget {
           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         ),
         items: List.generate(12, (i) => DropdownMenuItem(
-          value: i + 1,
-          child: Text(months[i], style: AppTextStyles.input),
+          value: i + 1, child: Text(months[i], style: AppTextStyles.input),
         )),
         onChanged: (v) { if (v != null) onMonthChanged(v); },
       ),
@@ -219,30 +224,42 @@ class _Toolbar extends StatelessWidget {
         ),
         items: List.generate(6, (i) {
           final y = DateTime.now().year - 1 + i;
-          return DropdownMenuItem(
-              value: y,
-              child: Text(y.toString(), style: AppTextStyles.input));
+          return DropdownMenuItem(value: y, child: Text(y.toString(), style: AppTextStyles.input));
         }),
         onChanged: (v) { if (v != null) onYearChanged(v); },
       ),
     ),
     const SizedBox(width: AppSpacing.lg),
-    if (isMsw)
-      _badge('MSW month — ₹6 deduction active',
-          AppColors.amber100, AppColors.amber700),
+    if (isMsw) _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
     if (isFeb) ...[
       const SizedBox(width: 8),
-      _badge('February — PT ₹300 for eligible',
-          AppColors.indigo50, AppColors.indigo600),
+      _badge('February — PT ₹300 for eligible', AppColors.indigo50, AppColors.indigo600),
     ],
   ]);
 
+  static Widget _chip(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppColors.indigo600 : AppColors.slate800,
+          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600,
+          color: active ? Colors.white : AppColors.slate400,
+        )),
+      ),
+    ),
+  );
+
   static Widget _badge(String label, Color bg, Color fg) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration:
-        BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-    child: Text(label,
-        style: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
+    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+    child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
   );
 }
