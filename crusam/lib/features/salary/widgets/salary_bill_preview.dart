@@ -188,7 +188,7 @@ class SalaryBillPreview extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(customerAddress, style: _body),
                       const SizedBox(height: 10),
-                      Text('(F & B)      GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                      Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),

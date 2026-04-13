@@ -40,7 +40,9 @@ class SalaryEntryTable extends StatelessWidget {
     this.totalsBarBottomPadding = 10,
   });
 
-  // ── Calculations ────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Calculations
+  // ────────────────────────────────────────────────────────────────────────────
   int _days(EmployeeModel e) {
     final ctrl = daysCtrls[e.id!];
     return (int.tryParse(ctrl?.text ?? '') ?? 0).clamp(0, totalDays);
@@ -81,7 +83,6 @@ class SalaryEntryTable extends StatelessWidget {
   int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
   double _net(EmployeeModel e) => _earnedGross(e) - _td(e);
 
-  // ── Focus navigation ────────────────────────────────────────────────────────
   void _focusNextEmployee(EmployeeModel current) {
     final idx = employees.indexOf(current);
     if (idx >= 0 && idx < employees.length - 1) {
@@ -156,9 +157,7 @@ class SalaryEntryTable extends StatelessWidget {
         border: const Border(bottom: BorderSide(color: AppColors.slate100)),
       ),
       children: [
-        // Sr. No.
         _cTxt((idx + 1).toString()),
-        // Name
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Center(
@@ -167,7 +166,6 @@ class SalaryEntryTable extends StatelessWidget {
                 overflow: TextOverflow.ellipsis),
           ),
         ),
-        // Gender badge
         Center(
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 8),
@@ -191,7 +189,6 @@ class SalaryEntryTable extends StatelessWidget {
         _cNum(e.basicCharges),
         _cNum(e.otherCharges),
         _cNum(e.grossSalary, bold: true),
-        // Days input — empty by default, Enter moves to next row
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: Align(
@@ -215,7 +212,6 @@ class SalaryEntryTable extends StatelessWidget {
         pt == 0
             ? _cBadge('—', AppColors.slate300)
             : _cDeduction(pt),
-        // TD cell (red background)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           color: const Color(0xFFFFF1F1),
@@ -227,7 +223,6 @@ class SalaryEntryTable extends StatelessWidget {
             ),
           ),
         ),
-        // Net cell (green background)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           color: const Color(0xFFF0FDF4),
@@ -243,111 +238,170 @@ class SalaryEntryTable extends StatelessWidget {
     );
   }
 
-  // ── Totals bar ──────────────────────────────────────────────────────────────
-  Widget _totalsBar(double totalWidth) {
+  // ── Totals bar (two‑level, fixed width) ─────────────────────────────────────
+  Widget _totalsBar() {
+    final totalBasic = employees.fold(0.0, (s, e) => s + e.basicCharges);
+    final totalOther = employees.fold(0.0, (s, e) => s + e.otherCharges);
+    final totalGrossFull = totalBasic + totalOther;
+
     final totalPf = employees.fold(0, (s, e) => s + _pf(e));
     final totalEsic = employees.fold(0, (s, e) => s + _esic(e));
     final totalMsw = isMsw ? employees.length * 6 : 0;
     final totalPt = employees.fold(0, (s, e) => s + _pt(e));
     final totalTd = employees.fold(0, (s, e) => s + _td(e));
     final totalNet = employees.fold(0.0, (s, e) => s + _net(e));
-    final totalEarned = employees.fold(0.0, (s, e) => s + _earnedGross(e));
 
-    final content = SizedBox(
-      width: totalWidth,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          totalsBarTopPadding,
-          16,
-          totalsBarBottomPadding,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.slate900,
-          borderRadius: BorderRadius.circular(AppSpacing.radius),
-          border: Border.all(color: AppColors.slate700, width: 0.5),
-        ),
-        child: Wrap(
-          spacing: 24,
-          runSpacing: 6,
-          children: [
-            _chip('Earned Gross', ' ₹${totalEarned.toStringAsFixed(0)}', AppColors.indigo400),
-            _chip('Total PF', ' ₹$totalPf', AppColors.slate400),
-            if (isMsw) _chip('Total MSW', ' ₹$totalMsw', AppColors.amber700),
-            _chip('Total ESIC', ' ₹$totalEsic', AppColors.slate400),
-            _chip('Total PT', ' ₹$totalPt', AppColors.slate400),
-            _chip('Total T.D.', ' ₹$totalTd', Colors.redAccent),
-            _chip('Net Payable', ' ₹${totalNet.toStringAsFixed(0)}', AppColors.emerald700),
-          ],
-        ),
+    return Container(
+      // width is now set by parent SizedBox
+      padding: EdgeInsets.fromLTRB(
+        16,
+        totalsBarTopPadding,
+        16,
+        totalsBarBottomPadding,
       ),
-    );
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: content,
+      decoration: BoxDecoration(
+        color: AppColors.slate900,
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        border: Border.all(color: AppColors.slate700, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildRowWithSeparators([
+            _chip('Total Basic', '₹${totalBasic.toStringAsFixed(0)}',
+                AppColors.indigo400, fontSize: 12),
+            _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}',
+                AppColors.indigo400, fontSize: 12),
+            _chip('Total Gross', '₹${totalGrossFull.toStringAsFixed(0)}',
+                AppColors.indigo400, fontSize: 16),
+          ]),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildRowWithSeparators([
+                  _chip('Total PF', '₹$totalPf', AppColors.slate400,
+                      fontSize: 12),
+                  if (isMsw)
+                    _chip('Total MSW', '₹$totalMsw', AppColors.amber700,
+                        fontSize: 12),
+                  _chip('Total ESIC', '₹$totalEsic', AppColors.slate400,
+                      fontSize: 12),
+                  _chip('Total PT', '₹$totalPt', AppColors.slate400,
+                      fontSize: 12),
+                  _chip('Total T.D.', '₹$totalTd', Colors.redAccent,
+                      fontSize: 16),
+                ]),
+              ),
+              _chip('Net Payable', '₹${totalNet.toStringAsFixed(0)}',
+                  AppColors.emerald700, fontSize: 16),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  static Widget _chip(String label, String value, Color color) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Text('$label: ', style: AppTextStyles.body.copyWith(color: AppColors.slate500)),
-      Text(value, style: AppTextStyles.bodyMedium.copyWith(color: color, fontSize: 14)),
-    ],
-  );
+  Widget _buildRowWithSeparators(List<Widget> chips) {
+    if (chips.isEmpty) return const SizedBox.shrink();
+    final List<Widget> children = [];
+    for (int i = 0; i < chips.length; i++) {
+      children.add(chips[i]);
+      if (i < chips.length - 1) {
+        children.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('|',
+              style: AppTextStyles.body.copyWith(color: AppColors.slate500)),
+        ));
+      }
+    }
+    return Wrap(
+      spacing: 0,
+      runSpacing: 4,
+      children: children,
+    );
+  }
+
+  static Widget _chip(String label, String value, Color color,
+      {double fontSize = 14}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$label: ',
+            style: AppTextStyles.body.copyWith(color: AppColors.slate500)),
+        Text(value,
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: color,
+              fontSize: fontSize,
+            )),
+      ],
+    );
+  }
 
   // ── Build ───────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final totalWidth = _totalTableWidth;
-    final hScroll = ScrollController();
-    final vScroll = ScrollController();
+    final hScrollController = ScrollController();
+    final vScrollController = ScrollController();
 
     return Column(
       children: [
-        _totalsBar(totalWidth),
-        SizedBox(height: totalsBarGap),
         Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              border: Border.all(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
-              child: Scrollbar(
-                controller: hScroll,
-                thumbVisibility: true,
-                notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
-                child: SingleChildScrollView(
-                  controller: hScroll,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
+          child: SingleChildScrollView(
+            controller: hScrollController,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: totalWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Totals bar with exact same width
+                  SizedBox(
                     width: totalWidth,
-                    child: Scrollbar(
-                      controller: vScroll,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        controller: vScroll,
-                        child: Table(
-                          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                          columnWidths: _colWidths(),
-                          children: [
-                            TableRow(
-                              decoration: const BoxDecoration(color: AppColors.slate900),
-                              children: _headers(),
+                    child: _totalsBar(),
+                  ),
+                  SizedBox(height: totalsBarGap),
+                  // Table container with exact same width
+                  SizedBox(
+                    width: totalWidth,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        border: Border.all(
+                            color: const Color.fromARGB(255, 21, 39, 81),
+                            width: 0.5),
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(AppSpacing.radius),
+                        child: Scrollbar(
+                          controller: vScrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: vScrollController,
+                            child: Table(
+                              defaultVerticalAlignment:
+                                  TableCellVerticalAlignment.middle,
+                              columnWidths: _colWidths(),
+                              children: [
+                                TableRow(
+                                  decoration: const BoxDecoration(
+                                      color: AppColors.slate900),
+                                  children: _headers(),
+                                ),
+                                ...employees.asMap().entries.map(
+                                      (entry) =>
+                                          _dataRow(entry.value, entry.key),
+                                    ),
+                              ],
                             ),
-                            ...employees.asMap().entries.map(
-                              (entry) => _dataRow(entry.value, entry.key),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -358,54 +412,55 @@ class SalaryEntryTable extends StatelessWidget {
 
   // ── Cell helpers ────────────────────────────────────────────────────────────
   static Widget _cTxt(String t) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Center(
-      child: Text(t, textAlign: TextAlign.center, style: AppTextStyles.body),
-    ),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Center(
+          child: Text(t, textAlign: TextAlign.center, style: AppTextStyles.body),
+        ),
+      );
 
   static Widget _cNum(double v, {bool bold = false, Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Center(
-      child: Text(
-        v == 0 ? '—' : '₹${v.toStringAsFixed(0)}',
-        textAlign: TextAlign.center,
-        style: AppTextStyles.body.copyWith(
-          fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-          color: color ?? AppColors.slate700,
-          fontSize: 12,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Center(
+          child: Text(
+            v == 0 ? '—' : '₹${v.toStringAsFixed(0)}',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body.copyWith(
+              fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+              color: color ?? AppColors.slate700,
+              fontSize: 12,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   static Widget _cDeduction(int v, {Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Center(
-      child: Text(
-        v == 0 ? '—' : '₹$v',
-        textAlign: TextAlign.center,
-        style: AppTextStyles.body.copyWith(
-          color: color ?? Colors.red.shade400,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        child: Center(
+          child: Text(
+            v == 0 ? '—' : '₹$v',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body.copyWith(
+              color: color ?? Colors.red.shade400,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 
   static Widget _cBadge(String label, Color color) => Center(
-    child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label,
-          style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w600)),
-    ),
-  );
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 14, color: color, fontWeight: FontWeight.w600)),
+        ),
+      );
 }
 
 // ── Days input field ───────────────────────────────────────────────────────────
@@ -427,52 +482,51 @@ class _DaysField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 32,
-    width: 70,
-    child: TextField(
-      controller: controller,
-      focusNode: focusNode,
-      textAlign: TextAlign.center,
-      textAlignVertical: TextAlignVertical.center,
-      keyboardType: TextInputType.number,
-      textInputAction: TextInputAction.next,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        _MaxValueFormatter(),   // ← updated: no argument, 2‑digit limit only
-      ],
-      style: AppTextStyles.input.copyWith(fontSize: 13),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: '0',
-        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.slate300),
+        height: 32,
+        width: 70,
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          textAlign: TextAlign.center,
+          textAlignVertical: TextAlignVertical.center,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            _MaxValueFormatter(),
+          ],
+          style: AppTextStyles.input.copyWith(fontSize: 13),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: '0',
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.slate300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+            ),
+          ),
+          onChanged: onChanged,
+          onSubmitted: (value) {
+            final v = int.tryParse(value) ?? 0;
+            if (v > max) {
+              controller.clear();
+              onChanged('');
+            }
+            onSubmitted?.call();
+          },
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
-        ),
-      ),
-      onChanged: onChanged,
-      onSubmitted: (value) {
-        final v = int.tryParse(value) ?? 0;
-        if (v > max) {
-          controller.clear();   // reset to empty
-          onChanged('');        // trigger recalculation → shows — in row
-        }
-        onSubmitted?.call();    // always move focus to next employee
-      },
-    ),
-  );
+      );
 }
 
-// ── Max value formatter (2‑digit limit only) ──────────────────────────────────
 class _MaxValueFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
       TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.length > 2) return oldValue; // 2‑digit limit only
+    if (newValue.text.length > 2) return oldValue;
     return newValue;
   }
 }

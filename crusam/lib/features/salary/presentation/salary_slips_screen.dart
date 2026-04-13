@@ -115,7 +115,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
         'F&B' => 'Food & Beverage',
         'I&L' => 'Infrastructure & Logistics',
         'P&S' => 'Projects & Services',
-        'AP'  => 'Administration & Projects',
+        'A&P'  => 'Administration & Projects',
         _     => code,
       };
 

@@ -205,7 +205,7 @@ class TaxInvoicePreview extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text('(F & B)', style: _body.copyWith(fontWeight: FontWeight.w700)),
+            Text('', style: _body.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(width: 16),
             Expanded(
               child: Text(

@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/company_config_model.dart';
 
-/// Tax Invoice Preview – A4 print-ready.
-/// Format perfectly mirrors the provided Tax Invoice template.
 class AttachmentBPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
   final CompanyConfigModel config;
   final EdgeInsets margins;
-
-  // ── Placeholder data fields (matching the template) ────────────────────────
   final String customerName;
   final String customerAddress;
   final String customerGst;
@@ -36,7 +32,7 @@ class AttachmentBPreview extends StatelessWidget {
     this.billNo          = 'AE/-/25-26',
     this.date            = '2026-04-11',
     this.poNo            = '-',
-    this.itemDescription = 'Local and outstation travelling expenses with daily allowance including mobile expenses and material.\n\n(Vouchers attached with this original bill)',
+    this.itemDescription = 'Manpower Supply Charges',
     this.panNo           = 'AAQFA5248L',
     this.companyGst      = '27AAQFA5248L2ZW',
     this.hsnCode         = 'SAC99851',
@@ -46,24 +42,18 @@ class AttachmentBPreview extends StatelessWidget {
     this.ifscCode        = 'IBKL0000680',
   });
 
-  // ── Palette ───────────────────────────────────────────────────────────────
-  static const _black   = Color(0xFF000000);
-  static const _green   = Color(0xFF1A6B2F);
-  static const _hdrBg   = Color(0xFFE3E8F4);
-  static const _grandBg = Color(0xFFD6DCF5);
+  static const _black = Color(0xFF000000);
+  static const _green = Color(0xFF1A6B2F);
+  static const _hdrBg = Color(0xFFE3E8F4);
 
   static const _bSide = BorderSide(color: _black, width: 0.75);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
-  // ── Static builder used by PDF export ────────────────────────────────────
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
     EdgeInsets margins = const EdgeInsets.all(24),
   }) {
-    final preview = AttachmentBPreview(
-      config:  config,
-      margins: margins,
-    );
+    final preview = AttachmentBPreview(config: config, margins: margins);
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
 
@@ -106,7 +96,6 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  // ── Header ────────────────────────────────────────────────────────────────
   Widget _header() => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -150,8 +139,7 @@ class AttachmentBPreview extends StatelessWidget {
         ],
       );
 
-  Widget _divider(double t) =>
-      Divider(color: _black, thickness: t, height: 4);
+  Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);
 
   Widget _centreLabel(String text) => Center(
         child: Text(
@@ -165,14 +153,12 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  // ── Billing Info Block ────────────────────────────────────────────────────
   Widget _billingInfo() => IntrinsicHeight(
         child: Container(
           decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Left Panel
               Expanded(
                 flex: 70,
                 child: Padding(
@@ -182,17 +168,18 @@ class AttachmentBPreview extends StatelessWidget {
                     children: [
                       Text('BILL To,', style: _body),
                       const SizedBox(height: 4),
-                      Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+                      Text(customerName,
+                          style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
                       const SizedBox(height: 2),
                       Text(customerAddress, style: _body),
                       const SizedBox(height: 10),
-                      Text('(F & B)      GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                      Text('GST No. $customerGst',
+                          style: _body.copyWith(fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
               ),
-              Container(width: 0.75, color: _black), // Vertical Separator
-              // Right Panel
+              Container(width: 0.75, color: _black),
               Expanded(
                 flex: 30,
                 child: Padding(
@@ -223,7 +210,6 @@ class AttachmentBPreview extends StatelessWidget {
         ],
       );
 
-  // ── Main Table Block ──────────────────────────────────────────────────────
   Widget _mainTable() => Container(
         decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
         child: Column(
@@ -243,7 +229,7 @@ class AttachmentBPreview extends StatelessWidget {
             ),
             _divider(0.75),
 
-            // 2. Item Row (with placeholder rate = 1753)
+            // 2. Item Row
             IntrinsicHeight(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 180),
@@ -251,22 +237,31 @@ class AttachmentBPreview extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _itemCell('1', 5),
-                    _itemCellDesc(itemDescription, 65, align: Alignment.topLeft),
-                    _itemCell('1', 6),               // QTY placeholder
-                    _itemCell('1753.00', 9),          // RATE = 1753
+                    _itemCell(itemDescription, 65, rightBorder: true, align: Alignment.topLeft),
+                    _itemCell('1', 6),
+                    _itemCell('1753.00', 9),
                     _itemCell('1753.00', 15, rightBorder: false, align: Alignment.topRight),
                   ],
                 ),
               ),
             ),
-            _divider(0.75),
 
-            // 3. Totals Area (simplified – only bank details and total)
+
+
+
+
+
+
+
+            _divider(0.50),
+
+
+            // 3. Totals Area
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Left Side (Bank Details & Tax Info)
+                  // Left: Sr(5) + Desc(65) = flex 70
                   Expanded(
                     flex: 70,
                     child: Padding(
@@ -274,17 +269,19 @@ class AttachmentBPreview extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('PAN NO :-  $panNo', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                          Text('PAN NO :-  $panNo',
+                              style: _body.copyWith(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              Text('GSTIN :  $companyGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
-                              const SizedBox(width: 40),
-                              Text('HSN: $hsnCode', style: _body.copyWith(fontWeight: FontWeight.w700)),
-                            ],
-                          ),
+                          Row(children: [
+                            Text('GSTIN :  $companyGst',
+                                style: _body.copyWith(fontWeight: FontWeight.w700)),
+                            const SizedBox(width: 40),
+                            Text('HSN: $hsnCode',
+                                style: _body.copyWith(fontWeight: FontWeight.w700)),
+                          ]),
                           const SizedBox(height: 12),
-                          Text('Bank Details for  :  RTGS / NEFT', style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10)),
+                          Text('Bank Details for  :  RTGS / NEFT',
+                              style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10)),
                           const SizedBox(height: 6),
                           _bankRow('Bank Name', bankName),
                           _bankRow('Branch', bankBranch),
@@ -294,13 +291,49 @@ class AttachmentBPreview extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(width: 0.75, color: _black), // Vertical Separator
-                  // Right Side (Only Total)
+                  Container(width: 0.75, color: _black),
+
+                  // Right: QTY(6) + RATE(9) + AMOUNT(15) = flex 30
                   Expanded(
                     flex: 30,
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _totalRowSimple('Total', '₹ 1753.00', isBold: true, bgColor: _grandBg),
+                        // Upper empty area — all 3 columns extend down with dividers
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 6,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                      border: Border(right: _bSide)),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 9,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                      border: Border(right: _bSide)),
+                                ),
+                              ),
+                              const Expanded(flex: 15, child: SizedBox()),
+                            ],
+                          ),
+                        ),
+                        // Bottom: "Total -" spanning full width
+                        Container(
+                      decoration: const BoxDecoration(
+                        color: _hdrBg,           // ← add this
+                        border: Border(top: _bSide),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                      child: Text(
+                        'Total Amount:',
+                        style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 10),
+                      ),
+                    ),
                       ],
                     ),
                   ),
@@ -322,7 +355,6 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  // ── Table Helpers ─────────────────────────────────────────────────────────
   Widget _headerCell(String text, int flex, {bool rightBorder = true}) => Expanded(
         flex: flex,
         child: Container(
@@ -340,42 +372,18 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  Widget _itemCell(String text, int flex, {bool rightBorder = true, Alignment align = Alignment.topCenter}) => Expanded(
+  Widget _itemCell(String text, int flex,
+      {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
+      Expanded(
         flex: flex,
         child: Container(
-          decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
+          decoration:
+              BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           alignment: align,
           child: Text(text, style: _body.copyWith(fontSize: 8.5)),
         ),
       );
-
-  // Custom handler to safely render the italicized "(Vouchers attached...)" segment
-  Widget _itemCellDesc(String text, int flex, {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
-    final parts = text.split('(Vouchers');
-    return Expanded(
-      flex: flex,
-      child: Container(
-        decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-        alignment: align,
-        child: parts.length > 1
-            ? RichText(
-                text: TextSpan(
-                  style: _body.copyWith(fontSize: 8.5),
-                  children: [
-                    TextSpan(text: parts[0]),
-                    TextSpan(
-                      text: '(Vouchers${parts[1]}',
-                      style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 8),
-                    ),
-                  ],
-                ),
-              )
-            : Text(text, style: _body.copyWith(fontSize: 8.5)),
-      ),
-    );
-  }
 
   Widget _bankRow(String label, String value) => Padding(
         padding: const EdgeInsets.only(bottom: 2),
@@ -387,31 +395,6 @@ class AttachmentBPreview extends StatelessWidget {
         ),
       );
 
-  // New simplified total row (no tax breakdown)
-  Widget _totalRowSimple(String label, String value, {bool isBold = false, Color? bgColor}) => Expanded(
-        child: Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          alignment: Alignment.centerRight,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                label,
-                style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
-              ),
-              Text(
-                value,
-                style: _body.copyWith(fontSize: 9, fontWeight: isBold ? FontWeight.w800 : FontWeight.normal),
-              ),
-            ],
-          ),
-        ),
-      );
-
-  // ── Footer ────────────────────────────────────────────────────────────────
   Widget _footer() => Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -430,8 +413,10 @@ class AttachmentBPreview extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text('For AARTI ENTERPRISES',
-                  style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
-              const SizedBox(height: 45), // Dedicated empty space for the physical signature
+                  style: _body.copyWith(
+                      // ignore: deprecated_member_use
+                      fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
+              const SizedBox(height: 45),
               Text('Partner', style: _body.copyWith(fontSize: 8.5)),
             ],
           ),
@@ -439,7 +424,6 @@ class AttachmentBPreview extends StatelessWidget {
       );
 }
 
-// ── Fallback logo ──────────────────────────────────────────────────────────────
 class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
 
