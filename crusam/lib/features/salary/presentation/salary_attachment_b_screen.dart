@@ -45,6 +45,10 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
     if (map != null && mounted) setState(() => _config = CompanyConfigModel.fromMap(map));
   }
 
+  /// Formats the selected month/year into a display date string for the bill.
+  /// e.g. "April 2026" → "April 2026"  (feel free to adjust the format)
+  String _buildDate(SalaryDataNotifier n) => '${n.monthName} ${n.year}';
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
@@ -98,7 +102,11 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                   _label('Bill No.'), const SizedBox(height: 4), _field(_billNoCtrl),
                   const SizedBox(height: AppSpacing.md),
                   _label('Item Description'), const SizedBox(height: 4),
-                  ItemDescriptionField(value: _itemDescription, onChanged: (v) => setState(() => _itemDescription = v), notifier: _descNotifier),
+                  ItemDescriptionField(
+                    value: _itemDescription,
+                    onChanged: (v) => setState(() => _itemDescription = v),
+                    notifier: _descNotifier,
+                  ),
                   const SizedBox(height: AppSpacing.xl),
                   const Divider(),
                   const SizedBox(height: AppSpacing.sm),
@@ -118,12 +126,22 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 820),
                       child: ListenableBuilder(
-                        listenable: Listenable.merge([_billNoCtrl, SalaryDataNotifier.instance]),
+                        // ✅ Also listen to SalaryStateController so employeeCount
+                        //    updates instantly when the company-code chip changes.
+                        listenable: Listenable.merge([
+                          _billNoCtrl,
+                          SalaryDataNotifier.instance,
+                          SalaryStateController.instance,
+                        ]),
                         builder: (_, __) => AttachmentBPreview(
                           config:          _config,
                           itemDescription: _itemDescription,
                           billNo:          _billNoCtrl.text,
                           poNo:            n.poNo,
+                          // ✅ Pass actual employee count so QTY & Amount are live
+                          employeeCount:   sc.employeeCount,
+                          // ✅ Pass the formatted month+year as the bill date
+                          date:            _buildDate(n),
                         ),
                       ),
                     ),
@@ -142,8 +160,14 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
 
   static Widget _field(TextEditingController ctrl) => SizedBox(
     height: 38,
-    child: TextField(controller: ctrl, style: AppTextStyles.input,
-        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
+    child: TextField(
+      controller: ctrl,
+      style: AppTextStyles.input,
+      decoration: const InputDecoration(
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      ),
+    ),
   );
 
   static Widget _summaryRow(String label, String value, Color color, {bool bold = false}) =>
@@ -151,8 +175,11 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Text(label, style: AppTextStyles.small),
-          Text(value, style: AppTextStyles.small.copyWith(color: color,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w600, fontSize: bold ? 13 : 12)),
+          Text(value, style: AppTextStyles.small.copyWith(
+            color: color,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+            fontSize: bold ? 13 : 12,
+          )),
         ]),
       );
 

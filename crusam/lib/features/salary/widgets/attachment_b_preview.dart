@@ -188,9 +188,13 @@ class AttachmentBPreview extends StatelessWidget {
     ),
   );
 
+  // Font size increased to 10 for Bill No., Date, PO No.
   Widget _kvRight(String k, String v) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
-    children: [Text(k, style: _body), Text(v, style: _body)],
+    children: [
+      Text(k, style: _body.copyWith(fontSize: 10)),
+      Text(v, style: _body.copyWith(fontSize: 10)),
+    ],
   );
 
   Widget _mainTable() => Container(
@@ -310,6 +314,7 @@ class AttachmentBPreview extends StatelessWidget {
     ),
   );
 
+  // Font size increased to 10 for item description, QTY, rate, amount data
   Widget _itemCell(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
       Expanded(
@@ -318,7 +323,7 @@ class AttachmentBPreview extends StatelessWidget {
           decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           alignment: align,
-          child: Text(text, style: _body.copyWith(fontSize: 8.5)),
+          child: Text(text, style: _body.copyWith(fontSize: 10)),
         ),
       );
 

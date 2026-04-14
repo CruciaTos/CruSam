@@ -22,8 +22,25 @@ import 'package:crusam/features/salary/widgets/attachment_b_preview.dart';
 
 
 class SalaryPdfExportService {
-  static const Duration _captureDelay = Duration(milliseconds: 200);
-  static const double _capturePixelRatio = 3.0;
+  // ✅ Matches pdf_export_service.dart exactly
+  static const Duration _captureDelay = Duration(milliseconds: 150);
+  static const double _capturePixelRatio = 4.0;
+
+  // ── Asset precaching (mirrors pdf_export_service) ─────────────────────────
+  static Future<void> _precacheSalaryAssets(BuildContext context) async {
+    await Future.wait([
+      _safePrecache(context, 'assets/images/aarti_logo.png'),
+      _safePrecache(context, 'assets/images/aarti_signature.png'),
+    ]);
+  }
+
+  static Future<void> _safePrecache(BuildContext context, String assetPath) async {
+    try {
+      await precacheImage(AssetImage(assetPath), context);
+    } catch (_) {
+      // Fall back to the preview widget errorBuilder if the asset is unavailable.
+    }
+  }
 
   // ── Salary Slips (all filtered employees) ─────────────────────────────────
   static Future<void> exportSalarySlips({
@@ -36,6 +53,8 @@ class SalaryPdfExportService {
     required bool isMsw,
     required bool isFeb,
   }) async {
+    await _precacheSalaryAssets(context);
+
     final n = SalaryDataNotifier.instance;
     final pages = <Widget>[];
 
@@ -84,12 +103,16 @@ class SalaryPdfExportService {
       ));
     }
 
-    if (pages.isEmpty) {
-      throw Exception('No employees to export');
-    }
+    if (pages.isEmpty) throw Exception('No employees to export');
 
-    final prefix = 'salary_slips_${monthName.toLowerCase()}_$year';
-    await _captureAndSave(context: context, pages: pages, prefix: prefix, subject: 'Salary Slips');
+    final slug = '${monthName.toLowerCase()}_$year';
+    await _exportPages(
+      context:    context,
+      pages:      pages,
+      slug:       slug,
+      filePrefix: 'salary_slips',
+      subject:    'Salary Slips',
+    );
   }
 
   // ── Salary Invoice (invoice page + all employee slips) ────────────────────
@@ -105,6 +128,8 @@ class SalaryPdfExportService {
     required String customerGst,
     required double invoiceBaseAmount,
   }) async {
+    await _precacheSalaryAssets(context);
+
     final sc = SalaryStateController.instance;
     final n  = SalaryDataNotifier.instance;
 
@@ -124,7 +149,7 @@ class SalaryPdfExportService {
     ));
 
     // 2. One salary slip per filtered employee
-    final employees  = sc.filteredEmployees;
+    final employees   = sc.filteredEmployees;
     final daysInMonth = n.totalDays;
     final isMsw       = n.isMsw;
     final isFeb       = n.isFeb;
@@ -172,8 +197,13 @@ class SalaryPdfExportService {
       ));
     }
 
-    final prefix = 'salary_invoice_${n.monthName.toLowerCase()}_${n.year}';
-    await _captureAndSave(context: context, pages: pages, prefix: prefix, subject: 'Salary Invoice');
+    await _exportPages(
+      context:    context,
+      pages:      pages,
+      slug:       _slugify(billNo),
+      filePrefix: 'salary_invoice',
+      subject:    'Salary Invoice',
+    );
   }
 
   // ── Attachment A ──────────────────────────────────────────────────────────
@@ -192,6 +222,8 @@ class SalaryPdfExportService {
     required String customerAddress,
     required String customerGst,
   }) async {
+    await _precacheSalaryAssets(context);
+
     final pages = <Widget>[
       AttachmentAPreview(
         config:          config,
@@ -208,7 +240,14 @@ class SalaryPdfExportService {
         totalAfterTax:   totalAfterTax,
       ),
     ];
-    await _captureAndSave(context: context, pages: pages, prefix: 'attachment_a', subject: 'Attachment A');
+
+    await _exportPages(
+      context:    context,
+      pages:      pages,
+      slug:       _slugify(billNo),
+      filePrefix: 'attachment_a',
+      subject:    'Attachment A',
+    );
   }
 
   // ── Attachment B ──────────────────────────────────────────────────────────
@@ -224,6 +263,8 @@ class SalaryPdfExportService {
     required String customerAddress,
     required String customerGst,
   }) async {
+    await _precacheSalaryAssets(context);
+
     final pages = <Widget>[
       AttachmentBPreview(
         config:          config,
@@ -237,84 +278,118 @@ class SalaryPdfExportService {
         employeeCount:   employeeCount,
       ),
     ];
-    await _captureAndSave(context: context, pages: pages, prefix: 'attachment_b', subject: 'Attachment B');
+
+    await _exportPages(
+      context:    context,
+      pages:      pages,
+      slug:       _slugify(billNo),
+      filePrefix: 'attachment_b',
+      subject:    'Attachment B',
+    );
   }
 
-  // ── Core capture + PDF + share ────────────────────────────────────────────
-  static Future<void> _captureAndSave({
+  // ── Core export: capture → PDF → write → share ────────────────────────────
+  // ✅ Mirrors _exportPages from pdf_export_service.dart exactly
+  static Future<void> _exportPages({
     required BuildContext context,
     required List<Widget> pages,
-    required String prefix,
+    required String slug,
+    required String filePrefix,
     required String subject,
   }) async {
     await WidgetsBinding.instance.endOfFrame;
 
-    final captured = <Uint8List>[];
+    final capturedPages = <Uint8List>[];
     for (final page in pages) {
-      captured.add(await _capturePage(context, page));
+      capturedPages.add(await _capturePage(context, page));
     }
 
     final pdf = pw.Document();
-    for (final bytes in captured) {
-      final img = pw.MemoryImage(bytes);
-      pdf.addPage(pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: pw.EdgeInsets.zero,
-        build: (_) => pw.SizedBox.expand(child: pw.Image(img, fit: pw.BoxFit.contain)),
-      ));
+    for (final pageBytes in capturedPages) {
+      final pdfImage = pw.MemoryImage(pageBytes);
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: pw.EdgeInsets.zero,
+          build: (_) => pw.SizedBox.expand(
+            child: pw.Image(pdfImage, fit: pw.BoxFit.contain),
+          ),
+        ),
+      );
     }
 
-    final pdfBytes = await pdf.save();
-    if (pdfBytes.isEmpty) throw Exception('PDF encode returned empty bytes');
+    final bytes = await pdf.save();
+    if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
 
-    final dir    = await _resolveOutputDir();
-    final now    = DateTime.now();
-    final stamp  = '${now.year}${_p(now.month)}${_p(now.day)}';
-    final path   = '${dir.path}${Platform.pathSeparator}${prefix}_$stamp.pdf';
-    final file   = File(path);
-    await file.writeAsBytes(pdfBytes, flush: true);
+    final fileName = '${filePrefix}_$slug.pdf';
+    final dir  = await _resolveOutputDir();
+    final path = '${dir.path}${Platform.pathSeparator}$fileName';
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+
+    // ✅ File-size guard (from pdf_export_service)
+    final written = await file.length();
+    if (written == 0) throw Exception('File written but is empty: $path');
 
     await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: File(path).uri.pathSegments.last)],
+      [XFile(path, mimeType: 'application/pdf', name: fileName)],
       subject: subject,
     );
   }
 
+  // ✅ Mirrors _capturePage from pdf_export_service.dart exactly
   static Future<Uint8List> _capturePage(BuildContext context, Widget page) async {
-    final ctrl = ScreenshotController();
-    final td   = Directionality.maybeOf(context) ?? TextDirection.ltr;
-    final mq   = MediaQuery.maybeOf(context) ?? const MediaQueryData(size: Size(800, 1200));
+    final controller    = ScreenshotController();
+    final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
+    final mediaQuery    = MediaQuery.maybeOf(context) ??
+        const MediaQueryData(size: Size(800, 1200));
 
-    final widget = InheritedTheme.captureAll(context, MediaQuery(
-      data: mq,
-      child: Directionality(
-        textDirection: td,
-        child: Material(color: Colors.white, child: ClipRect(child: page)),
+    final widget = InheritedTheme.captureAll(
+      context,
+      MediaQuery(
+        data: mediaQuery,
+        child: Directionality(
+          textDirection: textDirection,
+          child: Material(
+            color: Colors.white,
+            child: ClipRect(child: page),
+          ),
+        ),
       ),
-    ));
+    );
 
-    return ctrl.captureFromWidget(widget,
-        context: context, delay: _captureDelay, pixelRatio: _capturePixelRatio);
+    return controller.captureFromWidget(
+      widget,
+      context: context,
+      delay: _captureDelay,
+      pixelRatio: _capturePixelRatio,
+    );
   }
 
+  // ✅ Slugify bill number for filename (from pdf_export_service)
+  static String _slugify(String billNo) => billNo.isEmpty
+      ? '${DateTime.now().millisecondsSinceEpoch}'
+      : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
+
+  // ✅ Mirrors _resolveOutputDir from pdf_export_service.dart exactly
   static Future<Directory> _resolveOutputDir() async {
     if (Platform.isAndroid || Platform.isIOS) {
       return getApplicationDocumentsDirectory();
     }
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ?? '.';
-    final downloads = Directory(Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
+    final downloads = Directory(
+      Platform.isWindows ? '$home\\Downloads' : '$home/Downloads',
+    );
     if (await downloads.exists()) return downloads;
     return getApplicationDocumentsDirectory();
   }
-
-  static String _p(int n) => n.toString().padLeft(2, '0');
 
   static String _codeToDept(String code) => switch (code.toUpperCase()) {
     'F&B' => 'Food & Beverage',
     'I&L' => 'Infrastructure & Logistics',
     'P&S' => 'Projects & Services',
-    'A&P'  => 'Administration & Projects',
+    'A&P' => 'Administration & Projects',
     _     => code,
   };
 }

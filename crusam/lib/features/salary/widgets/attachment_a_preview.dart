@@ -201,9 +201,13 @@ class AttachmentAPreview extends StatelessWidget {
     ),
   );
 
+  // Font size increased to 10 for Bill No., Date, PO No.
   Widget _kvRight(String k, String v) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
-    children: [Text(k, style: _body), Text(v, style: _body)],
+    children: [
+      Text(k, style: _body.copyWith(fontSize: 10)),
+      Text(v, style: _body.copyWith(fontSize: 10)),
+    ],
   );
 
   // ── Main Table — 3 columns only (Sr.No | Item Description | Amount) ────────
@@ -311,6 +315,7 @@ class AttachmentAPreview extends StatelessWidget {
     ),
   );
 
+  // Font size increased to 10 for item cells
   Widget _itemCell(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
       Expanded(
@@ -319,10 +324,11 @@ class AttachmentAPreview extends StatelessWidget {
           decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           alignment: align,
-          child: Text(text, style: _body.copyWith(fontSize: 8.5)),
+          child: Text(text, style: _body.copyWith(fontSize: 10)),
         ),
       );
 
+  // Font size increased to 10 for description cell
   Widget _itemCellDesc(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
     final parts = text.split('(Vouchers');
@@ -333,12 +339,12 @@ class AttachmentAPreview extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         alignment: align,
         child: parts.length > 1
-            ? RichText(text: TextSpan(style: _body.copyWith(fontSize: 8.5), children: [
+            ? RichText(text: TextSpan(style: _body.copyWith(fontSize: 10), children: [
                 TextSpan(text: parts[0]),
                 TextSpan(text: '(Vouchers${parts[1]}',
-                    style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 8)),
+                    style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 9)),
               ]))
-            : Text(text, style: _body.copyWith(fontSize: 8.5)),
+            : Text(text, style: _body.copyWith(fontSize: 10)),
       ),
     );
   }
@@ -456,8 +462,6 @@ class AttachmentAPreview extends StatelessWidget {
       ]),
     ],
   );
-
-  
 }
 
 class _FallbackLogo extends StatelessWidget {
