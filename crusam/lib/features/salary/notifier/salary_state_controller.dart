@@ -20,8 +20,6 @@ class SalaryStateController extends ChangeNotifier {
     super.dispose();
   }
 
-  /// Safe notify: defers if called during a frame build to avoid
-  /// "setState called during build" errors from TextEditingController listeners.
   void _safeNotify() {
     if (_disposed) return;
     final phase = SchedulerBinding.instance.schedulerPhase;
@@ -54,9 +52,22 @@ class SalaryStateController extends ChangeNotifier {
     return codes;
   }
 
-  int    get employeeCount => filteredEmployees.length;
-  double get totalBasic    => filteredEmployees.fold(0.0, (s, e) => s + e.basicCharges);
-  double get totalGross    => filteredEmployees.fold(0.0, (s, e) => s + e.grossSalary);
+  int get employeeCount => filteredEmployees.length;
+
+  // ── Full (non-day-prorated) totals — used for Attachment A billing ─────────
+  double get totalBasicFull =>
+      filteredEmployees.fold(0.0, (s, e) => s + e.basicCharges);
+
+  double get totalGrossFull =>
+      filteredEmployees.fold(0.0, (s, e) => s + e.grossSalary);
+
+  double get totalEsicEligibleGrossFull =>
+      filteredEmployees.where((e) => e.grossSalary >= 21000).fold(
+        0.0, (s, e) => s + e.grossSalary);
+
+  // ── Day-prorated totals — used for earned salary display ──────────────────
+  double get totalBasic    => totalBasicFull;
+  double get totalGross    => totalGrossFull;
 
   double get totalEarnedBasic {
     final n = SalaryDataNotifier.instance;
@@ -72,23 +83,20 @@ class SalaryStateController extends ChangeNotifier {
         s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
   }
 
-  /// ESIC eligible = grossSalary <= 21000
-  double get totalEsicEligibleGross {
-    final n = SalaryDataNotifier.instance;
-    if (n.totalDays == 0) return 0;
-    return filteredEmployees
-        .where((e) => e.grossSalary <= 21000)
-        .fold(0.0, (s, e) =>
-            s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
-  }
-
-  double get attachmentAPf       => totalEarnedBasic * 0.1361;
-  double get attachmentAEsic     => totalEsicEligibleGross * 0.0325;
-  double get attachmentASubtotal => totalEarnedGross + attachmentAPf + attachmentAEsic;
+  // ── Attachment A calculations (use full, non-earned values) ───────────────
+  /// PF = 13.61% of Total Basic Salary (full, not earned)
+  double get attachmentAPf       => totalBasicFull * 0.1361;
+  /// ESIC = 3.25% of Total Gross Salary of ESIC-eligible employees (gross > 21000)
+  double get attachmentAEsic     => totalEsicEligibleGrossFull * 0.0325;
+  double get attachmentASubtotal => totalGrossFull + attachmentAPf + attachmentAEsic;
   double get attachmentATotal    => attachmentASubtotal.ceilToDouble();
   double get attachmentARoundOff => attachmentATotal - attachmentASubtotal;
-  double get attachmentBTotal    => employeeCount * 1753.0;
-  double get invoiceTotal        => attachmentATotal + attachmentBTotal;
+
+  // ── Attachment B calculations ──────────────────────────────────────────────
+  double get attachmentBTotal => employeeCount * 1753.0;
+
+  // ── Salary Invoice total (Attachment A + Attachment B) ────────────────────
+  double get invoiceTotal => attachmentATotal + attachmentBTotal;
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   void setCompanyCode(String code) {
@@ -125,8 +133,6 @@ class SalaryStateController extends ChangeNotifier {
     }
   }
 
-  /// Always post-frame deferred — TextEditingController listeners fire
-  /// synchronously during text layout which is mid-frame.
   void notifyDaysChanged() {
     if (_disposed) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {

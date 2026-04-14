@@ -57,7 +57,33 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
         child: Column(children: [
-          Row(children: [Text(title, style: AppTextStyles.h3)]),
+          // ── Toolbar (Column version) ──────────────────────────────────────
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // First row: Title and Month badge
+              Row(
+                children: [
+                  Text(title, style: AppTextStyles.h3),
+                  const SizedBox(width: AppSpacing.md),
+                  _MonthBadge(monthName: n.monthName, year: n.year),
+                ],
+              ),
+              // Second row: Company code filter chips (if any)
+              if (sc.companyCodes.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
+                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -129,4 +155,55 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
               fontWeight: bold ? FontWeight.w700 : FontWeight.w600, fontSize: bold ? 13 : 12)),
         ]),
       );
+
+  static Widget _codeChip(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppColors.indigo600 : AppColors.slate800,
+          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600,
+          color: active ? Colors.white : AppColors.slate400,
+        )),
+      ),
+    ),
+  );
+}
+
+// ── Month Badge Widget ─────────────────────────────────────────────────────────
+class _MonthBadge extends StatelessWidget {
+  final String monthName;
+  final int year;
+  const _MonthBadge({required this.monthName, required this.year});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: AppColors.slate800,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.slate700, width: 0.5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.calendar_month_outlined, size: 13, color: AppColors.slate400),
+        const SizedBox(width: 5),
+        Text(
+          '$monthName $year',
+          style: AppTextStyles.small.copyWith(
+            color: AppColors.slate300,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    ),
+  );
 }

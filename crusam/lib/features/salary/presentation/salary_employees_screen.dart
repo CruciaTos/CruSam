@@ -186,56 +186,75 @@ class _Toolbar extends StatelessWidget {
     required this.onCodeChanged,
   });
 
-  @override
-  Widget build(BuildContext context) => Row(children: [
-    Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
-    const SizedBox(width: AppSpacing.md),
-    // Code filter chips
-    if (codes.isNotEmpty) ...[
-      _chip('All', selectedCode == 'All', () => onCodeChanged('All')),
-      ...codes.map((c) => _chip(c, selectedCode == c, () => onCodeChanged(c))),
-      const SizedBox(width: AppSpacing.md),
-    ],
-    const Spacer(),
-    SizedBox(
-      width: 150, height: 40,
-      child: DropdownButtonFormField<int>(
-        value: month,
-        style: AppTextStyles.input,
-        decoration: const InputDecoration(
-          labelText: 'Month', isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+   @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // First row: Title, month/year, badges
+        Row(
+          children: [
+            Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
+            const Spacer(),
+            SizedBox(
+              width: 150, height: 40,
+              child: DropdownButtonFormField<int>(
+                value: month,
+                style: AppTextStyles.input,
+                decoration: const InputDecoration(
+                  labelText: 'Month', isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: List.generate(12, (i) => DropdownMenuItem(
+                  value: i + 1, child: Text(months[i], style: AppTextStyles.input),
+                )),
+                onChanged: (v) { if (v != null) onMonthChanged(v); },
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            SizedBox(
+              width: 100, height: 40,
+              child: DropdownButtonFormField<int>(
+                value: year,
+                style: AppTextStyles.input,
+                decoration: const InputDecoration(
+                  labelText: 'Year', isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                items: List.generate(6, (i) {
+                  final y = DateTime.now().year - 1 + i;
+                  return DropdownMenuItem(value: y, child: Text(y.toString(), style: AppTextStyles.input));
+                }),
+                onChanged: (v) { if (v != null) onYearChanged(v); },
+              ),
+            ),
+            const SizedBox(width: AppSpacing.lg),
+            if (isMsw) _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
+            if (isFeb) ...[
+              const SizedBox(width: 8),
+              _badge('February — PT ₹300 for eligible', AppColors.indigo50, AppColors.indigo600),
+            ],
+          ],
         ),
-        items: List.generate(12, (i) => DropdownMenuItem(
-          value: i + 1, child: Text(months[i], style: AppTextStyles.input),
-        )),
-        onChanged: (v) { if (v != null) onMonthChanged(v); },
-      ),
-    ),
-    const SizedBox(width: AppSpacing.md),
-    SizedBox(
-      width: 100, height: 40,
-      child: DropdownButtonFormField<int>(
-        value: year,
-        style: AppTextStyles.input,
-        decoration: const InputDecoration(
-          labelText: 'Year', isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        items: List.generate(6, (i) {
-          final y = DateTime.now().year - 1 + i;
-          return DropdownMenuItem(value: y, child: Text(y.toString(), style: AppTextStyles.input));
-        }),
-        onChanged: (v) { if (v != null) onYearChanged(v); },
-      ),
-    ),
-    const SizedBox(width: AppSpacing.lg),
-    if (isMsw) _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
-    if (isFeb) ...[
-      const SizedBox(width: 8),
-      _badge('February — PT ₹300 for eligible', AppColors.indigo50, AppColors.indigo600),
-    ],
-  ]);
+        // Second row: Company code filter chips (if any)
+        if (codes.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.sm),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _chip('All', selectedCode == 'All', () => onCodeChanged('All')),
+                ...codes.map((c) => _chip(c, selectedCode == c, () => onCodeChanged(c))),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  // ... _chip and _badge methods remain exactly the same ...
+
 
   static Widget _chip(String label, bool active, VoidCallback onTap) => Padding(
     padding: const EdgeInsets.only(right: 6),

@@ -5,7 +5,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
 
-class SalaryEntryTable extends StatelessWidget {
+class SalaryEntryTable extends StatefulWidget {
   final List<EmployeeModel> employees;
   final int month;
   final int year;
@@ -34,87 +34,113 @@ class SalaryEntryTable extends StatelessWidget {
     required this.daysFocusNodes,
     required this.onDaysChanged,
     required this.monthName,
-    this.totalsBarGap = 8,
-    this.totalsBarHPadding = 0,
-    this.totalsBarTopPadding = 10,
-    this.totalsBarBottomPadding = 10,
+    this.totalsBarGap            = 8,
+    this.totalsBarHPadding       = 0,
+    this.totalsBarTopPadding     = 10,
+    this.totalsBarBottomPadding  = 10,
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Calculations (unchanged)
-  // ────────────────────────────────────────────────────────────────────────────
+  @override
+  State<SalaryEntryTable> createState() => _SalaryEntryTableState();
+}
+
+class _SalaryEntryTableState extends State<SalaryEntryTable> {
+  late final ScrollController _hScrollController;
+  late final ScrollController _vScrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _hScrollController = ScrollController();
+    _vScrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _hScrollController.dispose();
+    _vScrollController.dispose();
+    super.dispose();
+  }
+
+  // ── Sorted employees (alphabetically by name) ────────────────────────────────
+  List<EmployeeModel> get _sortedEmployees {
+    final sorted = List<EmployeeModel>.from(widget.employees);
+    sorted.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return sorted;
+  }
+
+  // ── Calculations ─────────────────────────────────────────────────────────────
   int _days(EmployeeModel e) {
-    final ctrl = daysCtrls[e.id!];
-    return (int.tryParse(ctrl?.text ?? '') ?? 0).clamp(0, totalDays);
+    final ctrl = widget.daysCtrls[e.id!];
+    return (int.tryParse(ctrl?.text ?? '') ?? 0).clamp(0, widget.totalDays);
   }
 
   double _earnedBasic(EmployeeModel e) =>
-      totalDays == 0 ? 0 : e.basicCharges * _days(e) / totalDays;
+      widget.totalDays == 0 ? 0 : e.basicCharges * _days(e) / widget.totalDays;
 
   double _earnedOther(EmployeeModel e) =>
-      totalDays == 0 ? 0 : e.otherCharges * _days(e) / totalDays;
+      widget.totalDays == 0 ? 0 : e.otherCharges * _days(e) / widget.totalDays;
 
   double _earnedGross(EmployeeModel e) => _earnedBasic(e) + _earnedOther(e);
 
   int _pf(EmployeeModel e) => (_earnedBasic(e) * 0.12).round();
 
-  bool _esicApplicable(EmployeeModel e) => e.grossSalary > 21000;
+  bool _esicApplicable(EmployeeModel e) => e.grossSalary >= 21000;
 
   int _esic(EmployeeModel e) {
     if (!_esicApplicable(e)) return 0;
     return (_earnedGross(e) * 0.0075).ceil();
   }
 
-  int _msw() => isMsw ? 6 : 0;
+  int _msw() => widget.isMsw ? 6 : 0;
 
   int _pt(EmployeeModel e) {
-    final g = _earnedGross(e);
+    final g        = _earnedGross(e);
     final isFemale = e.gender.toUpperCase() == 'F';
     if (isFemale) {
       if (g < 25000) return 0;
-      return isFeb ? 300 : 200;
+      return widget.isFeb ? 300 : 200;
     } else {
-      if (g < 7500) return 0;
-      if (g < 10000) return 175;
-      return isFeb ? 300 : 200;
+      if (g < 7500)       return 0;
+      if (g < 10000)      return 175;
+      return widget.isFeb ? 300 : 200;
     }
   }
 
-  int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
+  int    _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
   double _net(EmployeeModel e) => _earnedGross(e) - _td(e);
 
   void _focusNextEmployee(EmployeeModel current) {
-    final idx = employees.indexOf(current);
-    if (idx >= 0 && idx < employees.length - 1) {
-      final nextId = employees[idx + 1].id;
-      if (nextId != null) daysFocusNodes[nextId]?.requestFocus();
+    final sorted = _sortedEmployees;
+    final idx = sorted.indexOf(current);
+    if (idx >= 0 && idx < sorted.length - 1) {
+      final nextId = sorted[idx + 1].id;
+      if (nextId != null) widget.daysFocusNodes[nextId]?.requestFocus();
     }
   }
 
-  // ── Column widths (used only for the table) ─────────────────────────────────
+  // ── Column widths ─────────────────────────────────────────────────────────────
   Map<int, TableColumnWidth> _colWidths() {
     final cols = <double>[
       48.0, 240.0, 55.0, 100.0, 100.0, 110.0, 80.0, 110.0, 80.0,
-      if (isMsw) 72.0,
+      if (widget.isMsw) 72.0,
       100.0, 80.0, 95.0, 110.0,
     ];
     return {for (int i = 0; i < cols.length; i++) i: FixedColumnWidth(cols[i])};
   }
 
-  double get _totalTableWidth {
-    return _colWidths().values
-        .map((w) => (w as FixedColumnWidth).value)
-        .fold(0.0, (a, b) => a + b);
-  }
+  double get _totalTableWidth => _colWidths().values
+      .map((w) => (w as FixedColumnWidth).value)
+      .fold(0.0, (a, b) => a + b);
 
-  // ── Headers (unchanged) ────────────────────────────────────────────────────
+  // ── Headers ───────────────────────────────────────────────────────────────────
   List<Widget> _headers() {
     final labels = [
       'Sr.', 'Name', 'Gender',
       'Basic', 'Other', 'Gross',
       'Days\nPresent', 'Earned\nGross',
       'Provident\n Fund(12%)',
-      if (isMsw) 'MSW\n(₹6)',
+      if (widget.isMsw) 'MSW\n(₹6)',
       'ESIC\n(0.75%)',
       'Prof.\nTax',
       'Total\nDeductions',
@@ -128,16 +154,16 @@ class SalaryEntryTable extends StatelessWidget {
     )).toList();
   }
 
-  // ── Data rows (unchanged) ───────────────────────────────────────────────────
+  // ── Data row ──────────────────────────────────────────────────────────────────
   TableRow _dataRow(EmployeeModel e, int idx) {
-    final bg = idx.isEven ? AppColors.white : const Color(0xFFF8FAFC);
-    final pf = _pf(e);
-    final esic = _esic(e);
-    final msw = _msw();
-    final pt = _pt(e);
-    final td = _td(e);
-    final net = _net(e);
-    final earned = _earnedGross(e);
+    final bg       = idx.isEven ? AppColors.white : const Color(0xFFF8FAFC);
+    final pf       = _pf(e);
+    final esic     = _esic(e);
+    final msw      = _msw();
+    final pt       = _pt(e);
+    final td       = _td(e);
+    final net      = _net(e);
+    final earned   = _earnedGross(e);
     final isFemale = e.gender.toUpperCase() == 'F';
 
     return TableRow(
@@ -150,9 +176,7 @@ class SalaryEntryTable extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Center(
-            child: Text(e.name,
-                style: AppTextStyles.bodyMedium,
-                overflow: TextOverflow.ellipsis),
+            child: Text(e.name, style: AppTextStyles.bodyMedium, overflow: TextOverflow.ellipsis),
           ),
         ),
         Center(
@@ -165,11 +189,8 @@ class SalaryEntryTable extends StatelessWidget {
             ),
             child: Text(
               isFemale ? 'F' : 'M',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: isFemale ? const Color(0xFFBE185D) : AppColors.blue600,
-              ),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                  color: isFemale ? const Color(0xFFBE185D) : AppColors.blue600),
             ),
           ),
         ),
@@ -181,327 +202,194 @@ class SalaryEntryTable extends StatelessWidget {
           child: Align(
             alignment: Alignment.center,
             child: _DaysField(
-              key: ValueKey('d_${e.id}_${month}_$year'),
-              controller: daysCtrls[e.id!]!,
-              focusNode: daysFocusNodes[e.id],
-              max: totalDays,
-              onChanged: (_) => onDaysChanged(),
+              key: ValueKey('d_${e.id}_${widget.month}_${widget.year}'),
+              controller: widget.daysCtrls[e.id!]!,
+              focusNode:  widget.daysFocusNodes[e.id],
+              max:        widget.totalDays,
+              onChanged:  (_) => widget.onDaysChanged(),
               onSubmitted: () => _focusNextEmployee(e),
             ),
           ),
         ),
         _cNum(earned, bold: true, color: AppColors.indigo600),
         _cDeduction(pf),
-        if (isMsw) _cDeduction(msw, color: AppColors.amber700),
+        if (widget.isMsw) _cDeduction(msw, color: AppColors.amber700),
         _esicApplicable(e) ? _cDeduction(esic) : _cBadge('N/A', AppColors.slate300),
         pt == 0 ? _cBadge('—', AppColors.slate300) : _cDeduction(pt),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           color: const Color(0xFFFFF1F1),
           child: Center(
-            child: Text(
-              td == 0 ? '—' : '₹$td',
-              style: AppTextStyles.bodySemi.copyWith(
-                  color: Colors.red.shade700, fontSize: 12),
-            ),
+            child: Text(td == 0 ? '—' : '₹$td',
+                style: AppTextStyles.bodySemi.copyWith(color: Colors.red.shade700, fontSize: 12)),
           ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
           color: const Color(0xFFF0FDF4),
           child: Center(
-            child: Text(
-              net <= 0 ? '—' : '₹${net.toStringAsFixed(0)}',
-              style: AppTextStyles.bodySemi.copyWith(
-                  color: AppColors.emerald700, fontSize: 12),
-            ),
+            child: Text(net <= 0 ? '—' : '₹${net.toStringAsFixed(0)}',
+                style: AppTextStyles.bodySemi.copyWith(color: AppColors.emerald700, fontSize: 12)),
           ),
         ),
       ],
     );
   }
 
-  // ── Totals bar (bottom-aligned, Net Payable far right) ─────────────────────
-  Widget _totalsBar() {
-    final totalBasic = employees.fold(0.0, (s, e) => s + e.basicCharges);
-    final totalOther = employees.fold(0.0, (s, e) => s + e.otherCharges);
+  // ── Totals bar ────────────────────────────────────────────────────────────────
+  Widget _totalsBar(double availableWidth, List<EmployeeModel> employees) {
+    final totalBasic     = employees.fold(0.0, (s, e) => s + e.basicCharges);
+    final totalOther     = employees.fold(0.0, (s, e) => s + e.otherCharges);
     final totalGrossFull = totalBasic + totalOther;
-    final totalPf = employees.fold(0, (s, e) => s + _pf(e));
-    final totalEsic = employees.fold(0, (s, e) => s + _esic(e));
-    final totalMsw = isMsw ? employees.length * 6 : 0;
-    final totalPt = employees.fold(0, (s, e) => s + _pt(e));
-    final totalTd = employees.fold(0, (s, e) => s + _td(e));
-    final totalNet = employees.fold(0.0, (s, e) => s + _net(e));
+    final totalPf        = employees.fold(0,   (s, e) => s + _pf(e));
+    final totalEsic      = employees.fold(0,   (s, e) => s + _esic(e));
+    final totalMsw       = widget.isMsw ? employees.length * 6 : 0;
+    final totalPt        = employees.fold(0,   (s, e) => s + _pt(e));
+    final totalTd        = employees.fold(0,   (s, e) => s + _td(e));
+    final totalNet       = employees.fold(0.0, (s, e) => s + _net(e));
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        totalsBarTopPadding,
-        16,
-        totalsBarBottomPadding,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors.slate900,
-        borderRadius: BorderRadius.circular(AppSpacing.radius),
-        border: Border.all(color: AppColors.slate700, width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Top row: left group + Net Payable on far right ─────────────────
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              // Left side chips (Gross, Basic, Other) – wrapped for responsiveness
-              Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.end,
-                  spacing: 0,
-                  runSpacing: 4,
-                  children: [
-                    _chip(
-                      'Total Gross',
-                      '₹${totalGrossFull.toStringAsFixed(0)}',
-                      AppColors.indigo400,
-                      labelStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 16,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.indigo400,
-                        fontSize: 16,
-                      ),
-                    ),
-                    _separator(),
-                    _chip(
-                      'Total Basic',
-                      '₹${totalBasic.toStringAsFixed(0)}',
-                      AppColors.indigo400,
-                      labelStyle: AppTextStyles.body.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 10,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.indigo400,
-                        fontSize: 10,
-                      ),
-                    ),
-                    _separator(),
-                    _chip(
-                      'Total Other',
-                      '₹${totalOther.toStringAsFixed(0)}',
-                      AppColors.indigo400,
-                      labelStyle: AppTextStyles.body.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 10,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.indigo400,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Net Payable placed at the far right
-              _chip(
-                'Net Payable',
-                '₹${totalNet.toStringAsFixed(0)}',
-                AppColors.emerald700,
-                labelStyle: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.slate500,
-                  fontSize: 16,
-                ),
-                valueStyle: AppTextStyles.bodyMedium.copyWith(
-                  color: AppColors.emerald700,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // ── Bottom row: Deductions group ────────────────────────────────────
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.end,
-                  spacing: 0,
-                  runSpacing: 4,
-                  children: [
-                    _chip(
-                      'Total Deductions ',
-                      '₹$totalTd',
-                      Colors.redAccent,
-                      labelStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 16,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: Colors.redAccent,
-                        fontSize: 16,
-                      ),
-                    ),
-                    _separator(),
-                    _chip(
-                      'Total PF',
-                      '₹$totalPf',
-                      AppColors.slate400,
-                      labelStyle: AppTextStyles.body.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 10,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.slate400,
-                        fontSize: 10,
-                      ),
-                    ),
-                    _separator(),
-                    if (isMsw) ...[
-                      _chip(
-                        'Total MSW',
-                        '₹$totalMsw',
-                        AppColors.amber700,
-                        labelStyle: AppTextStyles.body.copyWith(
-                          color: AppColors.slate500,
-                          fontSize: 10,
-                        ),
-                        valueStyle: AppTextStyles.bodyMedium.copyWith(
-                          color: AppColors.amber700,
-                          fontSize: 10,
-                        ),
-                      ),
+    return SizedBox(
+      width: availableWidth,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          16, widget.totalsBarTopPadding, 16, widget.totalsBarBottomPadding,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.slate900,
+          borderRadius: BorderRadius.circular(AppSpacing.radius),
+          border: Border.all(color: AppColors.slate700, width: 0.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Top row: Gross/Basic/Other  |  Net Payable
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.end,
+                    spacing: 0,
+                    runSpacing: 4,
+                    children: [
+                      _chip('Total Gross', '₹${totalGrossFull.toStringAsFixed(0)}',
+                          AppColors.indigo400,
+                          labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 16)),
                       _separator(),
+                      _chip('Total Basic', '₹${totalBasic.toStringAsFixed(0)}',
+                          AppColors.indigo400,
+                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 10)),
+                      _separator(),
+                      _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}',
+                          AppColors.indigo400,
+                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 10)),
                     ],
-                    _chip(
-                      'Total ESIC',
-                      '₹$totalEsic',
-                      AppColors.slate400,
-                      labelStyle: AppTextStyles.body.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 10,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.slate400,
-                        fontSize: 10,
-                      ),
-                    ),
-                    _separator(),
-                    _chip(
-                      'Total PT',
-                      '₹$totalPt',
-                      AppColors.slate400,
-                      labelStyle: AppTextStyles.body.copyWith(
-                        color: AppColors.slate500,
-                        fontSize: 10,
-                      ),
-                      valueStyle: AppTextStyles.bodyMedium.copyWith(
-                        color: AppColors.slate400,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                _chip('Net Payable', '₹${totalNet.toStringAsFixed(0)}',
+                    AppColors.emerald700,
+                    labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
+                    valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.emerald700, fontSize: 16)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Bottom row: Deductions
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.end,
+                    spacing: 0,
+                    runSpacing: 4,
+                    children: [
+                      _chip('Total Deductions ', '₹$totalTd', Colors.redAccent,
+                          labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: Colors.redAccent, fontSize: 16)),
+                      _separator(),
+                      _chip('Total PF', '₹$totalPf', AppColors.slate400,
+                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
+                      _separator(),
+                      if (widget.isMsw) ...[
+                        _chip('Total MSW', '₹$totalMsw', AppColors.amber700,
+                            labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                            valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.amber700, fontSize: 10)),
+                        _separator(),
+                      ],
+                      _chip('Total ESIC', '₹$totalEsic', AppColors.slate400,
+                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
+                      _separator(),
+                      _chip('Total PT', '₹$totalPt', AppColors.slate400,
+                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
+                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // Helper widget for separator pipe
-  static Widget _separator() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Text(
-        '|',
-        style: AppTextStyles.body.copyWith(color: AppColors.slate500),
-      ),
-    );
-  }
-
-  // Enhanced _chip method with separate label and value styles
-  static Widget _chip(
-    String label,
-    String value,
-    Color color, {
-    TextStyle? labelStyle,
-    TextStyle? valueStyle,
-    double fontSize = 14, // kept as a convenience fallback
-  }) {
-    final defaultLabelStyle = AppTextStyles.body.copyWith(
-      color: AppColors.slate500,
-      fontSize: fontSize,
-    );
-    final defaultValueStyle = AppTextStyles.bodyMedium.copyWith(
-      color: color,
-      fontSize: fontSize,
-    );
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '$label: ',
-          style: labelStyle ?? defaultLabelStyle,
-        ),
-        Text(
-          value,
-          style: valueStyle ?? defaultValueStyle,
-        ),
-      ],
-    );
-  }
-
-  // ── Build ───────────────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final employees = _sortedEmployees; // Use sorted list
     final totalWidth = _totalTableWidth;
-    final hScrollController = ScrollController();
-    final vScrollController = ScrollController();
 
-    return Column(
-      children: [
-        _totalsBar(),
-        SizedBox(height: totalsBarGap),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              border: Border.all(color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
-              child: Scrollbar(
-                controller: hScrollController,
-                thumbVisibility: true,
-                notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
-                child: SingleChildScrollView(
-                  controller: hScrollController,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: totalWidth,
-                    child: Scrollbar(
-                      controller: vScrollController,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(
-                        controller: vScrollController,
-                        child: Table(
-                          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                          columnWidths: _colWidths(),
-                          children: [
-                            TableRow(
-                              decoration: const BoxDecoration(color: AppColors.slate900),
-                              children: _headers(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        return Column(
+          children: [
+            _totalsBar(availableWidth, employees),
+            SizedBox(height: widget.totalsBarGap),
+            Expanded(
+              child: Container(
+                width: availableWidth,
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  border: Border.all(
+                      color: const Color.fromARGB(255, 21, 39, 81), width: 0.5),
+                  borderRadius: BorderRadius.circular(AppSpacing.radius),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(AppSpacing.radius),
+                  child: Scrollbar(
+                    controller: _hScrollController,
+                    thumbVisibility: true,
+                    notificationPredicate: (n) => n.metrics.axis == Axis.horizontal,
+                    child: SingleChildScrollView(
+                      controller: _hScrollController,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: totalWidth,
+                        child: Scrollbar(
+                          controller: _vScrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _vScrollController,
+                            child: Table(
+                              defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                              columnWidths: _colWidths(),
+                              children: [
+                                TableRow(
+                                  decoration: const BoxDecoration(color: AppColors.slate900),
+                                  children: _headers(),
+                                ),
+                                ...employees.asMap().entries.map(
+                                  (entry) => _dataRow(entry.value, entry.key),
+                                ),
+                              ],
                             ),
-                            ...employees.asMap().entries.map(
-                              (entry) => _dataRow(entry.value, entry.key),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -509,47 +397,56 @@ class SalaryEntryTable extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ── Static helpers ────────────────────────────────────────────────────────────
+  static Widget _separator() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    child: Text('|', style: AppTextStyles.body.copyWith(color: AppColors.slate500)),
+  );
+
+  static Widget _chip(String label, String value, Color color,
+      {TextStyle? labelStyle, TextStyle? valueStyle, double fontSize = 14}) {
+    final lStyle = labelStyle ??
+        AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: fontSize);
+    final vStyle = valueStyle ??
+        AppTextStyles.bodyMedium.copyWith(color: color, fontSize: fontSize);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$label: ', style: lStyle),
+        Text(value, style: vStyle),
       ],
     );
   }
 
-  // ── Cell helpers (unchanged) ────────────────────────────────────────────────
   static Widget _cTxt(String t) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-    child: Center(
-      child: Text(t, textAlign: TextAlign.center, style: AppTextStyles.body),
-    ),
+    child: Center(child: Text(t, textAlign: TextAlign.center, style: AppTextStyles.body)),
   );
 
   static Widget _cNum(double v, {bool bold = false, Color? color}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
     child: Center(
-      child: Text(
-        v == 0 ? '—' : '₹${v.toStringAsFixed(0)}',
-        textAlign: TextAlign.center,
-        style: AppTextStyles.body.copyWith(
-          fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-          color: color ?? AppColors.slate700,
-          fontSize: 12,
-        ),
-      ),
+      child: Text(v == 0 ? '—' : '₹${v.toStringAsFixed(0)}',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.body.copyWith(
+              fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+              color: color ?? AppColors.slate700, fontSize: 12)),
     ),
   );
 
   static Widget _cDeduction(int v, {Color? color}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
     child: Center(
-      child: Text(
-        v == 0 ? '—' : '₹$v',
-        textAlign: TextAlign.center,
-        style: AppTextStyles.body.copyWith(
-          color: color ?? Colors.red.shade400,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+      child: Text(v == 0 ? '—' : '₹$v',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.body.copyWith(
+              color: color ?? Colors.red.shade400, fontSize: 12, fontWeight: FontWeight.w500)),
     ),
   );
 
@@ -558,22 +455,20 @@ class SalaryEntryTable extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
+        color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
       child: Text(label,
           style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w600)),
     ),
   );
 }
 
-// ── Days input field (unchanged) ──────────────────────────────────────────────
+// ── Days input field ───────────────────────────────────────────────────────────
 class _DaysField extends StatelessWidget {
   final TextEditingController controller;
-  final FocusNode? focusNode;
-  final int max;
-  final ValueChanged<String> onChanged;
-  final VoidCallback? onSubmitted;
+  final FocusNode?            focusNode;
+  final int                   max;
+  final ValueChanged<String>  onChanged;
+  final VoidCallback?         onSubmitted;
 
   const _DaysField({
     super.key,
@@ -586,19 +481,15 @@ class _DaysField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 32,
-    width: 70,
+    height: 32, width: 70,
     child: TextField(
-      controller: controller,
-      focusNode: focusNode,
-      textAlign: TextAlign.center,
+      controller:       controller,
+      focusNode:        focusNode,
+      textAlign:        TextAlign.center,
       textAlignVertical: TextAlignVertical.center,
-      keyboardType: TextInputType.number,
-      textInputAction: TextInputAction.next,
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        _MaxValueFormatter(),
-      ],
+      keyboardType:     TextInputType.number,
+      textInputAction:  TextInputAction.next,
+      inputFormatters:  [FilteringTextInputFormatter.digitsOnly, _MaxValueFormatter()],
       style: AppTextStyles.input.copyWith(fontSize: 13),
       decoration: InputDecoration(
         isDense: true,

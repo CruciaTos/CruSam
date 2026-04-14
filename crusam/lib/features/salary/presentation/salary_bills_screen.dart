@@ -1,3 +1,4 @@
+import 'package:crusam/features/salary/services/salary_pdf_export_service.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -8,6 +9,7 @@ import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/widgets/item_description_field.dart';
+import '../services/salary_pdf_export_service.dart';
 import '../widgets/salary_bill_preview.dart';
 
 class SalaryBillsScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class SalaryBillsScreen extends StatefulWidget {
 class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   final _descNotifier = ItemDescriptionNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
+  bool _exporting = false;
 
   String _itemDescription = 'Manpower Supply Charges';
 
@@ -69,22 +72,91 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     if (picked != null) _dateCtrl.text = picked.toIso8601String().split('T').first;
   }
 
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final sc = SalaryStateController.instance;
+      await SalaryPdfExportService.exportSalaryInvoice(
+        
+        context:           context,
+        config:            _config,
+        billNo:            _billNoCtrl.text,
+        date:              _dateCtrl.text,
+        poNo:              _poNoCtrl.text,
+        itemDescription:   _itemDescription,
+        customerName:      _clientNameCtrl.text,
+        customerAddress:   _clientAddrCtrl.text,
+        customerGst:       _clientGstCtrl.text,
+        invoiceBaseAmount: sc.invoiceTotal,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
     builder: (context, _) {
       final sc   = SalaryStateController.instance;
+      final n    = SalaryDataNotifier.instance;
       final code = sc.selectedCompanyCode;
       final title = code == 'All' ? 'Salary Invoice' : 'Salary Invoice - $code';
 
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
         child: Column(children: [
-          Row(children: [Text(title, style: AppTextStyles.h3)]),
+          // ── Toolbar (Column version) ──────────────────────────────────────
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // First row: Title, Month badge, and Download button
+              Row(
+                children: [
+                  Text(title, style: AppTextStyles.h3),
+                  const SizedBox(width: AppSpacing.md),
+                  _MonthBadge(monthName: n.monthName, year: n.year),
+                  const Spacer(),
+                  // Download button
+                  if (_exporting)
+                    const SizedBox(width: 24, height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    OutlinedButton.icon(
+                      onPressed: _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                      label: const Text('Download PDF'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade400),
+                      ),
+                    ),
+                ],
+              ),
+              // Second row: Company code filter chips (if any)
+              if (sc.companyCodes.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
+                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Left pane — grey bg
+              // Left pane
               Container(
                 width: 272,
                 color: Colors.grey[200],
@@ -110,16 +182,21 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 820),
                       child: ListenableBuilder(
-                        listenable: _fieldListenable,
+                        listenable: Listenable.merge([
+                          _fieldListenable,
+                          SalaryStateController.instance,
+                          SalaryDataNotifier.instance,
+                        ]),
                         builder: (_, __) => SalaryBillPreview(
-                          config:          _config,
-                          customerName:    _clientNameCtrl.text,
-                          customerAddress: _clientAddrCtrl.text,
-                          customerGst:     _clientGstCtrl.text,
-                          billNo:          _billNoCtrl.text,
-                          date:            _dateCtrl.text,
-                          poNo:            _poNoCtrl.text,
-                          itemDescription: _itemDescription,
+                          config:            _config,
+                          customerName:      _clientNameCtrl.text,
+                          customerAddress:   _clientAddrCtrl.text,
+                          customerGst:       _clientGstCtrl.text,
+                          billNo:            _billNoCtrl.text,
+                          date:              _dateCtrl.text,
+                          poNo:              _poNoCtrl.text,
+                          itemDescription:   _itemDescription,
+                          invoiceBaseAmount: sc.invoiceTotal,
                         ),
                       ),
                     ),
@@ -131,6 +208,57 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         ]),
       );
     },
+  );
+
+  static Widget _codeChip(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppColors.indigo600 : AppColors.slate800,
+          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600,
+          color: active ? Colors.white : AppColors.slate400,
+        )),
+      ),
+    ),
+  );
+}
+
+// ── Month Badge Widget ─────────────────────────────────────────────────────────
+class _MonthBadge extends StatelessWidget {
+  final String monthName;
+  final int year;
+  const _MonthBadge({required this.monthName, required this.year});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: AppColors.slate800,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.slate700, width: 0.5),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.calendar_month_outlined, size: 13, color: AppColors.slate400),
+        const SizedBox(width: 5),
+        Text(
+          '$monthName $year',
+          style: AppTextStyles.small.copyWith(
+            color: AppColors.slate300,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -173,8 +301,12 @@ class _LeftPane extends StatelessWidget {
       const SizedBox(height: AppSpacing.md),
       _label('PO No.'), const SizedBox(height: 4), _field(poNoCtrl),
       const SizedBox(height: AppSpacing.lg),
-      Text('Item', style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
+      Text('Client', style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
       const SizedBox(height: AppSpacing.sm),
+      _label('Client Name'), const SizedBox(height: 4), _field(clientNameCtrl),
+      const SizedBox(height: AppSpacing.md),
+      _label('Client GSTIN'), const SizedBox(height: 4), _field(clientGstCtrl),
+      const SizedBox(height: AppSpacing.md),
       _label('Item Description'), const SizedBox(height: 4),
       ItemDescriptionField(value: itemDescription, onChanged: onDescChanged, notifier: descNotifier),
       const SizedBox(height: AppSpacing.xl),
@@ -185,7 +317,14 @@ class _LeftPane extends StatelessWidget {
       _summaryRow('Attachment A', '₹${sc.attachmentATotal.toStringAsFixed(0)}', AppColors.indigo600),
       _summaryRow('Attachment B', '₹${sc.attachmentBTotal.toStringAsFixed(0)}', AppColors.indigo600),
       const Divider(height: AppSpacing.lg),
-      _summaryRow('Invoice Total', '₹${sc.invoiceTotal.toStringAsFixed(0)}', AppColors.emerald700, bold: true),
+      _summaryRow('Invoice Base', '₹${sc.invoiceTotal.toStringAsFixed(0)}', AppColors.emerald700, bold: true),
+      const SizedBox(height: 4),
+      _summaryRow('CGST (9%)', '₹${(sc.invoiceTotal * 0.09).toStringAsFixed(2)}', AppColors.slate500),
+      _summaryRow('SGST (9%)', '₹${(sc.invoiceTotal * 0.09).toStringAsFixed(2)}', AppColors.slate500),
+      const Divider(height: AppSpacing.md),
+      _summaryRow('Grand Total',
+          '₹${(sc.invoiceTotal * 1.18).roundToDouble().toStringAsFixed(0)}',
+          AppColors.emerald700, bold: true),
     ],
   );
 
@@ -195,7 +334,8 @@ class _LeftPane extends StatelessWidget {
   static Widget _field(TextEditingController ctrl) => SizedBox(
     height: 38,
     child: TextField(controller: ctrl, style: AppTextStyles.input,
-        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
+        decoration: const InputDecoration(isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10))),
   );
 
   static Widget _summaryRow(String label, String value, Color color, {bool bold = false}) =>

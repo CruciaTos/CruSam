@@ -37,7 +37,7 @@ class SalarySlipPreview extends StatelessWidget {
     required this.config,
     this.margins            = const EdgeInsets.all(24),
     this.employeeName       = 'Employee Name',
-    this.employeeCode       = 'F&B',
+    this.employeeCode       = '',
     this.designation        = 'Technician',
     this.department         = 'Food & Beverage',
     this.pfNo               = 'MH/212395/XXXX',

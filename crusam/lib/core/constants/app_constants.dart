@@ -1,5 +1,5 @@
 class AppConstants {
-  static const deptCodes = ['I&L', 'F&B', 'ADMIN', 'TECH'];
+  static const deptCodes = ['I&L', 'F&B', 'A&P', 'P&S'];
 
   static const itemDescriptions = [
     'Local and outstation travelling expenses with daily allowance including mobile expenses and material.',

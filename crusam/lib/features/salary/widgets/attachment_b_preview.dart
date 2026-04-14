@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/company_config_model.dart';
+import '../../../shared/utils/format_utils.dart';
 
 class AttachmentBPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
@@ -22,6 +23,10 @@ class AttachmentBPreview extends StatelessWidget {
   final String accountNo;
   final String ifscCode;
 
+  /// Number of employees (filtered by company code) — drives QTY and Amount.
+  final int employeeCount;
+  static const double _ratePerEmployee = 1753.0;
+
   const AttachmentBPreview({
     super.key,
     required this.config,
@@ -40,11 +45,15 @@ class AttachmentBPreview extends StatelessWidget {
     this.bankBranch      = 'Dahisar - East',
     this.accountNo       = '0680651100000338',
     this.ifscCode        = 'IBKL0000680',
+    this.employeeCount   = 0,
   });
+
+  double get _totalAmount => employeeCount * _ratePerEmployee;
 
   static const _black = Color(0xFF000000);
   static const _green = Color(0xFF1A6B2F);
   static const _hdrBg = Color(0xFFE3E8F4);
+  static const _grandBg = Color(0xFFD6DCF5);
 
   static const _bSide = BorderSide(color: _black, width: 0.75);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
@@ -52,8 +61,21 @@ class AttachmentBPreview extends StatelessWidget {
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
     EdgeInsets margins = const EdgeInsets.all(24),
+    int employeeCount  = 0,
+    String billNo      = 'AE/-/25-26',
+    String date        = '',
+    String poNo        = '-',
+    String itemDescription = 'Manpower Supply Charges',
+    String customerName    = 'M/s Diversey India Hygiene Private Ltd.',
+    String customerAddress = '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093',
+    String customerGst     = '27AABCC1597Q1Z2',
   }) {
-    final preview = AttachmentBPreview(config: config, margins: margins);
+    final preview = AttachmentBPreview(
+      config: config, margins: margins, employeeCount: employeeCount,
+      billNo: billNo, date: date, poNo: poNo,
+      itemDescription: itemDescription, customerName: customerName,
+      customerAddress: customerAddress, customerGst: customerGst,
+    );
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
 
@@ -63,14 +85,11 @@ class AttachmentBPreview extends StatelessWidget {
 
   Widget _buildPage({required double width, required double height}) =>
       Container(
-        width:  width,
-        height: height,
+        width: width, height: height,
         clipBehavior: Clip.hardEdge,
         decoration: const BoxDecoration(
           color: Colors.white,
-          boxShadow: [
-            BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
-          ],
+          boxShadow: [BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4))],
         ),
         child: Padding(
           padding: margins,
@@ -97,288 +116,206 @@ class AttachmentBPreview extends StatelessWidget {
       );
 
   Widget _header() => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _logo(),
-          const SizedBox(width: 20),
-          Expanded(child: _companyInfo()),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [_logo(), const SizedBox(width: 20), Expanded(child: _companyInfo())],
+  );
 
   Widget _logo() => SizedBox(
-        width: 110,
-        height: 75,
-        child: Image.asset(
-          'assets/images/aarti_logo.png',
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const _FallbackLogo(),
-        ),
-      );
+    width: 110, height: 75,
+    child: Image.asset('assets/images/aarti_logo.png', fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const _FallbackLogo()),
+  );
 
   Widget _companyInfo() => Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            config.companyName.toUpperCase(),
-            textAlign: TextAlign.right,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: _green,
-              letterSpacing: 0.6,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(config.address,
-              textAlign: TextAlign.right,
-              style: _body.copyWith(fontSize: 10)),
-          const SizedBox(height: 2),
-          Text('Tel.  Office  :  ${config.phone}',
-              textAlign: TextAlign.right,
-              style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Text(config.companyName.toUpperCase(), textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _green, letterSpacing: 0.6)),
+      const SizedBox(height: 4),
+      Text(config.address, textAlign: TextAlign.right, style: _body.copyWith(fontSize: 10)),
+      const SizedBox(height: 2),
+      Text('Tel.  Office  :  ${config.phone}', textAlign: TextAlign.right,
+          style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
+    ],
+  );
 
   Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);
 
   Widget _centreLabel(String text) => Center(
-        child: Text(
-          text,
-          style: _body.copyWith(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            decoration: TextDecoration.underline,
-            letterSpacing: 1.2,
-          ),
-        ),
-      );
+    child: Text(text, style: _body.copyWith(
+      fontSize: 13, fontWeight: FontWeight.w900,
+      decoration: TextDecoration.underline, letterSpacing: 1.2)),
+  );
 
   Widget _billingInfo() => IntrinsicHeight(
-        child: Container(
-          decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: 70,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('BILL To,', style: _body),
-                      const SizedBox(height: 4),
-                      Text(customerName,
-                          style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
-                      const SizedBox(height: 2),
-                      Text(customerAddress, style: _body),
-                      const SizedBox(height: 10),
-                      Text('GST No. $customerGst',
-                          style: _body.copyWith(fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-              ),
-              Container(width: 0.75, color: _black),
-              Expanded(
-                flex: 30,
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      _kvRight('Bill No :- ', billNo),
-                      const SizedBox(height: 4),
-                      _kvRight('Date :- ', date),
-                      const SizedBox(height: 4),
-                      _kvRight('PO.No. :- ', poNo),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+    child: Container(
+      decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(
+          flex: 70,
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('BILL To,', style: _body),
+              const SizedBox(height: 4),
+              Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+              const SizedBox(height: 2),
+              Text(customerAddress, style: _body),
+              const SizedBox(height: 10),
+              Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+            ]),
           ),
         ),
-      );
+        Container(width: 0.75, color: _black),
+        Expanded(
+          flex: 30,
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _kvRight('Bill No :- ', billNo),
+                const SizedBox(height: 4),
+                _kvRight('Date :- ', date),
+                const SizedBox(height: 4),
+                _kvRight('PO.No. :- ', poNo),
+              ],
+            ),
+          ),
+        ),
+      ]),
+    ),
+  );
 
   Widget _kvRight(String k, String v) => Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          Text(k, style: _body),
-          Text(v, style: _body),
-        ],
-      );
+    mainAxisAlignment: MainAxisAlignment.end,
+    children: [Text(k, style: _body), Text(v, style: _body)],
+  );
 
   Widget _mainTable() => Container(
-        decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
-        child: Column(
-          children: [
-            // 1. Table Header
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _headerCell('Sr.\nNo', 5),
-                  _headerCell('Item Description', 65),
-                  _headerCell('QTY', 6),
-                  _headerCell('RATE', 9),
-                  _headerCell('AMOUNT', 15, rightBorder: false),
-                ],
-              ),
-            ),
-            _divider(0.75),
+    decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
+    child: Column(children: [
+      // Header
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _headerCell('Sr.\nNo', 5),
+          _headerCell('Item Description', 65),
+          _headerCell('QTY', 6),
+          _headerCell('RATE', 9),
+          _headerCell('AMOUNT', 15, rightBorder: false),
+        ]),
+      ),
+      _divider(0.75),
 
-            // 2. Item Row
-            IntrinsicHeight(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 180),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _itemCell('1', 5),
-                    _itemCell(itemDescription, 65, rightBorder: true, align: Alignment.topLeft),
-                    _itemCell('1', 6),
-                    _itemCell('1753.00', 9),
-                    _itemCell('1753.00', 15, rightBorder: false, align: Alignment.topRight),
-                  ],
+      // Item Row
+      IntrinsicHeight(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 180),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _itemCell('1', 5),
+            _itemCell(itemDescription, 65, rightBorder: true, align: Alignment.topLeft),
+            _itemCell(employeeCount > 0 ? employeeCount.toString() : '-', 6),
+            _itemCell(_ratePerEmployee.toStringAsFixed(2), 9),
+            _itemCell(
+              employeeCount > 0 ? _totalAmount.toStringAsFixed(2) : '0.00',
+              15, rightBorder: false, align: Alignment.topRight,
+            ),
+          ]),
+        ),
+      ),
+
+      _divider(0.50),
+
+      // Totals Area
+      IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(
+            flex: 70,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('PAN NO :-  $panNo', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Text('GSTIN :  $companyGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 40),
+                  Text('HSN: $hsnCode', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                ]),
+                const SizedBox(height: 12),
+                Text('Bank Details for  :  RTGS / NEFT',
+                    style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10)),
+                const SizedBox(height: 6),
+                _bankRow('Bank Name', bankName),
+                _bankRow('Branch', bankBranch),
+                _bankRow('Account No.', accountNo),
+                _bankRow('IFSC Code', ifscCode),
+              ]),
+            ),
+          ),
+          Container(width: 0.75, color: _black),
+          Expanded(
+            flex: 30,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Expanded(flex: 6, child: Container(decoration: const BoxDecoration(border: Border(right: _bSide)))),
+                    Expanded(flex: 9, child: Container(decoration: const BoxDecoration(border: Border(right: _bSide)))),
+                    const Expanded(flex: 15, child: SizedBox()),
+                  ]),
                 ),
-              ),
-            ),
-
-
-
-
-
-
-
-
-            _divider(0.50),
-
-
-            // 3. Totals Area
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Left: Sr(5) + Desc(65) = flex 70
-                  Expanded(
-                    flex: 70,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('PAN NO :-  $panNo',
-                              style: _body.copyWith(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Row(children: [
-                            Text('GSTIN :  $companyGst',
-                                style: _body.copyWith(fontWeight: FontWeight.w700)),
-                            const SizedBox(width: 40),
-                            Text('HSN: $hsnCode',
-                                style: _body.copyWith(fontWeight: FontWeight.w700)),
-                          ]),
-                          const SizedBox(height: 12),
-                          Text('Bank Details for  :  RTGS / NEFT',
-                              style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10)),
-                          const SizedBox(height: 6),
-                          _bankRow('Bank Name', bankName),
-                          _bankRow('Branch', bankBranch),
-                          _bankRow('Account No.', accountNo),
-                          _bankRow('IFSC Code', ifscCode),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Container(width: 0.75, color: _black),
-
-                  // Right: QTY(6) + RATE(9) + AMOUNT(15) = flex 30
-                  Expanded(
-                    flex: 30,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Upper empty area — all 3 columns extend down with dividers
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Expanded(
-                                flex: 6,
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                      border: Border(right: _bSide)),
-                                ),
-                              ),
-                              Expanded(
-                                flex: 9,
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                      border: Border(right: _bSide)),
-                                ),
-                              ),
-                              const Expanded(flex: 15, child: SizedBox()),
-                            ],
-                          ),
-                        ),
-                        // Bottom: "Total -" spanning full width
-                        Container(
-                      decoration: const BoxDecoration(
-                        color: _hdrBg,           // ← add this
-                        border: Border(top: _bSide),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                      child: Text(
-                        'Total Amount:',
+                Container(
+                  decoration: BoxDecoration(color: _grandBg, border: const Border(top: _bSide)),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Total Amount:', style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 10)),
+                      Text(
+                        employeeCount > 0 ? '₹ ${_totalAmount.toStringAsFixed(0)}' : '₹ 0',
                         style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 10),
                       ),
-                    ),
-                      ],
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            _divider(0.75),
+          ),
+        ]),
+      ),
+      _divider(0.75),
 
-            // 4. Inner Footer
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Text(
-                'Certified that particulars given above are true and correct.',
-                style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 8),
-              ),
-            ),
-          ],
-        ),
-      );
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text('Certified that particulars given above are true and correct.',
+            style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 8)),
+      ),
+    ]),
+  );
 
   Widget _headerCell(String text, int flex, {bool rightBorder = true}) => Expanded(
-        flex: flex,
-        child: Container(
-          decoration: BoxDecoration(
-            color: _hdrBg,
-            border: rightBorder ? const Border(right: _bSide) : null,
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          alignment: Alignment.center,
-          child: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 8),
-          ),
-        ),
-      );
+    flex: flex,
+    child: Container(
+      decoration: BoxDecoration(
+        color: _hdrBg,
+        border: rightBorder ? const Border(right: _bSide) : null,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      alignment: Alignment.center,
+      child: Text(text, textAlign: TextAlign.center,
+          style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 8)),
+    ),
+  );
 
   Widget _itemCell(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
       Expanded(
         flex: flex,
         child: Container(
-          decoration:
-              BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
+          decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           alignment: align,
           child: Text(text, style: _body.copyWith(fontSize: 8.5)),
@@ -386,61 +323,47 @@ class AttachmentBPreview extends StatelessWidget {
       );
 
   Widget _bankRow(String label, String value) => Padding(
-        padding: const EdgeInsets.only(bottom: 2),
-        child: Row(
-          children: [
-            SizedBox(width: 80, child: Text(label, style: _body)),
-            Text(':   $value', style: _body),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Row(children: [
+      SizedBox(width: 80, child: Text(label, style: _body)),
+      Text(':   $value', style: _body),
+    ]),
+  );
 
   Widget _footer() => Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Certified that particulars given above are true and correct.',
-                    style: _body.copyWith(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text('Subject to Mumbai jurisdiction.', style: _body),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text('For AARTI ENTERPRISES',
-                  style: _body.copyWith(
-                      // ignore: deprecated_member_use
-                      fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
-              const SizedBox(height: 45),
-              Text('Partner', style: _body.copyWith(fontSize: 8.5)),
-            ],
-          ),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Certified that particulars given above are true and correct.',
+              style: _body.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text('Subject to Mumbai jurisdiction.', style: _body),
+        ]),
+      ),
+      Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Text('For AARTI ENTERPRISES',
+            // ignore: deprecated_member_use
+            style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
+        const SizedBox(height: 45),
+        Text('Partner', style: _body.copyWith(fontSize: 8.5)),
+      ]),
+    ],
+  );
 }
 
 class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
-
   @override
   Widget build(BuildContext context) => Container(
-        width: 110,
-        height: 75,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(52),
-          border: Border.all(color: const Color(0xFF1A237E), width: 3),
-          color: const Color(0xFF1A237E),
-        ),
-        alignment: Alignment.center,
-        child: const Text(
-          'Aarti\nEnterprises',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-      );
+    width: 110, height: 75,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(52),
+      border: Border.all(color: const Color(0xFF1A237E), width: 3),
+      color: const Color(0xFF1A237E),
+    ),
+    alignment: Alignment.center,
+    child: const Text('Aarti\nEnterprises', textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700)),
+  );
 }

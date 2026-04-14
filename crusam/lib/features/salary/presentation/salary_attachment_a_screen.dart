@@ -1,3 +1,4 @@
+import 'package:crusam/features/salary/services/Salary_pdf_export_service.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -19,6 +20,7 @@ class SalaryAttachmentAScreen extends StatefulWidget {
 class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   final _descNotifier = ItemDescriptionNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
+  bool _exporting = false;
 
   String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
@@ -45,28 +47,95 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     if (map != null && mounted) setState(() => _config = CompanyConfigModel.fromMap(map));
   }
 
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
-    builder: (context, _) {
-      final sc   = SalaryStateController.instance;
-      final n    = SalaryDataNotifier.instance;
-      final code = sc.selectedCompanyCode;
-      final title = code == 'All' ? 'Attachment A' : 'Attachment A - $code';
-      final date = '${n.year}-${n.month.toString().padLeft(2, '0')}-01';
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final sc = SalaryStateController.instance;
+      final n  = SalaryDataNotifier.instance;
+      await SalaryPdfExportService.exportAttachmentA(
+        context:         context,
+        config:          _config,
+        billNo:          _billNoCtrl.text,
+        date:            '${n.year}-${n.month.toString().padLeft(2, '0')}-01',
+        poNo:            n.poNo,
+        itemDescription: _itemDescription,
+        itemAmount:      sc.totalGrossFull,
+        pfAmount:        sc.attachmentAPf,
+        esicAmount:      sc.attachmentAEsic,
+        totalAfterTax:   sc.attachmentATotal,
+        customerName:    _config.companyName,
+        customerAddress: _config.address,
+        customerGst:     _config.gstin,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.pagePadding),
-        child: Column(children: [
-          Row(children: [
-            Text(title, style: AppTextStyles.h3),
-            const SizedBox(width: AppSpacing.md),
-            _MonthBadge(monthName: n.monthName, year: n.year),
-          ]),
+  @override
+Widget build(BuildContext context) => ListenableBuilder(
+  listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
+  builder: (context, _) {
+    final sc   = SalaryStateController.instance;
+    final n    = SalaryDataNotifier.instance;
+    final code = sc.selectedCompanyCode;
+    final title = code == 'All' ? 'Attachment A' : 'Attachment A - $code';
+    final date = '${n.year}-${n.month.toString().padLeft(2, '0')}-01';
+
+    return Padding(
+      padding: const EdgeInsets.all(AppSpacing.pagePadding),
+      child: Column(children: [
+        // ── Toolbar (Column version) ──────────────────────────────────────
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // First row: Title, Month badge, and Download button
+            Row(
+              children: [
+                Text(title, style: AppTextStyles.h3),
+                const SizedBox(width: AppSpacing.md),
+                _MonthBadge(monthName: n.monthName, year: n.year),
+                const Spacer(),
+                // Download button
+                if (_exporting)
+                  const SizedBox(width: 24, height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  OutlinedButton.icon(
+                    onPressed: _exportPdf,
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                    label: const Text('Download PDF'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade400),
+                    ),
+                  ),
+              ],
+            ),
+            // Second row: Company code filter chips (if any)
+            if (sc.companyCodes.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
+                    ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Left pane — grey bg
+              // Left pane
               Container(
                 width: 272,
                 color: Colors.grey[200],
@@ -94,7 +163,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                           billNo:          _billNoCtrl.text,
                           poNo:            n.poNo,
                           date:            date,
-                          itemAmount:      sc.totalEarnedGross,
+                          itemAmount:      sc.totalGrossFull,
                           pfAmount:        sc.attachmentAPf,
                           esicAmount:      sc.attachmentAEsic,
                           totalAfterTax:   sc.attachmentATotal,
@@ -109,6 +178,26 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
         ]),
       );
     },
+  );
+
+  static Widget _codeChip(String label, bool active, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(right: 6),
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppColors.indigo600 : AppColors.slate800,
+          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label, style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600,
+          color: active ? Colors.white : AppColors.slate400,
+        )),
+      ),
+    ),
   );
 }
 
@@ -135,10 +224,12 @@ class _LeftPane extends StatelessWidget {
     const SizedBox(height: AppSpacing.sm),
     Text('Salary Aggregates', style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
     const SizedBox(height: AppSpacing.sm),
-    _row('Total Earned Gross',    '₹${sc.totalEarnedGross.toStringAsFixed(2)}',   AppColors.indigo600),
-    _row('PF (13.61% basic)',     '₹${sc.attachmentAPf.toStringAsFixed(2)}',       AppColors.slate600),
-    _row('ESIC (3.25% eligible)', '₹${sc.attachmentAEsic.toStringAsFixed(2)}',     AppColors.slate600),
-    _row('Round Off',             '${sc.attachmentARoundOff >= 0 ? "+" : ""}${sc.attachmentARoundOff.toStringAsFixed(2)}', AppColors.slate500),
+    _row('Total Gross Salary',    '₹${sc.totalGrossFull.toStringAsFixed(2)}',  AppColors.indigo600),
+    _row('PF (13.61% basic)',     '₹${sc.attachmentAPf.toStringAsFixed(2)}',   AppColors.slate600),
+    _row('ESIC (3.25% eligible)', '₹${sc.attachmentAEsic.toStringAsFixed(2)}', AppColors.slate600),
+    _row('Round Off',
+      '${sc.attachmentARoundOff >= 0 ? "+" : ""}${sc.attachmentARoundOff.toStringAsFixed(2)}',
+      AppColors.slate500),
     const Divider(height: AppSpacing.lg),
     _row('Grand Total', '₹${sc.attachmentATotal.toStringAsFixed(0)}', AppColors.emerald700, bold: true),
   ]);
