@@ -112,7 +112,7 @@ class SalaryBillPreview extends StatelessWidget {
                 _billingInfo(),
                 const SizedBox(height: 12),
                 _mainTable(),
-                const Spacer(),
+                const SizedBox(height: 12),   // ✅ replaces Spacer()
                 _footer(),
               ],
             ),
@@ -193,7 +193,6 @@ class SalaryBillPreview extends StatelessWidget {
     ),
   );
 
-  // Font size increased to 10 for Bill No., Date, PO No.
   Widget _kvRight(String k, String v) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
     children: [
@@ -311,7 +310,6 @@ class SalaryBillPreview extends StatelessWidget {
     ),
   );
 
-  // Font size increased to 10 for item cells
   Widget _itemCell(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
       Expanded(
@@ -324,7 +322,6 @@ class SalaryBillPreview extends StatelessWidget {
         ),
       );
 
-  // Font size increased to 10 for description cell
   Widget _itemCellDesc(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
     final parts = text.split('(Vouchers');
@@ -398,7 +395,6 @@ class SalaryBillPreview extends StatelessWidget {
       ),
       Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Text('For AARTI ENTERPRISES',
-            // ignore: deprecated_member_use
             style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
         const SizedBox(height: 45),
         Text('Partner', style: _body.copyWith(fontSize: 8.5)),

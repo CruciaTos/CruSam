@@ -18,6 +18,32 @@ class PdfExportService {
   static const Duration _captureDelay = Duration(milliseconds: 150);
   static const double _capturePixelRatio = 4.0;
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // ✅ NEW: Generic export method – can be used by any feature
+  // ──────────────────────────────────────────────────────────────────────────
+  static Future<void> exportWidgets({
+    required BuildContext context,
+    required List<Widget> pages,
+    required String fileNameSlug,
+    required String filePrefix,
+    required String shareSubject,
+    List<String>? assetPathsToPrecache,
+  }) async {
+    if (assetPathsToPrecache != null) {
+      await _precacheAssets(context, assetPathsToPrecache);
+    }
+    await _exportPages(
+      context: context,
+      pages: pages,
+      billNo: fileNameSlug,
+      subject: shareSubject,
+      filePrefix: filePrefix,
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Existing invoice‑bundle export (unchanged)
+  // ──────────────────────────────────────────────────────────────────────────
   static Future<void> exportInvoiceBundle({
     required BuildContext context,
     required VoucherModel voucher,
@@ -70,6 +96,9 @@ class PdfExportService {
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Core capture & PDF generation (private, reused by all)
+  // ──────────────────────────────────────────────────────────────────────────
   static Future<void> _exportPages({
     required BuildContext context,
     required List<Widget> pages,
@@ -149,11 +178,23 @@ class PdfExportService {
     );
   }
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // Asset precaching helpers
+  // ──────────────────────────────────────────────────────────────────────────
   static Future<void> _precacheInvoiceAssets(BuildContext context) async {
-    await Future.wait([
-      _safePrecache(context, 'assets/images/aarti_logo.png'),
-      _safePrecache(context, 'assets/images/aarti_signature.png'),
+    await _precacheAssets(context, [
+      'assets/images/aarti_logo.png',
+      'assets/images/aarti_signature.png',
     ]);
+  }
+
+  static Future<void> _precacheAssets(
+    BuildContext context,
+    List<String> assetPaths,
+  ) async {
+    await Future.wait(
+      assetPaths.map((path) => _safePrecache(context, path)),
+    );
   }
 
   static Future<void> _safePrecache(BuildContext context, String assetPath) async {

@@ -23,266 +23,78 @@ class ExcelExportService {
   }
 
   /// Exports the Bank Disbursement sheet and returns the saved file path.
-  /// Implemented in pure Dart using package:excel.
+  /// Format matches the reference Excel: no header row, data starts at B3,
+  /// from/to date columns (K/L), SUM formula total row.
   static Future<String> exportBankDisbursement(
     VoucherModel voucher,
     CompanyConfigModel config,
   ) async {
-    // Create workbook
     final excel = Excel.createExcel();
-    // Remove default sheet if present so workbook has only our sheet
     try {
-      if (excel.tables.containsKey('Sheet1')) {
-        excel.delete('Sheet1');
-      }
+      if (excel.tables.containsKey('Sheet1')) excel.delete('Sheet1');
     } catch (_) {}
 
-    const sheetName = 'Bank Disbursement';
+    // Sheet name: "Bill-Data-{deptCode}"
+    final sheetName =
+        'Bill-Data-${voucher.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
 
-    // Layout
-    final int cols = 9;
+    // ── Styles ──────────────────────────────────────────────────────────────
+    final bold11   = CellStyle(bold: true, fontSize: 11);
+    final norm11   = CellStyle(fontSize: 11);
+    final ctr11    = CellStyle(fontSize: 11, horizontalAlign: HorizontalAlign.Center);
+    final boldLeft = CellStyle(bold: true, fontSize: 11, horizontalAlign: HorizontalAlign.Left);
 
-    // Borders and styles
-    final thin = Border(borderStyle: BorderStyle.Thin, borderColorHex: ExcelColor.black);
-    final thick = Border(borderStyle: BorderStyle.Thick, borderColorHex: ExcelColor.black);
+    // ── Row 2 (rowIdx 1): Title at B2, dept code at I2 ──────────────────────
+    final title =
+        '${config.companyName} : ${voucher.title.isEmpty ? 'Expenses Statement' : voucher.title}';
+    _set(excel, sheetName, 1, 1, TextCellValue(title), bold11);
+    _set(excel, sheetName, 8, 1, TextCellValue(voucher.deptCode), bold11);
 
-    final titleStyle = CellStyle(
-      bold: true,
-      fontSize: 14,
-      horizontalAlign: HorizontalAlign.Center,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-    );
+    // ── Sort rows by fromDate ─────────────────────────────────────────────────
+    final rows = [...voucher.rows]..sort((a, b) {
+        if (a.fromDate.isEmpty && b.fromDate.isEmpty) return 0;
+        if (a.fromDate.isEmpty) return 1;
+        if (b.fromDate.isEmpty) return -1;
+        return a.fromDate.compareTo(b.fromDate);
+      });
 
-    final headerStyle = CellStyle(
-      bold: true,
-      horizontalAlign: HorizontalAlign.Center,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-    );
-
-    final cellStyle = CellStyle(
-      horizontalAlign: HorizontalAlign.Left,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-      fontSize: 10,
-    );
-
-    final amountStyle = CellStyle(
-      horizontalAlign: HorizontalAlign.Right,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-      fontSize: 10,
-      numberFormat: NumFormat.standard_2,
-    );
-
-    final totalsStyle = CellStyle(
-      bold: true,
-      horizontalAlign: HorizontalAlign.Right,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-      numberFormat: NumFormat.standard_2,
-    );
-
-    final totalsWordsStyle = CellStyle(
-      italic: true,
-      horizontalAlign: HorizontalAlign.Left,
-      verticalAlign: VerticalAlign.Center,
-      leftBorder: thin,
-      rightBorder: thin,
-      topBorder: thin,
-      bottomBorder: thin,
-    );
-
-    // Title row (merged across all columns)
-    final title = '${config.companyName} : ${voucher.title.isEmpty ? 'Bank Disbursement' : voucher.title}';
-    excel.merge(
-      sheetName,
-      CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
-      CellIndex.indexByColumnRow(columnIndex: cols - 1, rowIndex: 0),
-      customValue: TextCellValue(title),
-    );
-    excel.updateCell(
-      sheetName,
-      CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
-      TextCellValue(title),
-      cellStyle: titleStyle,
-    );
-
-    // Header
-    final header = [
-      'Amount',
-      'Debit A/c',
-      'IFSC',
-      'Credit A/c',
-      'S/B Code',
-      'Beneficiary Name',
-      'Place',
-      'Bank',
-      'Debit Account Name',
-    ];
-
-    int rowIndex = 1;
-    for (int c = 0; c < header.length; c++) {
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: c, rowIndex: rowIndex),
-        TextCellValue(header[c]),
-        cellStyle: headerStyle,
-      );
+    // ── Data rows: rowIdx 2 → Excel row 3 ────────────────────────────────────
+    // Columns (all start at B = colIdx 1):
+    //  B(1)=Amount  C(2)=DebitAc  D(3)=IFSC     E(4)=CreditAc  F(5)=Code
+    //  G(6)=Name    H(7)=Place    I(8)=BankDet  J(9)=DebitName
+    //  K(10)=From   L(11)=To
+    int rowIdx = 2;
+    for (final r in rows) {
+      _set(excel, sheetName,  1, rowIdx, DoubleCellValue(r.amount),                    norm11);
+      _set(excel, sheetName,  2, rowIdx, TextCellValue(config.accountNo),              ctr11);
+      _set(excel, sheetName,  3, rowIdx, TextCellValue(r.ifscCode),                    ctr11);
+      _set(excel, sheetName,  4, rowIdx, TextCellValue(r.accountNumber),               ctr11);
+      _set(excel, sheetName,  5, rowIdx, TextCellValue(r.sbCode),                      ctr11);
+      _set(excel, sheetName,  6, rowIdx, TextCellValue(r.employeeName),                norm11);
+      _set(excel, sheetName,  7, rowIdx, TextCellValue(r.branch),                      ctr11);
+      _set(excel, sheetName,  8, rowIdx, TextCellValue(r.bankDetails),                 norm11);
+      _set(excel, sheetName,  9, rowIdx, TextCellValue(config.companyName.toLowerCase()), ctr11);
+      _set(excel, sheetName, 10, rowIdx, TextCellValue(_fmtDate(r.fromDate)),          ctr11);
+      _set(excel, sheetName, 11, rowIdx, TextCellValue(_fmtDate(r.toDate)),            ctr11);
+      rowIdx++;
     }
 
-    // Data rows
-    for (final r in voucher.rows) {
-      rowIndex++;
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
-        DoubleCellValue(r.amount),
-        cellStyle: amountStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex),
-        TextCellValue(config.accountNo),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: rowIndex),
-        TextCellValue(r.ifscCode),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: rowIndex),
-        TextCellValue(r.accountNumber),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: rowIndex),
-        TextCellValue(r.sbCode),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: rowIndex),
-        TextCellValue(r.employeeName),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 6, rowIndex: rowIndex),
-        TextCellValue(r.branch),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 7, rowIndex: rowIndex),
-        TextCellValue(r.bankDetails),
-        cellStyle: cellStyle,
-      );
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 8, rowIndex: rowIndex),
-        TextCellValue(config.companyName),
-        cellStyle: cellStyle,
-      );
-    }
+    // ── Total row ─────────────────────────────────────────────────────────────
+    // rowIdx is now (2 + n). Last data Excel row = rowIdx (0-indexed rowIdx-1 → 1-indexed = rowIdx).
+    // SUM range: B3:B{rowIdx}
+    _set(excel, sheetName, 1, rowIdx,
+        FormulaCellValue('SUM(B3:B$rowIdx)'), bold11);
+    _set(excel, sheetName, 2, rowIdx,
+        TextCellValue(numberToWords(voucher.baseTotal)), boldLeft);
 
-    // Totals row
-    rowIndex++;
-    excel.updateCell(
-      sheetName,
-      CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
-      DoubleCellValue(voucher.baseTotal),
-      cellStyle: totalsStyle,
-    );
-    excel.updateCell(
-      sheetName,
-      CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIndex),
-      TextCellValue(numberToWords(voucher.baseTotal)),
-      cellStyle: totalsWordsStyle,
-    );
-
-    // Summary block (3 rows x 2 columns) with boxed border
-    double idbiToIdbi = 0.0;
-    double idbiToOther = 0.0;
-    for (final r in voucher.rows) {
-      final ifsc = r.ifscCode.toUpperCase();
-      if (ifsc.startsWith('IDIB')) {
-        idbiToIdbi += r.amount;
-      } else {
-        idbiToOther += r.amount;
-      }
-    }
-
-    // blank spacer row
-    rowIndex++;
-    final summaryStart = rowIndex + 1;
-    final summaryLabels = [
-      'From IDBI to Other Bank',
-      'From IDBI to IDBI Bank',
-      'Total',
-    ];
-    final summaryValues = [idbiToOther, idbiToIdbi, voucher.baseTotal];
-
-    for (int i = 0; i < summaryLabels.length; i++) {
-      final rIdx = summaryStart + i;
-      // left cell (label) with left/top/bottom borders as needed
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rIdx),
-        TextCellValue(summaryLabels[i]),
-        cellStyle: CellStyle(
-          horizontalAlign: HorizontalAlign.Left,
-          leftBorder: thick,
-          rightBorder: thin,
-          topBorder: (i == 0) ? thick : thin,
-          bottomBorder: (i == summaryLabels.length - 1) ? thick : thin,
-        ),
-      );
-
-      // right cell (value)
-      excel.updateCell(
-        sheetName,
-        CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rIdx),
-        DoubleCellValue(summaryValues[i]),
-        cellStyle: CellStyle(
-          horizontalAlign: HorizontalAlign.Right,
-          leftBorder: thin,
-          rightBorder: thick,
-          topBorder: (i == 0) ? thick : thin,
-          bottomBorder: (i == summaryLabels.length - 1) ? thick : thin,
-          numberFormat: NumFormat.standard_2,
-        ),
-      );
-    }
-
-    // Save the file to Downloads/Documents
-    final outDir = await _outputDir();
-    final safeTitle = (voucher.title.trim().isEmpty) ? 'voucher' : voucher.title;
-    final sanitized = safeTitle.replaceAll(RegExp(r'[<>:\"/\\|?*]'), '').replaceAll(' ', '_');
-    final now = DateTime.now();
-    final datePart = '${now.year.toString().padLeft(4, '0')}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    final fileName = 'bank_disbursement_${sanitized}_$datePart.xlsx';
-    final file = File('${outDir}${Platform.pathSeparator}$fileName');
+    // ── Save ──────────────────────────────────────────────────────────────────
+    final outDir   = await _outputDir();
+    final safe     = (voucher.title.trim().isEmpty ? 'voucher' : voucher.title)
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '')
+        .replaceAll(' ', '_');
+    final now      = DateTime.now();
+    final datePart = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final file     = File('${outDir}${Platform.pathSeparator}bank_disbursement_${safe}_$datePart.xlsx');
 
     final bytes = excel.encode();
     if (bytes == null) throw Exception('Failed to generate excel bytes');
@@ -377,6 +189,32 @@ class ExcelExportService {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  static void _set(
+    Excel excel,
+    String sheet,
+    int col,
+    int row,
+    CellValue value,
+    CellStyle style,
+  ) {
+    excel.updateCell(
+      sheet,
+      CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
+      value,
+      cellStyle: style,
+    );
+  }
+
+  /// Converts ISO date (yyyy-MM-dd) → DD/MM/YYYY for Excel cells.
+  static String _fmtDate(String iso) {
+    if (iso.isEmpty) return '';
+    if (iso.length == 10 && iso.contains('-')) {
+      final p = iso.split('-');
+      return '${p[2]}/${p[1]}/${p[0]}';
+    }
+    return iso;
+  }
 
   static Future<String> _outputDir() async {
     if (Platform.isWindows) {

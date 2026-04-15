@@ -5,9 +5,9 @@ import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
 // ── Column width configuration ─────────────────────────────────────────────────
-// Nine columns matching the bank disbursement table header order.
-// Default total ≈ 739 px, which fits inside A4 content width (~743 px at
-// default 20 px margins, minus 10 px for TableBorder.all vertical lines).
+// Eleven columns matching the bank disbursement table header order.
+// Default total ≈ 747 px, which fits inside A4 content width (~753 px at
+// default 20 px margins, minus 12 px for TableBorder.all vertical lines).
 class BankColWidths {
   final double amount;
   final double debitAc;
@@ -18,23 +18,27 @@ class BankColWidths {
   final double place;
   final double bank;
   final double debitName;
+  final double from;
+  final double to;
 
   const BankColWidths({
-    this.amount      = 62,
-    this.debitAc     = 97,
-    this.ifsc        = 82,
-    this.creditAc    = 97,
+    this.amount      = 52,
+    this.debitAc     = 87,
+    this.ifsc        = 72,
+    this.creditAc    = 87,
     this.code        = 38,
-    this.beneficiary = 112,
-    this.place       = 76,
-    this.bank        = 97,
-    this.debitName   = 78,
+    this.beneficiary = 100,
+    this.place       = 68,
+    this.bank        = 87,
+    this.debitName   = 68,
+    this.from        = 44,
+    this.to          = 44,
   });
 
   BankColWidths copyWith({
     double? amount, double? debitAc, double? ifsc,  double? creditAc,
     double? code,   double? beneficiary, double? place,
-    double? bank,   double? debitName,
+    double? bank,   double? debitName,  double? from, double? to,
   }) => BankColWidths(
     amount:      amount      ?? this.amount,
     debitAc:     debitAc     ?? this.debitAc,
@@ -45,6 +49,8 @@ class BankColWidths {
     place:       place       ?? this.place,
     bank:        bank        ?? this.bank,
     debitName:   debitName   ?? this.debitName,
+    from:        from        ?? this.from,
+    to:          to          ?? this.to,
   );
 
   /// Ordered (label, width) pairs — consumed by the settings panel.
@@ -58,35 +64,41 @@ class BankColWidths {
     ('Place',       place),
     ('Bank',        bank),
     ('Debit Name',  debitName),
+    ('Fr.',         from),
+    ('To',          to),
   ];
 
-  /// Applies a new width by column index (0–8).
+  /// Applies a new width by column index (0–10).
   BankColWidths withIndex(int index, double value) => copyWith(
-    amount:      index == 0 ? value : null,
-    debitAc:     index == 1 ? value : null,
-    ifsc:        index == 2 ? value : null,
-    creditAc:    index == 3 ? value : null,
-    code:        index == 4 ? value : null,
-    beneficiary: index == 5 ? value : null,
-    place:       index == 6 ? value : null,
-    bank:        index == 7 ? value : null,
-    debitName:   index == 8 ? value : null,
+    amount:      index == 0  ? value : null,
+    debitAc:     index == 1  ? value : null,
+    ifsc:        index == 2  ? value : null,
+    creditAc:    index == 3  ? value : null,
+    code:        index == 4  ? value : null,
+    beneficiary: index == 5  ? value : null,
+    place:       index == 6  ? value : null,
+    bank:        index == 7  ? value : null,
+    debitName:   index == 8  ? value : null,
+    from:        index == 9  ? value : null,
+    to:          index == 10 ? value : null,
   );
 
   double get totalWidth =>
-      amount + debitAc + ifsc + creditAc + code + beneficiary + place + bank + debitName;
+      amount + debitAc + ifsc + creditAc + code + beneficiary + place + bank + debitName + from + to;
 
   /// Flutter [TableColumnWidth] map — plug directly into [Table.columnWidths].
   Map<int, TableColumnWidth> get tableColumnWidths => {
-    0: FixedColumnWidth(amount),
-    1: FixedColumnWidth(debitAc),
-    2: FixedColumnWidth(ifsc),
-    3: FixedColumnWidth(creditAc),
-    4: FixedColumnWidth(code),
-    5: FixedColumnWidth(beneficiary),
-    6: FixedColumnWidth(place),
-    7: FixedColumnWidth(bank),
-    8: FixedColumnWidth(debitName),
+    0:  FixedColumnWidth(amount),
+    1:  FixedColumnWidth(debitAc),
+    2:  FixedColumnWidth(ifsc),
+    3:  FixedColumnWidth(creditAc),
+    4:  FixedColumnWidth(code),
+    5:  FixedColumnWidth(beneficiary),
+    6:  FixedColumnWidth(place),
+    7:  FixedColumnWidth(bank),
+    8:  FixedColumnWidth(debitName),
+    9:  FixedColumnWidth(from),
+    10: FixedColumnWidth(to),
   };
 }
 
@@ -194,7 +206,10 @@ class BankDisbursementPreview extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildTable(rows, showTotal: showSummary),
+              // ✅ FIX: Center the table so margins appear symmetrical
+              Center(
+                child: _buildTable(rows, showTotal: showSummary),
+              ),
               if (showSummary) ...[
                 const SizedBox(height: 16),
                 _buildSummary(idbiOther, idbiIdbi),
@@ -210,7 +225,7 @@ class BankDisbursementPreview extends StatelessWidget {
   Widget _buildTable(List<VoucherRowModel> rows, {required bool showTotal}) {
     const headers = [
       'Amount', 'Debit A/c', 'IFSC', 'Credit A/c',
-      'Code', 'Beneficiary', 'Place', 'Bank', 'Debit Name',
+      'Code', 'Beneficiary', 'Place', 'Bank', 'Debit Name', 'Fr.', 'To',
     ];
 
     return Table(
@@ -242,6 +257,8 @@ class BankDisbursementPreview extends StatelessWidget {
               _c(r.branch),
               _c(r.bankDetails),
               _c(config.companyName),
+              _c(_fmtDate(r.fromDate)),
+              _c(_fmtDate(r.toDate)),
             ])),
         // Totals row
         if (showTotal)
@@ -258,7 +275,7 @@ class BankDisbursementPreview extends StatelessWidget {
                   maxLines: 2,
                 ),
               ),
-              ...List.generate(7, (_) => _c('')),
+              ...List.generate(9, (_) => _c('')),
             ],
           ),
       ],
@@ -312,6 +329,15 @@ class BankDisbursementPreview extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 9)),
         ]),
       );
+
+  static String _fmtDate(String iso) {
+    if (iso.isEmpty) return '-';
+    if (iso.contains('-') && iso.length == 10) {
+      final p = iso.split('-');
+      return '${p[2]}/${p[1]}';
+    }
+    return iso;
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   static List<VoucherRowModel> _sorted(List<VoucherRowModel> rows) {

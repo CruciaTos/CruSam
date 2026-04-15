@@ -54,6 +54,8 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           e.name.toLowerCase().contains(q) ||
           e.pfNo.toLowerCase().contains(q)).toList();
     }
+    // Sort alphabetically by name (case-insensitive)
+    list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return list;
   }
 
@@ -86,7 +88,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
     'F&B'       => 'Food & Beverage',
     'I&L'       => 'Infrastructure & Logistics',
     'P&S'       => 'Projects & Services',
-    'A&P' => 'Administration & Projects',
+    'A&P'       => 'Administration & Projects',
     _           => code,
   };
 
@@ -120,63 +122,63 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
     }
   }
 
- @override
-Widget build(BuildContext context) {
-  return ListenableBuilder(
-    listenable: Listenable.merge([_stateCtrl, SalaryDataNotifier.instance]),
-    builder: (context, _) {
-      final n        = SalaryDataNotifier.instance;
-      final filtered = _filteredEmployees;
-      final code     = _stateCtrl.selectedCompanyCode;
-      final title    = code == 'All' ? 'Salary Slips' : 'Salary Slips - $code';
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_stateCtrl, SalaryDataNotifier.instance]),
+      builder: (context, _) {
+        final n        = SalaryDataNotifier.instance;
+        final filtered = _filteredEmployees;
+        final code     = _stateCtrl.selectedCompanyCode;
+        final title    = code == 'All' ? 'Salary Slips' : 'Salary Slips - $code';
 
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.pagePadding),
-        child: Column(
-          children: [
-            // Toolbar (Column version)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // First row: Title, Month badge, and Download button
-                Row(
-                  children: [
-                    Text(title, style: AppTextStyles.h3),
-                    const SizedBox(width: AppSpacing.md),
-                    _MonthBadge(monthName: n.monthName, year: n.year),
-                    const Spacer(),
-                    // Download all slips button
-                    if (_exporting)
-                      const SizedBox(width: 24, height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                    else
-                      OutlinedButton.icon(
-                        onPressed: _exportAllSlipsPdf,
-                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                        label: Text('Download All${filtered.isNotEmpty ? ' (${filtered.length})' : ''}'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red.shade700,
-                          side: BorderSide(color: Colors.red.shade400),
+        return Padding(
+          padding: const EdgeInsets.all(AppSpacing.pagePadding),
+          child: Column(
+            children: [
+              // Toolbar (Column version)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // First row: Title, Month badge, and Download button
+                  Row(
+                    children: [
+                      Text(title, style: AppTextStyles.h3),
+                      const SizedBox(width: AppSpacing.md),
+                      _MonthBadge(monthName: n.monthName, year: n.year),
+                      const Spacer(),
+                      // Download all slips button
+                      if (_exporting)
+                        const SizedBox(width: 24, height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                      else
+                        OutlinedButton.icon(
+                          onPressed: _exportAllSlipsPdf,
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                          label: Text('Download All${filtered.isNotEmpty ? ' (${filtered.length})' : ''}'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade400),
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                // Second row: Company code filter chips
-                const SizedBox(height: AppSpacing.sm),
-                _CodeFilter(
-                  codes:    _allCodes,
-                  selected: code,
-                  onChanged: (c) {
-                    _stateCtrl.setCompanyCode(c ?? 'All');
-                    if (_selectedEmployee != null &&
-                        (c ?? 'All') != 'All' &&
-                        _selectedEmployee!.code != c) {
-                      setState(() => _selectedEmployee = null);
-                    }
-                  },
-                ),
-              ],
-            ),
+                    ],
+                  ),
+                  // Second row: Company code filter chips
+                  const SizedBox(height: AppSpacing.sm),
+                  _CodeFilter(
+                    codes:    _allCodes,
+                    selected: code,
+                    onChanged: (c) {
+                      _stateCtrl.setCompanyCode(c ?? 'All');
+                      if (_selectedEmployee != null &&
+                          (c ?? 'All') != 'All' &&
+                          _selectedEmployee!.code != c) {
+                        setState(() => _selectedEmployee = null);
+                      }
+                    },
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.lg),
               Expanded(
                 child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -243,7 +245,6 @@ class _MonthBadge extends StatelessWidget {
   );
 }
 
-// ── Code filter — always shows All + F&B + I&L + P&S + A&P ──────────────────
 // ── Code filter — always shows All + F&B + I&L + P&S + A&P ──────────────────
 class _CodeFilter extends StatelessWidget {
   final List<String> codes;
