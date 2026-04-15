@@ -33,6 +33,9 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   final _dateCtrl       = TextEditingController(
       text: DateTime.now().toIso8601String().split('T').first);
 
+  // Hardcoded company codes – same as in SalaryEmployeesScreen
+  static const List<String> _companyCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+
   late final Listenable _fieldListenable = Listenable.merge([
     _billNoCtrl, _poNoCtrl, _clientNameCtrl, _clientAddrCtrl, _clientGstCtrl, _dateCtrl,
   ]);
@@ -77,7 +80,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     try {
       final sc = SalaryStateController.instance;
       await SalaryPdfExportService.exportSalaryInvoice(
-        
         context:           context,
         config:            _config,
         billNo:            _billNoCtrl.text,
@@ -137,19 +139,17 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                     ),
                 ],
               ),
-              // Second row: Company code filter chips (if any)
-              if (sc.companyCodes.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
-                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
-                    ],
-                  ),
+              // Second row: Company code filter chips (hardcoded, same as employee screen)
+              const SizedBox(height: AppSpacing.sm),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
+                    ..._companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),

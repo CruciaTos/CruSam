@@ -201,7 +201,7 @@ class BankDisbursementPreview extends StatelessWidget {
                   'AARTI ENTERPRISES : TRAVEL EXPENSES',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontSize: 14,
                     decoration: TextDecoration.underline,
                   ),
                 ),

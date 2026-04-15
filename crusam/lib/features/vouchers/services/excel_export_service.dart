@@ -1,19 +1,82 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
-import 'package:excel/excel.dart';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/company_config_model.dart';
 
-/// Excel export helper. The previous implementation delegated to a Python
-/// script; this file implements bank-disbursement export purely in Dart using
-/// the `excel` package.
+/// Excel export helper. Uses Syncfusion XlsIO for bank disbursement sheets,
+/// and a Python script for tax invoices (legacy).
 class ExcelExportService {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 📌 BLANK LEFT COLUMN CONFIGURATION – EDIT THESE VALUES AS NEEDED
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const bool _includeLeftBlankColumn = true;
+  static const double _colWidthBlankLeft   = 3.0;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🎯 COLUMN WIDTH CONFIGURATION (in Excel character units)
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const double _colWidthAmount      = 22.0;
+  static const double _colWidthDebitAc     = 20.0;
+  static const double _colWidthIFSC        = 14.0;
+  static const double _colWidthCreditAc    = 20.0;
+  static const double _colWidthCode        = 10.0;
+  static const double _colWidthBeneficiary = 22.0;
+  static const double _colWidthPlace       = 29.0;
+  static const double _colWidthBankDetails = 25.0;
+  static const double _colWidthDebitName   = 18.0;
+  static const double _colWidthFrom        = 10.0;
+  static const double _colWidthTo          = 10.0;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🖼️ SIGNATURE IMAGE CONFIGURATION
+  // _signatureColOffset: 0 = Amount, 1 = Debit A/C, ... 9 = Fr, 10 = To
+  // _signatureRowOffset: rows below the last data row (Fr./To. column end)
+  // _signatureSize: square size in pixels (0 = auto‑calculate from spanned columns)
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const int _signatureColOffset = 8;   // Start at Debit A/C column
+  static const int _signatureRowOffset = 10;   // 8 rows below header (row 4 → row 12)
+  static const int _signatureSize      = 0;   // 0 = auto‑size to span Debit A/C + Fr + To
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🖨️ PRINT AREA & PAGE SETUP
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const String _printStartColumn = 'A';
+  static const int    _printStartRow    = 1;
+  static const bool   _fitToPage        = true;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 📊 BANK SPLIT SUMMARY CONFIGURATION
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const bool _includeBankSplit = true;
+  static const int _bankSplitOffset   = 2;
+  static const String _bankSplitLabel = 'BANK TRANSFER SPLIT';
+  static const bool _splitBoxUseBackground = false;
+  static const bool _splitBoxOuterBorder = true;
+  static const String _splitBoxBgColor   = '#FF1E293B';
+  static const String _splitTextColor    = '#FFFFFFFF';
+  static const String _splitLabelColor   = '#FF94A3B8';
+  static const String _splitValueColor   = '#FFCBD5E1';
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 🔲 DATA TABLE OUTER BORDER
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const bool _dataTableOuterBorder = true;
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 📏 TOTAL IN WORDS CELL MERGING
+  // ─────────────────────────────────────────────────────────────────────────────
+  static const int _wordsCellMergeCount = 3;
+
+  // ── Helper to get the actual starting column index for data ─────────────────
+  static int get _dataStartCol => _includeLeftBlankColumn ? 2 : 1;
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
-  /// Exports the Tax Invoice sheet and returns the saved file path.
   static Future<String> exportTaxInvoice(
     VoucherModel voucher,
     CompanyConfigModel config,
@@ -22,191 +85,410 @@ class ExcelExportService {
     return paths.invoicePath;
   }
 
-  /// Exports the Bank Disbursement sheet and returns the saved file path.
-  /// Format matches the reference Excel: no header row, data starts at B3,
-  /// from/to date columns (K/L), SUM formula total row.
   static Future<String> exportBankDisbursement(
     VoucherModel voucher,
-    CompanyConfigModel config,
-  ) async {
-    final excel = Excel.createExcel();
-    try {
-      if (excel.tables.containsKey('Sheet1')) excel.delete('Sheet1');
-    } catch (_) {}
+    CompanyConfigModel config, {
+    double idbiToOther = 0.0,
+    double idbiToIdbi = 0.0,
+  }) async {
+    return _exportBankSheet(voucher, config,
+        idbiToOther: idbiToOther, idbiToIdbi: idbiToIdbi);
+  }
 
-    // Sheet name: "Bill-Data-{deptCode}"
+  static Future<_ExportPaths> exportAll(
+    VoucherModel voucher,
+    CompanyConfigModel config,
+  ) => _runGenerator(voucher, config);
+
+  // ── Bank Sheet – exact reference format using Syncfusion ──────────────────
+
+  static Future<String> _exportBankSheet(
+    VoucherModel voucher,
+    CompanyConfigModel config, {
+    required double idbiToOther,
+    required double idbiToIdbi,
+  }) async {
+    final Workbook workbook = Workbook();
+    workbook.worksheets.clear();
     final sheetName =
         'Bill-Data-${voucher.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
+    final Worksheet sheet = workbook.worksheets.addWithName(sheetName);
 
-    // ── Styles ──────────────────────────────────────────────────────────────
-    final bold11   = CellStyle(bold: true, fontSize: 11);
-    final norm11   = CellStyle(fontSize: 11);
-    final ctr11    = CellStyle(fontSize: 11, horizontalAlign: HorizontalAlign.Center);
-    final boldLeft = CellStyle(bold: true, fontSize: 11, horizontalAlign: HorizontalAlign.Left);
+    _setColumnWidths(sheet);
+    _writeTitleRow(sheet, voucher, config);
+    _writeHeaderRow(sheet);
 
-    // ── Row 2 (rowIdx 1): Title at B2, dept code at I2 ──────────────────────
-    final title =
-        '${config.companyName} : ${voucher.title.isEmpty ? 'Expenses Statement' : voucher.title}';
-    _set(excel, sheetName, 1, 1, TextCellValue(title), bold11);
-    _set(excel, sheetName, 8, 1, TextCellValue(voucher.deptCode), bold11);
-
-    // ── Sort rows by fromDate ─────────────────────────────────────────────────
-    final rows = [...voucher.rows]..sort((a, b) {
+    final sortedRows = [...voucher.rows]..sort((a, b) {
         if (a.fromDate.isEmpty && b.fromDate.isEmpty) return 0;
         if (a.fromDate.isEmpty) return 1;
         if (b.fromDate.isEmpty) return -1;
         return a.fromDate.compareTo(b.fromDate);
       });
 
-    // ── Data rows: rowIdx 2 → Excel row 3 ────────────────────────────────────
-    // Columns (all start at B = colIdx 1):
-    //  B(1)=Amount  C(2)=DebitAc  D(3)=IFSC     E(4)=CreditAc  F(5)=Code
-    //  G(6)=Name    H(7)=Place    I(8)=BankDet  J(9)=DebitName
-    //  K(10)=From   L(11)=To
-    int rowIdx = 2;
-    for (final r in rows) {
-      _set(excel, sheetName,  1, rowIdx, DoubleCellValue(r.amount),                    norm11);
-      _set(excel, sheetName,  2, rowIdx, TextCellValue(config.accountNo),              ctr11);
-      _set(excel, sheetName,  3, rowIdx, TextCellValue(r.ifscCode),                    ctr11);
-      _set(excel, sheetName,  4, rowIdx, TextCellValue(r.accountNumber),               ctr11);
-      _set(excel, sheetName,  5, rowIdx, TextCellValue(r.sbCode),                      ctr11);
-      _set(excel, sheetName,  6, rowIdx, TextCellValue(r.employeeName),                norm11);
-      _set(excel, sheetName,  7, rowIdx, TextCellValue(r.branch),                      ctr11);
-      _set(excel, sheetName,  8, rowIdx, TextCellValue(r.bankDetails),                 norm11);
-      _set(excel, sheetName,  9, rowIdx, TextCellValue(config.companyName.toLowerCase()), ctr11);
-      _set(excel, sheetName, 10, rowIdx, TextCellValue(_fmtDate(r.fromDate)),          ctr11);
-      _set(excel, sheetName, 11, rowIdx, TextCellValue(_fmtDate(r.toDate)),            ctr11);
-      rowIdx++;
+    int rowIndex = 4;
+    for (final r in sortedRows) {
+      _writeDataRow(sheet, rowIndex, r, config);
+      rowIndex++;
+    }
+    final int lastDataRow = rowIndex;
+
+    if (_dataTableOuterBorder) {
+      final int headerRow = 4;
+      final int startCol = _dataStartCol;
+      final int endCol = startCol + 10;
+      final Range tableRange = sheet.getRangeByIndex(headerRow, startCol, lastDataRow, endCol);
+      _applyBorder(tableRange);
     }
 
-    // ── Total row ─────────────────────────────────────────────────────────────
-    // rowIdx is now (2 + n). Last data Excel row = rowIdx (0-indexed rowIdx-1 → 1-indexed = rowIdx).
-    // SUM range: B3:B{rowIdx}
-    _set(excel, sheetName, 1, rowIdx,
-        FormulaCellValue('SUM(B3:B$rowIdx)'), bold11);
-    _set(excel, sheetName, 2, rowIdx,
-        TextCellValue(numberToWords(voucher.baseTotal)), boldLeft);
+    rowIndex++; // blank row
+    final int totalRowIndex = rowIndex;
+    _writeTotalRow(sheet, totalRowIndex, sortedRows.isNotEmpty, voucher.baseTotal, lastDataRow);
+    final int totalRowExcel = totalRowIndex + 1;
 
-    // ── Save ──────────────────────────────────────────────────────────────────
-    final outDir   = await _outputDir();
-    final safe     = (voucher.title.trim().isEmpty ? 'voucher' : voucher.title)
+    await _insertSignatureImage(sheet, lastDataRow);
+
+    int nextRow = totalRowExcel;
+    if (_includeBankSplit) {
+      nextRow = _writeBankSplitSection(
+        sheet,
+        startRow: totalRowExcel + _bankSplitOffset,
+        baseTotal: voucher.baseTotal,
+        idbiToOther: idbiToOther,
+        idbiToIdbi: idbiToIdbi,
+      );
+    }
+
+    _configurePrintSetup(sheet, _includeBankSplit ? nextRow : totalRowExcel);
+
+    final List<int> bytes = workbook.saveAsStream();
+    workbook.dispose();
+
+    return await _saveExcelFileWithIncrement(bytes, voucher, 'bank_disbursement');
+  }
+
+  // ── Column widths ─────────────────────────────────────────────────────────
+
+  static void _setColumnWidths(Worksheet sheet) {
+    int col = 1;
+    if (_includeLeftBlankColumn) {
+      sheet.getRangeByIndex(1, col).columnWidth = _colWidthBlankLeft;
+      col++;
+    }
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthAmount;      col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitAc;     col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthIFSC;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCreditAc;    col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary; col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;       col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails; col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitName;   col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthFrom;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthTo;
+  }
+
+  static void _writeTitleRow(Worksheet sheet, VoucherModel voucher,
+      CompanyConfigModel config) {
+    final Range titleRange = sheet.getRangeByIndex(2, 2, 2, 7);
+    titleRange.merge();
+    final titleText =
+        '${config.companyName} : ${voucher.title.isEmpty ? 'Expenses Statement' : voucher.title}';
+    titleRange.setText(titleText);
+    _applyCellStyle(titleRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
+
+    final Range deptRange = sheet.getRangeByIndex(2, 8);
+    deptRange.setText(voucher.deptCode);
+    _applyCellStyle(deptRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
+  }
+
+  static void _writeHeaderRow(Worksheet sheet) {
+    const headers = [
+      'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
+      'Beneficiary', 'Place', 'Bank Details', 'Debit Name', 'Fr.', 'To',
+    ];
+    final int row = 4;
+    int col = _dataStartCol;
+    for (int i = 0; i < headers.length; i++) {
+      final Range cell = sheet.getRangeByIndex(row, col);
+      cell.setText(headers[i]);
+      _applyCellStyle(cell, bold: true, hAlign: HAlignType.center, border: true);
+      col++;
+    }
+  }
+
+  static void _writeDataRow(Worksheet sheet, int rowIndex, dynamic r,
+      CompanyConfigModel config) {
+    int col = _dataStartCol;
+
+    _setCellValue(sheet, rowIndex, col, r.amount, isNumber: true, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, config.accountNo, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.ifscCode, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.accountNumber, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.sbCode, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.employeeName, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.branch, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, r.bankDetails, hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, config.companyName.toLowerCase(),
+        hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, _fmtDate(r.fromDate), hAlign: HAlignType.center); col++;
+    _setCellValue(sheet, rowIndex, col, _fmtDate(r.toDate), hAlign: HAlignType.center);
+
+    for (int c = _dataStartCol; c < col; c++) {
+      _applyBorder(sheet.getRangeByIndex(rowIndex + 1, c));
+    }
+  }
+
+  static void _setCellValue(Worksheet sheet, int rowIndex, int col, dynamic value,
+      {bool isNumber = false, HAlignType? hAlign}) {
+    final Range cell = sheet.getRangeByIndex(rowIndex + 1, col);
+    if (value == null) {
+      cell.setText('');
+    } else if (isNumber) {
+      cell.setNumber(value.toDouble());
+      cell.numberFormat = '#,##0.00';
+    } else {
+      cell.setText(value.toString());
+    }
+    cell.cellStyle.hAlign = hAlign ?? HAlignType.center;
+  }
+
+  static void _writeTotalRow(Worksheet sheet, int rowIndex, bool hasData, double baseTotal, int lastDataRow) {
+    final int excelRow = rowIndex + 1;
+    final int amountCol = _dataStartCol;
+
+    final Range sumCell = sheet.getRangeByIndex(excelRow, amountCol);
+    if (hasData) {
+      sumCell.setFormula('SUM(${_colIndexToLetter(amountCol)}5:${_colIndexToLetter(amountCol)}$lastDataRow)');
+    } else {
+      sumCell.setNumber(0);
+    }
+    _applyCellStyle(sumCell, bold: true, hAlign: HAlignType.center, border: true);
+
+    final int wordsStartCol = amountCol + 1;
+    final int wordsEndCol = wordsStartCol + _wordsCellMergeCount;
+    final Range wordsRange = sheet.getRangeByIndex(excelRow, wordsStartCol, excelRow, wordsEndCol);
+    if (_wordsCellMergeCount > 0) {
+      wordsRange.merge();
+    }
+    wordsRange.setText(numberToWords(baseTotal));
+    _applyCellStyle(wordsRange, hAlign: HAlignType.center, border: true);
+  }
+
+  static String _colIndexToLetter(int index) {
+    String result = '';
+    int n = index;
+    while (n > 0) {
+      int rem = (n - 1) % 26;
+      result = String.fromCharCode(65 + rem) + result;
+      n = (n - 1) ~/ 26;
+    }
+    return result;
+  }
+
+  static int _writeBankSplitSection(
+    Worksheet sheet, {
+    required int startRow,
+    required double baseTotal,
+    required double idbiToOther,
+    required double idbiToIdbi,
+  }) {
+    int row = startRow;
+    final int labelCol = _dataStartCol;
+    final int valueCol = labelCol + 4;
+
+    final Range titleRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
+    titleRange.merge();
+    titleRange.setText(_bankSplitLabel);
+    _applyCellStyle(titleRange, bold: true, fontSize: 11, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      titleRange.cellStyle.backColor = _splitBoxBgColor;
+      titleRange.cellStyle.fontColor = _splitLabelColor;
+    }
+    row++;
+
+    _writeSplitRow(sheet, row, labelCol, valueCol, 'From IDBI to Other Bank', idbiToOther);
+    row++;
+    _writeSplitRow(sheet, row, labelCol, valueCol, 'From IDBI to IDBI Bank', idbiToIdbi);
+    row++;
+    row++; // spacer
+    final Range dividerRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
+    dividerRange.merge();
+    dividerRange.cellStyle.borders.bottom.lineStyle = LineStyle.thin;
+    if (_splitBoxUseBackground) {
+      dividerRange.cellStyle.borders.bottom.color = _splitLabelColor;
+    }
+    row++;
+    final Range totalLabel = sheet.getRangeByIndex(row, labelCol);
+    totalLabel.setText('Total Base Amount');
+    _applyCellStyle(totalLabel, bold: true, fontSize: 12, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      totalLabel.cellStyle.backColor = _splitBoxBgColor;
+      totalLabel.cellStyle.fontColor = _splitTextColor;
+    }
+    final Range totalValue = sheet.getRangeByIndex(row, valueCol);
+    totalValue.setNumber(baseTotal);
+    totalValue.numberFormat = '#,##0.00';
+    _applyCellStyle(totalValue, bold: true, fontSize: 12, hAlign: HAlignType.right, border: true);
+    if (_splitBoxUseBackground) {
+      totalValue.cellStyle.backColor = _splitBoxBgColor;
+      totalValue.cellStyle.fontColor = _splitTextColor;
+    }
+    if (_splitBoxOuterBorder) {
+      final Range outerBox = sheet.getRangeByIndex(startRow, labelCol, row, valueCol);
+      _applyBorder(outerBox);
+    }
+    return row;
+  }
+
+  static void _writeSplitRow(Worksheet sheet, int row, int labelCol, int valueCol,
+      String label, double value) {
+    final Range labelCell = sheet.getRangeByIndex(row, labelCol);
+    labelCell.setText(label);
+    _applyCellStyle(labelCell, fontSize: 11, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      labelCell.cellStyle.backColor = _splitBoxBgColor;
+      labelCell.cellStyle.fontColor = _splitLabelColor;
+    }
+    final Range valueCell = sheet.getRangeByIndex(row, valueCol);
+    valueCell.setNumber(value);
+    valueCell.numberFormat = '#,##0.00';
+    _applyCellStyle(valueCell, fontSize: 11, hAlign: HAlignType.right, border: true);
+    if (_splitBoxUseBackground) {
+      valueCell.cellStyle.backColor = _splitBoxBgColor;
+      valueCell.cellStyle.fontColor = _splitValueColor;
+    }
+  }
+
+  static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
+    try {
+      final ByteData data = await rootBundle.load('assets/images/aarti_signature.png');
+      final Uint8List bytes = data.buffer.asUint8List();
+
+      final int startCol = _dataStartCol + _signatureColOffset;
+      final int imageRow = lastDataRow + _signatureRowOffset;
+
+      final Picture picture = sheet.pictures.addBase64(imageRow, startCol, base64.encode(bytes));
+
+      // Determine size: if _signatureSize == 0, calculate width from spanned columns
+      if (_signatureSize == 0) {
+        // Columns: Debit A/C (offset 1), Fr (offset 9), To (offset 10) → width sum
+        final List<double> widths = [
+          _colWidthAmount, _colWidthDebitAc, _colWidthIFSC, _colWidthCreditAc,
+          _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthBankDetails,
+          _colWidthDebitName, _colWidthFrom, _colWidthTo
+        ];
+        double totalWidth = 0.0;
+        // Span from offset 1 to offset 10 inclusive? User wanted Debit A/C + Fr + To
+        // That's columns at offsets 1, 9, 10. We'll sum widths[1] + widths[9] + widths[10]
+        totalWidth = widths[1] + widths[9] + widths[10];
+        // Approximate pixels: Excel default column width ~7 pixels per unit? Actually 1 unit ≈ 7px at default font.
+        // We'll use a rough conversion factor. 1 character unit ≈ 7 pixels.
+        const double pxPerUnit = 7.0;
+        int calculatedSize = (totalWidth * pxPerUnit).round();
+        picture.height = calculatedSize;
+        picture.width = calculatedSize;
+      } else {
+        picture.height = _signatureSize;
+        picture.width = _signatureSize;
+      }
+    } catch (_) {
+      // Asset not found – skip
+    }
+  }
+
+  static void _configurePrintSetup(Worksheet sheet, int lastRow) {
+    final int toColumnIndex = _dataStartCol + 10;
+    final String endColLetter = _colIndexToLetter(toColumnIndex);
+    final String printArea = '$_printStartColumn$_printStartRow:$endColLetter$lastRow';
+    sheet.pageSetup.printArea = printArea;
+    if (_fitToPage) {
+      sheet.pageSetup.fitToPagesTall = 1;
+      sheet.pageSetup.fitToPagesWide = 1;
+    }
+  }
+
+  // ── Style helpers ─────────────────────────────────────────────────────────
+  static void _applyCellStyle(Range range,
+      {bool bold = false,
+      double fontSize = 11,
+      HAlignType hAlign = HAlignType.left,
+      bool border = false}) {
+    range.cellStyle.bold = bold;
+    range.cellStyle.fontSize = fontSize;
+    range.cellStyle.hAlign = hAlign;
+    if (border) _applyBorder(range);
+  }
+
+  static void _applyBorder(Range range) {
+    range.cellStyle.borders.all.lineStyle = LineStyle.thin;
+  }
+
+  // ── File saving with auto‑increment ──────────────────────────────────────
+  static Future<String> _saveExcelFileWithIncrement(
+      List<int> bytes, VoucherModel voucher, String prefix) async {
+    final outDir = await _outputDir();
+    final safeTitle = (voucher.title.trim().isEmpty ? 'voucher' : voucher.title)
         .replaceAll(RegExp(r'[<>:"/\\|?*]'), '')
         .replaceAll(' ', '_');
-    final now      = DateTime.now();
-    final datePart = '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    final file     = File('${outDir}${Platform.pathSeparator}bank_disbursement_${safe}_$datePart.xlsx');
+    final now = DateTime.now();
+    final datePart =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
 
-    final bytes = excel.encode();
-    if (bytes == null) throw Exception('Failed to generate excel bytes');
+    String baseName = '${prefix}_${safeTitle}_$datePart';
+    String filePath = '$outDir${Platform.pathSeparator}$baseName.xlsx';
+    File file = File(filePath);
+
+    int counter = 1;
+    while (await file.exists()) {
+      filePath = '$outDir${Platform.pathSeparator}${baseName}_$counter.xlsx';
+      file = File(filePath);
+      counter++;
+    }
+
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
 
-  /// Exports BOTH sheets in a single Python call (faster) and returns
-  /// [_ExportPaths] with both paths.  The public methods above call this.
-  static Future<_ExportPaths> exportAll(
-    VoucherModel voucher,
-    CompanyConfigModel config,
-  ) => _runGenerator(voucher, config);
-
-  // ── Core ───────────────────────────────────────────────────────────────────
-
+  // ── Python‑based invoice export (unchanged) ───────────────────────────────
   static Future<_ExportPaths> _runGenerator(
     VoucherModel voucher,
     CompanyConfigModel config,
   ) async {
-    // 1. Ensure the Python script is in a writable directory
     final scriptPath = await _ensureScript();
-
-    // 2. Resolve the output directory (Downloads → Documents)
     final outDir = await _outputDir();
-
-    // 3. Serialise voucher + config to a temp JSON file
     final tmpDir = await getTemporaryDirectory();
     final jsonFile = File('${tmpDir.path}/ae_export_${DateTime.now().millisecondsSinceEpoch}.json');
-    await jsonFile.writeAsString(
-      jsonEncode({
-        'voucher': _voucherToMap(voucher),
-        'config': _configToMap(config),
-      }),
-    );
-
+    await jsonFile.writeAsString(jsonEncode({
+      'voucher': _voucherToMap(voucher),
+      'config': _configToMap(config),
+    }));
     try {
-      // 4. Determine the Python executable
       final python = _pythonExe();
-
-      // 5. Run the script
-      final result = await Process.run(
-        python,
-        [scriptPath, jsonFile.path, outDir],
-        stdoutEncoding: utf8,
-        stderrEncoding: utf8,
-      );
-
+      final result = await Process.run(python, [scriptPath, jsonFile.path, outDir],
+          stdoutEncoding: utf8, stderrEncoding: utf8);
       if (result.exitCode != 0) {
-        throw Exception(
-          'excel_generator.py exited with code ${result.exitCode}.\n'
-          'STDERR:\n${result.stderr}\n'
-          'STDOUT:\n${result.stdout}',
-        );
+        throw Exception('excel_generator.py error:\n${result.stderr}');
       }
-
-      // 6. Parse the two output paths from stdout (one path per line)
       final lines = (result.stdout as String)
           .split('\n')
           .map((l) => l.trim())
           .where((l) => l.isNotEmpty)
           .toList();
-
-      if (lines.length < 2) {
-        throw Exception(
-          'excel_generator.py produced unexpected output:\n${result.stdout}',
-        );
-      }
-
+      if (lines.length < 2) throw Exception('Unexpected output from excel_generator.py');
       return _ExportPaths(invoicePath: lines[0], bankPath: lines[1]);
     } finally {
-      // 7. Clean up temp JSON
-      try {
-        await jsonFile.delete();
-      } catch (_) {}
+      try { await jsonFile.delete(); } catch (_) {}
     }
   }
 
-  // ── Script management ─────────────────────────────────────────────────────
-
-  /// Copies the bundled asset script to the app-support directory (once) and
-  /// returns its absolute path.  On subsequent calls the existing file is used.
   static Future<String> _ensureScript() async {
     final supportDir = await getApplicationSupportDirectory();
     final scriptFile = File('${supportDir.path}/excel_generator.py');
-
-    // Always overwrite so updates to the asset are picked up.
     final assetContent = await rootBundle.loadString('assets/scripts/excel_generator.py');
     await scriptFile.writeAsString(assetContent);
-
     return scriptFile.path;
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  static void _set(
-    Excel excel,
-    String sheet,
-    int col,
-    int row,
-    CellValue value,
-    CellStyle style,
-  ) {
-    excel.updateCell(
-      sheet,
-      CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row),
-      value,
-      cellStyle: style,
-    );
-  }
-
-  /// Converts ISO date (yyyy-MM-dd) → DD/MM/YYYY for Excel cells.
   static String _fmtDate(String iso) {
     if (iso.isEmpty) return '';
     if (iso.length == 10 && iso.contains('-')) {
@@ -231,13 +513,21 @@ class ExcelExportService {
   }
 
   static String _pythonExe() {
-    if (Platform.isWindows) {
-      return Platform.environment['PYTHON_EXE'] ?? 'python';
-    }
+    if (Platform.isWindows) return Platform.environment['PYTHON_EXE'] ?? 'python';
     return Platform.environment['PYTHON_EXE'] ?? 'python3';
   }
 
-  // ── Serialisation ─────────────────────────────────────────────────────────
+  static Future<void> openFile(String filePath) async {
+    try {
+      if (Platform.isWindows) {
+        await Process.run('cmd', ['/c', 'start', '', filePath]);
+      } else if (Platform.isMacOS) {
+        await Process.run('open', [filePath]);
+      } else if (Platform.isLinux) {
+        await Process.run('xdg-open', [filePath]);
+      }
+    } catch (_) {}
+  }
 
   static Map<String, dynamic> _voucherToMap(VoucherModel v) => {
         'billNo': v.billNo,
@@ -255,19 +545,17 @@ class ExcelExportService {
         'totalTax': v.totalTax,
         'roundOff': v.roundOff,
         'finalTotal': v.finalTotal,
-        'rows': v.rows
-            .map((r) => {
-                  'employeeName': r.employeeName,
-                  'amount': r.amount,
-                  'fromDate': r.fromDate,
-                  'toDate': r.toDate,
-                  'ifscCode': r.ifscCode,
-                  'accountNumber': r.accountNumber,
-                  'sbCode': r.sbCode,
-                  'bankDetails': r.bankDetails,
-                  'branch': r.branch,
-                })
-            .toList(),
+        'rows': v.rows.map((r) => {
+          'employeeName': r.employeeName,
+          'amount': r.amount,
+          'fromDate': r.fromDate,
+          'toDate': r.toDate,
+          'ifscCode': r.ifscCode,
+          'accountNumber': r.accountNumber,
+          'sbCode': r.sbCode,
+          'bankDetails': r.bankDetails,
+          'branch': r.branch,
+        }).toList(),
       };
 
   static Map<String, dynamic> _configToMap(CompanyConfigModel c) => {

@@ -111,7 +111,8 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
               months:         _months,
               isMsw:          _isMsw,
               isFeb:          _isFeb,
-              codes:          _ctrl.companyCodes,
+              // ✅ Hard‑coded list matching the Salary Slips screen
+              codes:          const ['F&B', 'I&L', 'P&S', 'A&P'],
               selectedCode:   _ctrl.selectedCompanyCode,
               onMonthChanged: (v) => _onMonthYearChange(v, _year),
               onYearChanged:  (v) => _onMonthYearChange(_month, v),
@@ -186,7 +187,7 @@ class _Toolbar extends StatelessWidget {
     required this.onCodeChanged,
   });
 
-   @override
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +237,7 @@ class _Toolbar extends StatelessWidget {
             ],
           ],
         ),
-        // Second row: Company code filter chips (if any)
+        // Second row: Company code filter chips
         if (codes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           SingleChildScrollView(
@@ -252,9 +253,6 @@ class _Toolbar extends StatelessWidget {
       ],
     );
   }
-
-  // ... _chip and _badge methods remain exactly the same ...
-
 
   static Widget _chip(String label, bool active, VoidCallback onTap) => Padding(
     padding: const EdgeInsets.only(right: 6),

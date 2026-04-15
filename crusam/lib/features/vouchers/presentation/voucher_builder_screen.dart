@@ -24,6 +24,7 @@ class VoucherBuilderScreen extends StatefulWidget {
 class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   final _notifier = VoucherNotifier.instance;
   bool _exporting = false;
+  bool _exportingBankSheet = false; // ← tracks the new bank-sheet export
 
   @override
   void initState() {
@@ -51,6 +52,58 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
             content: Text(
                 ok ? 'Invoice saved successfully' : 'Error saving invoice')),
       );
+    }
+  }
+
+  // ── Export Bank Sheet (exact reference format) ────────────────────────────
+  Future<void> _exportBankSheet() async {
+    if (_exportingBankSheet) return;
+
+    if (_notifier.current.rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Add at least one row before exporting the bank sheet')),
+      );
+      return;
+    }
+
+    setState(() => _exportingBankSheet = true);
+
+    try {
+      // Pass bank split values to include the summary box in the Excel
+      final path = await ExcelExportService.exportBankDisbursement(
+        _notifier.enriched,
+        _notifier.config,
+        idbiToOther: _notifier.idbiToOther,
+        idbiToIdbi: _notifier.idbiToIdbi,
+      );
+
+      // Open the saved file with the default OS application (Excel / Numbers)
+      await ExcelExportService.openFile(path);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Bank sheet saved: ${File(path).uri.pathSegments.last}'),
+            action: SnackBarAction(
+              label: 'Open Folder',
+              onPressed: () => _openFolder(File(path).parent.path),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Bank sheet export failed: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingBankSheet = false);
     }
   }
 
@@ -105,9 +158,13 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       invoicePath =
           await ExcelExportService.exportTaxInvoice(voucher, config);
       bankPath =
-          await ExcelExportService.exportBankDisbursement(voucher, config);
+          await ExcelExportService.exportBankDisbursement(
+            voucher,
+            config,
+            idbiToOther: _notifier.idbiToOther,
+            idbiToIdbi: _notifier.idbiToIdbi,
+          );
     } catch (e, st) {
-      // Capture full stack trace so we can show it in the error dialog
       errorMsg = '$e\n\n$st';
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -118,7 +175,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     Navigator.of(context, rootNavigator: true).pop();
 
     if (errorMsg != null) {
-      // Show full error in a scrollable dialog so nothing is hidden
       await showDialog(
         context: context,
         builder: (dc) => AlertDialog(
@@ -150,7 +206,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       return;
     }
 
-    // Both files created — show paths and offer to open the folder
     if (mounted) {
       await _showExportSuccessDialog(
         invoicePath: invoicePath,
@@ -163,7 +218,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     required String? invoicePath,
     required String? bankPath,
   }) async {
-    // Derive the folder from whichever path is available
     final folder = invoicePath != null
         ? File(invoicePath).parent.path
         : bankPath != null
@@ -284,7 +338,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         ),
       );
 
-  /// Opens the folder in the OS file explorer.
   static void _openFolder(String folderPath) {
     try {
       if (Platform.isWindows) {
@@ -294,9 +347,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       } else if (Platform.isLinux) {
         Process.run('xdg-open', [folderPath]);
       }
-    } catch (_) {
-      // Path is shown in the dialog — user can navigate manually if this fails
-    }
+    } catch (_) {}
   }
 
   @override
@@ -343,6 +394,9 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
                   onSave: _saveVoucher,
                   onFinalise: _finaliseAndExport,
                   exporting: _exporting,
+                  // ↓ New bank-sheet wiring
+                  onExportBankSheet: _exportBankSheet,
+                  exportingBankSheet: _exportingBankSheet,
                 ),
               ],
             ),
@@ -732,7 +786,7 @@ class _RowsTable extends StatelessWidget {
                   onPressed: notifier.addRow,
                   icon: const Icon(Icons.add_circle_outline,
                       size: 17, color: AppColors.indigo600),
-                  label: Text('+ Add Row',
+                  label: Text('Add Employee',
                       style: AppTextStyles.bodyMedium.copyWith(
                         color: AppColors.indigo600,
                         fontWeight: FontWeight.w600,
@@ -761,12 +815,18 @@ class _ActionButtons extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onFinalise;
   final bool exporting;
+  /// Called when the user taps "Preview Bank Sheet" – exports the exact Excel.
+  final VoidCallback onExportBankSheet;
+  /// True while the bank-sheet export is in progress.
+  final bool exportingBankSheet;
 
   const _ActionButtons({
     required this.notifier,
     required this.onSave,
     required this.onFinalise,
     required this.exporting,
+    required this.onExportBankSheet,
+    required this.exportingBankSheet,
   });
 
   @override
@@ -775,6 +835,7 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment: WrapAlignment.end,
         children: [
+          // ── Discard Draft ─────────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: () async {
               final confirm = await showDialog<bool>(
@@ -809,6 +870,8 @@ class _ActionButtons extends StatelessWidget {
               side: const BorderSide(color: Color(0xFFFAE3E3)),
             ),
           ),
+
+          // ── Save as Draft ─────────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: onSave,
             icon: const Icon(Icons.save, size: 16),
@@ -817,18 +880,31 @@ class _ActionButtons extends StatelessWidget {
               side: const BorderSide(color: AppColors.emerald100),
             ),
           ),
+
+          // ── Preview Invoice (PDF dialog) ───────────────────────────────────
           OutlinedButton.icon(
             onPressed: () => InvoicePreviewDialog.show(
                 context, notifier, notifier.config, PreviewType.invoice),
             icon: const Icon(Icons.description_outlined, size: 16),
             label: const Text('Preview Invoice'),
           ),
+
+          // ── Preview Bank Sheet → exports exact Excel & opens it ───────────
           OutlinedButton.icon(
-            onPressed: () => InvoicePreviewDialog.show(
-                context, notifier, notifier.config, PreviewType.bank),
-            icon: const Icon(Icons.account_balance_outlined, size: 16),
-            label: const Text('Preview Bank Sheet'),
+            onPressed: exportingBankSheet ? null : onExportBankSheet,
+            icon: exportingBankSheet
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2),
+                  )
+                : const Icon(Icons.account_balance_outlined, size: 16),
+            label: Text(
+                exportingBankSheet ? 'Exporting…' : 'Preview Bank Sheet'),
           ),
+
+          // ── Finalise & Export ─────────────────────────────────────────────
           ElevatedButton.icon(
             onPressed: exporting ? null : onFinalise,
             icon: exporting

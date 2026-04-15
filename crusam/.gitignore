@@ -14,7 +14,6 @@ migrate_working_dir/
 
 
 
-assets/fonts/
 
 # IntelliJ related
 *.iml
@@ -36,6 +35,10 @@ assets/fonts/
 .pub/
 /build/
 /coverage/
+
+
+assets/fonts/*.ttf
+assets/fonts/*.otf
 
 # Symbolication related
 app.*.symbols
