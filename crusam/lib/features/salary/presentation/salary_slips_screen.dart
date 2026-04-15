@@ -104,7 +104,6 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
     try {
       final n = SalaryDataNotifier.instance;
       await SalaryPdfExportService.exportSalarySlips(
-        context:     context,
         config:      _config,
         employees:   employees,
         monthName:   n.monthName,
@@ -481,7 +480,7 @@ class _PreviewPanel extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
-  Widget build(BuildContext context) => Center(
+  Widget build(BuildContext  context) => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.slate300),
       const SizedBox(height: 16),

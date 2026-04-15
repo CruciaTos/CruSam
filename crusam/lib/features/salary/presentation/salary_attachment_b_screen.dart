@@ -1,3 +1,5 @@
+import 'package:crusam/features/salary/services/Salary_pdf_export_service.dart';
+import 'package:crusam/features/salary/services/salary_pdf_export_service.dart' hide SalaryPdfExportService;
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -19,6 +21,7 @@ class SalaryAttachmentBScreen extends StatefulWidget {
 class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   final _descNotifier = ItemDescriptionNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
+  bool _exporting = false;
 
   String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
@@ -46,8 +49,35 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   }
 
   /// Formats the selected month/year into a display date string for the bill.
-  /// e.g. "April 2026" → "April 2026"  (feel free to adjust the format)
   String _buildDate(SalaryDataNotifier n) => '${n.monthName} ${n.year}';
+
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final sc = SalaryStateController.instance;
+      final n  = SalaryDataNotifier.instance;
+      await SalaryPdfExportService.exportAttachmentB(
+    
+        config:          _config,
+        billNo:          _billNoCtrl.text,
+        date:            _buildDate(n),
+        poNo:            n.poNo,
+        itemDescription: _itemDescription,
+        employeeCount:   sc.employeeCount,
+        customerName:    _config.companyName,
+        customerAddress: _config.address,
+        customerGst:     _config.gstin,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -65,12 +95,27 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // First row: Title and Month badge
+              // First row: Title, Month badge, and Download button
               Row(
                 children: [
                   Text(title, style: AppTextStyles.h3),
                   const SizedBox(width: AppSpacing.md),
                   _MonthBadge(monthName: n.monthName, year: n.year),
+                  const Spacer(),
+                  // Download PDF button (same as Attachment A)
+                  if (_exporting)
+                    const SizedBox(width: 24, height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    OutlinedButton.icon(
+                      onPressed: _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                      label: const Text('Download PDF'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade400),
+                      ),
+                    ),
                 ],
               ),
               // Second row: Company code filter chips (if any)
@@ -126,8 +171,6 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 820),
                       child: ListenableBuilder(
-                        // ✅ Also listen to SalaryStateController so employeeCount
-                        //    updates instantly when the company-code chip changes.
                         listenable: Listenable.merge([
                           _billNoCtrl,
                           SalaryDataNotifier.instance,
@@ -138,9 +181,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                           itemDescription: _itemDescription,
                           billNo:          _billNoCtrl.text,
                           poNo:            n.poNo,
-                          // ✅ Pass actual employee count so QTY & Amount are live
                           employeeCount:   sc.employeeCount,
-                          // ✅ Pass the formatted month+year as the bill date
                           date:            _buildDate(n),
                         ),
                       ),

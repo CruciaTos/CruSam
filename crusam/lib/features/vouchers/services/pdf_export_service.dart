@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -17,6 +18,17 @@ import '../widgets/voucher_pdf_preview.dart';
 class PdfExportService {
   static const Duration _captureDelay = Duration(milliseconds: 150);
   static const double _capturePixelRatio = 4.0;
+  static pw.Font? _regularFont;
+  static pw.Font? _boldFont;
+
+  static Future<void> _ensurePdfFontsLoaded() async {
+    _regularFont ??= pw.Font.ttf(
+      await rootBundle.load('assets/fonts/NotoSans-Regular.ttf'),
+    );
+    _boldFont ??= pw.Font.ttf(
+      await rootBundle.load('assets/fonts/NotoSans-Bold.ttf'),
+    );
+  }
 
   // ──────────────────────────────────────────────────────────────────────────
   // ✅ NEW: Generic export method – can be used by any feature
@@ -107,13 +119,19 @@ class PdfExportService {
     required String filePrefix,
   }) async {
     await WidgetsBinding.instance.endOfFrame;
+    await _ensurePdfFontsLoaded();
 
     final capturedPages = <Uint8List>[];
     for (final page in pages) {
       capturedPages.add(await _capturePage(context, page));
     }
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        base: _regularFont!,
+        bold: _boldFont!,
+      ),
+    );
     for (final pageBytes in capturedPages) {
       final pdfImage = pw.MemoryImage(pageBytes);
       pdf.addPage(

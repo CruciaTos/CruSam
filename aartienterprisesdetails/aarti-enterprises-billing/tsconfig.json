@@ -20,7 +20,7 @@
         "./*"
       ]
     },
-    "allowImportingTGendertensions": true,
+    "allowImportingTSextensions": true,
     "noEmit": true
   }
 }

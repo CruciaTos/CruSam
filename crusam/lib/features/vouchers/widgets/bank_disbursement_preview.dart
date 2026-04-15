@@ -4,6 +4,7 @@ import '../../../data/models/voucher_row_model.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
+
 // ── Column width configuration ─────────────────────────────────────────────────
 // Eleven columns matching the bank disbursement table header order.
 // Default total ≈ 747 px, which fits inside A4 content width (~753 px at

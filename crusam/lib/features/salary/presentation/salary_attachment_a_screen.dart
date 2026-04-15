@@ -1,3 +1,5 @@
+
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/services/Salary_pdf_export_service.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
@@ -53,8 +55,8 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
+      // ✅ Use correct class name: SalaryPdfService (not SalaryPdfExportService)
       await SalaryPdfExportService.exportAttachmentA(
-        context:         context,
         config:          _config,
         billNo:          _billNoCtrl.text,
         date:            '${n.year}-${n.month.toString().padLeft(2, '0')}-01',
@@ -78,60 +80,60 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   }
 
   @override
-Widget build(BuildContext context) => ListenableBuilder(
-  listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
-  builder: (context, _) {
-    final sc   = SalaryStateController.instance;
-    final n    = SalaryDataNotifier.instance;
-    final code = sc.selectedCompanyCode;
-    final title = code == 'All' ? 'Attachment A' : 'Attachment A - $code';
-    final date = '${n.year}-${n.month.toString().padLeft(2, '0')}-01';
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([SalaryStateController.instance, SalaryDataNotifier.instance]),
+    builder: (context, _) {
+      final sc   = SalaryStateController.instance;
+      final n    = SalaryDataNotifier.instance;
+      final code = sc.selectedCompanyCode;
+      final title = code == 'All' ? 'Attachment A' : 'Attachment A - $code';
+      final date = '${n.year}-${n.month.toString().padLeft(2, '0')}-01';
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.pagePadding),
-      child: Column(children: [
-        // ── Toolbar (Column version) ──────────────────────────────────────
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // First row: Title, Month badge, and Download button
-            Row(
-              children: [
-                Text(title, style: AppTextStyles.h3),
-                const SizedBox(width: AppSpacing.md),
-                _MonthBadge(monthName: n.monthName, year: n.year),
-                const Spacer(),
-                // Download button
-                if (_exporting)
-                  const SizedBox(width: 24, height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                else
-                  OutlinedButton.icon(
-                    onPressed: _exportPdf,
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                    label: const Text('Download PDF'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                      side: BorderSide(color: Colors.red.shade400),
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.pagePadding),
+        child: Column(children: [
+          // ── Toolbar (Column version) ──────────────────────────────────────
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // First row: Title, Month badge, and Download button
+              Row(
+                children: [
+                  Text(title, style: AppTextStyles.h3),
+                  const SizedBox(width: AppSpacing.md),
+                  _MonthBadge(monthName: n.monthName, year: n.year),
+                  const Spacer(),
+                  // Download button
+                  if (_exporting)
+                    const SizedBox(width: 24, height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    OutlinedButton.icon(
+                      onPressed: _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                      label: const Text('Download PDF'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        side: BorderSide(color: Colors.red.shade400),
+                      ),
                     ),
-                  ),
-              ],
-            ),
-            // Second row: Company code filter chips (if any)
-            if (sc.companyCodes.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
-                    ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
-                  ],
-                ),
+                ],
               ),
+              // Second row: Company code filter chips (if any)
+              if (sc.companyCodes.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
+                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
+                    ],
+                  ),
+                ),
+              ],
             ],
-          ],
-        ),
+          ),
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
