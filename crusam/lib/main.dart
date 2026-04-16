@@ -4,9 +4,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'dart:io';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
+import 'features/auth/notifiers/auth_notifier.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AuthNotifier.instance.checkSession();
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;

@@ -50,10 +50,20 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   double _tableMarginH = 12;
   double _tableMarginV = 8;
 
+  // ── Persistent controllers (fix: no longer created in build) ─────────────
+  late TextEditingController _marginHCtrl;
+  late TextEditingController _marginVCtrl;
+  late List<TextEditingController> _colCtrls;
+
   @override
   void initState() {
     super.initState();
     _notifier.load();
+    _marginHCtrl = TextEditingController(text: _tableMarginH.toStringAsFixed(0));
+    _marginVCtrl = TextEditingController(text: _tableMarginV.toStringAsFixed(0));
+    _colCtrls = _cols
+        .map((c) => TextEditingController(text: c.width.toStringAsFixed(0)))
+        .toList();
   }
 
   @override
@@ -62,6 +72,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     _search.dispose();
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();
+    _marginHCtrl.dispose();
+    _marginVCtrl.dispose();
+    for (final c in _colCtrls) c.dispose();
     super.dispose();
   }
 
@@ -153,14 +166,14 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
               Text('Table Margins', style: AppTextStyles.small.copyWith(fontWeight: FontWeight.w600, color: AppColors.slate700)),
               const SizedBox(height: 6),
               Row(children: [
-                Expanded(child: _marginField('H-Margin', _tableMarginH, (v) => setState(() => _tableMarginH = v))),
+                Expanded(child: _marginField('H-Margin', _marginHCtrl, (v) => setState(() => _tableMarginH = v))),
                 const SizedBox(width: 8),
-                Expanded(child: _marginField('V-Margin', _tableMarginV, (v) => setState(() => _tableMarginV = v))),
+                Expanded(child: _marginField('V-Margin', _marginVCtrl, (v) => setState(() => _tableMarginV = v))),
               ]),
               const Divider(height: 20),
               Text('Column Widths (px)', style: AppTextStyles.small.copyWith(fontWeight: FontWeight.w600, color: AppColors.slate700)),
               const SizedBox(height: 8),
-              for (final col in _cols) _colWidthRow(col),
+              for (int i = 0; i < _cols.length; i++) _colWidthRow(_cols[i], _colCtrls[i]),
             ],
           ),
         ),
@@ -168,7 +181,8 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     ),
   );
 
-  Widget _marginField(String label, double value, void Function(double) onChanged) => Column(
+  // Signature changed: accepts controller instead of creating one
+  Widget _marginField(String label, TextEditingController ctrl, void Function(double) onChanged) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(label, style: AppTextStyles.small),
@@ -176,8 +190,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
       SizedBox(
         height: 34,
         child: TextField(
-          controller: TextEditingController(text: value.toStringAsFixed(0))
-            ..selection = TextSelection.collapsed(offset: value.toStringAsFixed(0).length),
+          controller: ctrl,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           style: AppTextStyles.input,
           decoration: const InputDecoration(isDense: true, suffixText: 'px', contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
@@ -187,7 +200,8 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     ],
   );
 
-  Widget _colWidthRow(_ColDef col) => Padding(
+  // Signature changed: accepts controller instead of creating one
+  Widget _colWidthRow(_ColDef col, TextEditingController ctrl) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Row(
       children: [
@@ -199,8 +213,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
           child: SizedBox(
             height: 32,
             child: TextField(
-              controller: TextEditingController(text: col.width.toStringAsFixed(0))
-                ..selection = TextSelection.collapsed(offset: col.width.toStringAsFixed(0).length),
+              controller: ctrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               style: AppTextStyles.input,
               decoration: const InputDecoration(

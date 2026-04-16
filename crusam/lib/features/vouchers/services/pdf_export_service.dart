@@ -1,3 +1,9 @@
+// lib/features/invoice/services/pdf_export_service.dart
+//
+// CHANGE: _resolveOutputDir() now checks ExportPreferencesNotifier.pdfPath
+// first, then falls back to the original platform-default logic.
+// Everything else is unchanged.
+
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +15,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/voucher_model.dart';
 import '../widgets/bank_disbursement_preview.dart';
@@ -31,7 +38,7 @@ class PdfExportService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // ✅ NEW: Generic export method – can be used by any feature
+  // Generic export method – can be used by any feature
   // ──────────────────────────────────────────────────────────────────────────
   static Future<void> exportWidgets({
     required BuildContext context,
@@ -54,7 +61,7 @@ class PdfExportService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Existing invoice‑bundle export (unchanged)
+  // Invoice‑bundle export (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
   static Future<void> exportInvoiceBundle({
     required BuildContext context,
@@ -109,7 +116,7 @@ class PdfExportService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Core capture & PDF generation (private, reused by all)
+  // Core capture & PDF generation
   // ──────────────────────────────────────────────────────────────────────────
   static Future<void> _exportPages({
     required BuildContext context,
@@ -148,10 +155,10 @@ class PdfExportService {
     final bytes = await pdf.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
 
-    final slug = _slugify(billNo);
+    final slug     = _slugify(billNo);
     final fileName = '${filePrefix}_$slug.pdf';
 
-    final dir = await _resolveOutputDir();
+    final dir  = await _resolveOutputDir();
     final path = '${dir.path}${Platform.pathSeparator}$fileName';
     final file = File(path);
     await file.writeAsBytes(bytes, flush: true);
@@ -169,9 +176,9 @@ class PdfExportService {
     BuildContext context,
     Widget page,
   ) async {
-    final controller = ScreenshotController();
+    final controller    = ScreenshotController();
     final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
-    final mediaQuery = MediaQuery.maybeOf(context) ??
+    final mediaQuery    = MediaQuery.maybeOf(context) ??
         const MediaQueryData(size: Size(800, 1200));
 
     final widget = InheritedTheme.captureAll(
@@ -197,7 +204,7 @@ class PdfExportService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Asset precaching helpers
+  // Asset precaching helpers (unchanged)
   // ──────────────────────────────────────────────────────────────────────────
   static Future<void> _precacheInvoiceAssets(BuildContext context) async {
     await _precacheAssets(context, [
@@ -218,16 +225,24 @@ class PdfExportService {
   static Future<void> _safePrecache(BuildContext context, String assetPath) async {
     try {
       await precacheImage(AssetImage(assetPath), context);
-    } catch (_) {
-      // Fall back to the preview widget errorBuilder if the asset is unavailable.
-    }
+    } catch (_) {}
   }
 
   static String _slugify(String billNo) => billNo.isEmpty
       ? '${DateTime.now().millisecondsSinceEpoch}'
       : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
 
+  // ── UPDATED: respects user-chosen PDF path ─────────────────────────────────
   static Future<Directory> _resolveOutputDir() async {
+    // 1. User-chosen path (set via Profile → Export Paths).
+    final savedPath = ExportPreferencesNotifier.instance.pdfPath;
+    if (savedPath.isNotEmpty) {
+      final dir = Directory(savedPath);
+      if (await dir.exists()) return dir;
+      // Directory saved but no longer exists — fall through to platform default.
+    }
+
+    // 2. Platform default.
     if (Platform.isAndroid || Platform.isIOS) {
       return getApplicationDocumentsDirectory();
     }

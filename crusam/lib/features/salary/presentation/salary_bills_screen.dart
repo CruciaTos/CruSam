@@ -80,7 +80,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     try {
       final sc = SalaryStateController.instance;
       await SalaryPdfExportService.exportSalaryInvoice(
-        context:           context,
         config:            _config,
         billNo:            _billNoCtrl.text,
         date:              _dateCtrl.text,

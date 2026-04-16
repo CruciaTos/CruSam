@@ -14,6 +14,7 @@ import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../master_data/presentation/employee_form_screen.dart';
 import '../notifiers/dashboard_notifier.dart';
+import '../widgets/salary_line_chart.dart';  // ← new import
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -47,6 +48,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final totalInvoiced = _notifier.vouchers
               .fold(0.0, (acc, v) => acc + v.finalTotal);
 
+          // Check if we have any saved vouchers with salary data to show chart
+          final hasChartData = _notifier.vouchers.any((v) =>
+              v.status == VoucherStatus.saved &&
+              v.rows.any((row) => row.description.toLowerCase().contains('salary')));
+
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.pagePadding),
             child: Column(
@@ -58,6 +64,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   totalInvoiced: totalInvoiced,
                 ),
                 const SizedBox(height: AppSpacing.xl),
+                // Salary trend chart (only if data exists)
+                if (hasChartData) ...[
+                  SalaryLineChart(vouchers: _notifier.vouchers),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -73,6 +84,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SKELETON LOADING
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
@@ -203,6 +218,10 @@ class _SkeletonPanel extends StatelessWidget {
       );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STATS ROW
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _StatsRow extends StatelessWidget {
   final int employeeCount;
   final int voucherCount;
@@ -257,6 +276,10 @@ class _StatsRow extends StatelessWidget {
         },
       );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECENT VOUCHERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _RecentVouchers extends StatelessWidget {
   final List<VoucherModel> vouchers;
@@ -377,7 +400,6 @@ class _VoucherTileState extends State<_VoucherTile> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           decoration: BoxDecoration(
-            // No background color - just glow
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: Border(
@@ -461,6 +483,10 @@ class _VoucherTileState extends State<_VoucherTile> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUICK ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _QuickActions extends StatelessWidget {
   const _QuickActions();

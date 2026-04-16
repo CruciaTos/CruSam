@@ -454,7 +454,6 @@ class _PreviewPanel extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 820),
               child: SalarySlipPreview(
                 config: config, employeeName: employee.name,
-                employeeCode: employee.code, designation: 'Technician', department: department,
                 pfNo: employee.pfNo, uanNo: employee.uanNo,
                 bankName: employee.bankDetails, accountNo: employee.accountNumber,
                 ifscCode: employee.ifscCode, month: month, year: year,

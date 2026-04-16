@@ -6,6 +6,7 @@ import 'package:particles_network/particles_network.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../features/auth/notifiers/auth_notifier.dart';
 
 // ── Nav model ──────────────────────────────────────────────────────────────
 abstract class _NavItem { const _NavItem(); }
@@ -204,16 +205,6 @@ class _ExpandedSidebar extends StatelessWidget {
       ),
     ),
     const Divider(color: AppColors.slate800, height: 1),
-    const Padding(
-      padding: EdgeInsets.all(10),
-      child: _NavTile(
-        icon: Icons.logout,
-        label: 'Logout',
-        selected: false,
-        depth: 0,
-        onTap: _noop,
-      ),
-    ),
   ]);
 
   static void _noop() {} // placeholder for logout action
@@ -735,15 +726,18 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _Header (top bar) (const where possible)
+// _Header (top bar) – UPDATED: dynamic user info from AuthNotifier
 // ══════════════════════════════════════════════════════════════════════════
 class _Header extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final String title;
 
-  const _Header(
-      {required this.expanded, required this.onToggle, required this.title});
+  const _Header({
+    required this.expanded,
+    required this.onToggle,
+    required this.title,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
@@ -765,25 +759,49 @@ class _Header extends StatelessWidget {
           const SizedBox(width: 4),
           Text(title, style: AppTextStyles.h4.copyWith(color: Colors.white)),
           const Spacer(),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('Admin User',
-                  style: AppTextStyles.bodyMedium.copyWith(color: Colors.white70)),
-              Text('boridkar24@gmail.com',
-                  style: AppTextStyles.small.copyWith(color: Colors.white60)),
-            ],
-          ),
-          const SizedBox(width: 12),
-          const CircleAvatar(
-            radius: 18,
-            backgroundColor: Color.fromARGB(255, 241, 241, 241),
-            child: Text('AU',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.slate600)),
+
+          // ── Dynamic user info section ────────────────────────────────────
+          ListenableBuilder(
+            listenable: AuthNotifier.instance,
+            builder: (ctx, _) {
+              final user = AuthNotifier.instance.user;
+              final name = user?.displayName ?? 'Admin User';
+              final email = user?.email ?? '';
+              final initials = user?.initials ?? 'AU';
+              return Row(
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(name,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: Colors.white70)),
+                      if (email.isNotEmpty)
+                        Text(email,
+                            style: AppTextStyles.small
+                                .copyWith(color: Colors.white60)),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () => context.go('/profile'),
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: AppColors.indigo600,
+                        child: Text(initials,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white)),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ]),
       );
