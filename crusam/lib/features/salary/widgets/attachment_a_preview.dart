@@ -68,6 +68,7 @@ class AttachmentAPreview extends StatelessWidget {
   static const _bSide   = BorderSide(color: _black, width: 0.75);
   static const _body    = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
+  /// Static method to generate PDF pages with all invoice details.
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
     EdgeInsets margins = const EdgeInsets.all(24),
@@ -75,6 +76,13 @@ class AttachmentAPreview extends StatelessWidget {
     double pfAmount   = 0,
     double esicAmount = 0,
     double totalAfterTax = 0,
+    required String billNo,
+    required String date,
+    required String poNo,
+    required String itemDescription,
+    required String customerName,
+    required String customerAddress,
+    required String customerGst,
   }) {
     final preview = AttachmentAPreview(
       config: config,
@@ -83,6 +91,13 @@ class AttachmentAPreview extends StatelessWidget {
       pfAmount: pfAmount,
       esicAmount: esicAmount,
       totalAfterTax: totalAfterTax,
+      billNo: billNo,
+      date: date,
+      poNo: poNo,
+      itemDescription: itemDescription,
+      customerName: customerName,
+      customerAddress: customerAddress,
+      customerGst: customerGst,
     );
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
@@ -118,7 +133,7 @@ class AttachmentAPreview extends StatelessWidget {
                 _billingInfo(),
                 const SizedBox(height: 12),
                 _mainTable(),
-                const SizedBox(height: 12),   // ← replaces Spacer()
+                const SizedBox(height: 12),
                 _footer(),
               ],
             ),
@@ -539,19 +554,30 @@ class AttachmentAPreview extends StatelessWidget {
               style: _body.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
-            Text('Subject to Mumbai jurisdiction.', style: _body),
+            Text('', style: _body),
           ],
         ),
       ),
       Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            'For AARTI ENTERPRISES',
-            style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7)),
+          // Signature image replaces text
+          Image.asset(
+            'assets/images/aarti_signature.png',
+            height: 60,
+            errorBuilder: (context, error, stackTrace) => const SizedBox(
+              height: 60,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text('For AARTI ENTERPRISES',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 8),
+                  Text('Partner', style: TextStyle(fontSize: 8)),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 45),
-          Text('Partner', style: _body.copyWith(fontSize: 8.5)),
         ],
       ),
     ],

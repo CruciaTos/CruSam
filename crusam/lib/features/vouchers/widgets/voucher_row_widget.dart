@@ -22,18 +22,24 @@ TableRow buildVoucherRow({
   final isEven = index.isEven;
   final bg = highlight
       ? const Color(0xFFFFFDE7)
-      : isEven ? AppColors.white : const Color(0xFFF8FAFC);
+      : isEven
+          ? AppColors.white
+          : const Color(0xFFF8FAFC);
 
   return TableRow(
     decoration: BoxDecoration(
       color: bg,
-      border: const Border(bottom: BorderSide(color: AppColors.slate200, width: 0.6)),
+      border: const Border(
+          bottom: BorderSide(color: AppColors.slate200, width: 0.6)),
     ),
     children: [
       // # index
-      _cell(Text('${index + 1}',
-          style: AppTextStyles.small.copyWith(color: AppColors.slate500),
-          textAlign: TextAlign.center)),
+      _cell(
+        Text('${index + 1}',
+            style:
+                AppTextStyles.small.copyWith(color: AppColors.slate500),
+            textAlign: TextAlign.center),
+      ),
       // Employee dropdown
       _cell(_EmpDropdown(
         employees: employees,
@@ -41,12 +47,16 @@ TableRow buildVoucherRow({
         onChanged: onSelectEmployee,
         highlight: highlight,
       )),
-      // Amount
-      _cell(_AmountField(value: row.amount, onChanged: onAmountChanged)),
+      // Amount (now styled identically to employee dropdown)
+      _cell(_AmountField(
+        value: row.amount,
+        onChanged: onAmountChanged,
+        highlight: highlight,
+      )),
       // From date
       _cell(_DateField(value: row.fromDate, onChanged: onFromDateChanged)),
       // To date
-      _cell(_DateField(value: row.toDate,   onChanged: onToDateChanged)),
+      _cell(_DateField(value: row.toDate, onChanged: onToDateChanged)),
       // Auto-filled details
       _cell(_AutoFilledInfo(row: row)),
       // Delete
@@ -54,7 +64,8 @@ TableRow buildVoucherRow({
         SizedBox(
           height: _kH,
           child: IconButton(
-            icon: const Icon(Icons.delete_outline, size: 17, color: AppColors.slate300),
+            icon: const Icon(Icons.delete_outline,
+                size: 17, color: AppColors.slate300),
             onPressed: onRemove,
             hoverColor: Colors.red.shade50,
             tooltip: 'Remove',
@@ -109,7 +120,8 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   void _sync() {
     final s = _sel;
     final t = s != null ? _label(s) : '';
-    _sc.value = TextEditingValue(text: t, selection: TextSelection.collapsed(offset: t.length));
+    _sc.value = TextEditingValue(
+        text: t, selection: TextSelection.collapsed(offset: t.length));
   }
 
   @override
@@ -127,7 +139,8 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   }
 
   void _close({bool restore = true}) {
-    _oe?.remove(); _oe = null;
+    _oe?.remove();
+    _oe = null;
     if (restore) _sync();
     _fn.unfocus();
   }
@@ -136,49 +149,61 @@ class _EmpDropdownState extends State<_EmpDropdown> {
     if (_oe != null) return;
     final rb = context.findRenderObject() as RenderBox;
     final offset = rb.localToGlobal(Offset.zero);
-    if (reset) { _sc.clear(); _sc.selection = const TextSelection.collapsed(offset: 0); }
+    if (reset) {
+      _sc.clear();
+      _sc.selection = const TextSelection.collapsed(offset: 0);
+    }
     _fn.requestFocus();
     _oe = OverlayEntry(builder: (_) => Stack(children: [
-      Positioned.fill(child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: _close,
-        child: Container(color: Colors.transparent),
-      )),
-      Positioned(
-        top: offset.dy + rb.size.height + 4,
-        left: offset.dx,
-        width: 460,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: Offset(0, rb.size.height + 4),
-          child: Material(
-            elevation: 6,
-            borderRadius: BorderRadius.circular(8),
-            child: EmployeeSearchDropdown(
-              employees: widget.employees,
-              selectedId: widget.selectedId,
-              searchController: _sc,
-              showSearchBar: false,
-              onSelected: (emp) {
-                final id = emp.id;
-                if (id != null) {
-                  final lbl = _label(emp);
-                  _sc.value = TextEditingValue(text: lbl, selection: TextSelection.collapsed(offset: lbl.length));
-                  widget.onChanged(id.toString());
-                }
-                _close(restore: false);
-              },
+          Positioned.fill(
+              child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: _close,
+            child: Container(color: Colors.transparent),
+          )),
+          Positioned(
+            top: offset.dy + rb.size.height + 4,
+            left: offset.dx,
+            width: 460,
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: Offset(0, rb.size.height + 4),
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(8),
+                child: EmployeeSearchDropdown(
+                  employees: widget.employees,
+                  selectedId: widget.selectedId,
+                  searchController: _sc,
+                  showSearchBar: false,
+                  onSelected: (emp) {
+                    final id = emp.id;
+                    if (id != null) {
+                      final lbl = _label(emp);
+                      _sc.value = TextEditingValue(
+                          text: lbl,
+                          selection:
+                              TextSelection.collapsed(offset: lbl.length));
+                      widget.onChanged(id.toString());
+                    }
+                    _close(restore: false);
+                  },
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ]));
+        ]));
     Overlay.of(context).insert(_oe!);
   }
 
   @override
-  void dispose() { _close(); _sc.dispose(); _fn.dispose(); super.dispose(); }
+  void dispose() {
+    _close();
+    _sc.dispose();
+    _fn.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => CompositedTransformTarget(
@@ -188,57 +213,92 @@ class _EmpDropdownState extends State<_EmpDropdown> {
           child: TextField(
             controller: _sc,
             focusNode: _fn,
+            textAlignVertical: TextAlignVertical.bottom,
             style: AppTextStyles.input.copyWith(color: AppColors.slate700),
             decoration: InputDecoration(
               isDense: true,
               hintText: 'Select employee…',
-              hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+              hintStyle:
+                  AppTextStyles.input.copyWith(color: AppColors.slate400),
+              contentPadding: const EdgeInsets.only(
+                  left: 10, right: 10, bottom: 8, top: 8),
               filled: true,
-              fillColor: widget.highlight ? const Color(0xFFFFFDE7) : AppColors.white,
+              fillColor: widget.highlight
+                  ? const Color(0xFFFFFDE7)
+                  : AppColors.white,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
                 borderSide: BorderSide(
-                  color: widget.highlight ? const Color(0xFFF59E0B) : AppColors.slate900,
+                  color: widget.highlight
+                      ? const Color(0xFFF59E0B)
+                      : AppColors.slate900,
                   width: widget.highlight ? 1.5 : 1.0,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+                borderSide: const BorderSide(
+                    color: AppColors.indigo500, width: 1.5),
               ),
               suffixIcon: IconButton(
                 splashRadius: 16,
                 onPressed: () => _oe == null ? _open() : _close(),
-                icon: const Icon(Icons.unfold_more, size: 14, color: AppColors.slate400),
+                icon: const Icon(Icons.unfold_more,
+                    size: 14, color: AppColors.slate400),
               ),
             ),
             onTap: () => _open(),
-            onChanged: (_) { if (_oe == null) _open(reset: false); },
+            onChanged: (_) {
+              if (_oe == null) _open(reset: false);
+            },
           ),
         ),
       );
 }
 
-// ── Amount Field ──────────────────────────────────────────────────────────────
+// ── Amount Field (mirrors Employee Dropdown styling) ──────────────────────────
 
 class _AmountField extends StatefulWidget {
   final double value;
   final void Function(double) onChanged;
-  const _AmountField({required this.value, required this.onChanged});
+  final bool highlight;
+  const _AmountField({
+    required this.value,
+    required this.onChanged,
+    this.highlight = false,
+  });
   @override
   State<_AmountField> createState() => _AmountFieldState();
 }
 
 class _AmountFieldState extends State<_AmountField> {
   late final TextEditingController _ctrl;
+
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(text: widget.value == 0 ? '' : widget.value.toStringAsFixed(2));
+    _ctrl = TextEditingController(
+        text: widget.value == 0 ? '' : widget.value.toStringAsFixed(2));
   }
+
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void didUpdateWidget(covariant _AmountField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If value changed externally, update the text
+    if (oldWidget.value != widget.value) {
+      final newText = widget.value == 0 ? '' : widget.value.toStringAsFixed(2);
+      if (_ctrl.text != newText) {
+        _ctrl.text = newText;
+        _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -246,21 +306,38 @@ class _AmountFieldState extends State<_AmountField> {
         child: TextField(
           controller: _ctrl,
           textAlign: TextAlign.right,
+          textAlignVertical: TextAlignVertical.bottom,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
-          style: AppTextStyles.input,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
+          ],
+          style: AppTextStyles.input.copyWith(color: AppColors.slate700),
           decoration: InputDecoration(
             isDense: true,
             hintText: '0.00',
-            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            hintStyle:
+                AppTextStyles.input.copyWith(color: AppColors.slate400),
+            contentPadding: const EdgeInsets.only(
+                left: 10, right: 10, bottom: 8, top: 8), // identical padding
+            filled: true,
+            fillColor: widget.highlight
+                ? const Color(0xFFFFFDE7)
+                : AppColors.white,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppColors.slate900),
+              borderSide: BorderSide(
+                color: widget.highlight
+                    ? const Color(0xFFF59E0B)
+                    : AppColors.slate900,
+                width: widget.highlight ? 1.5 : 1.0,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+              borderSide: const BorderSide(
+                  color: AppColors.indigo500, width: 1.5),
             ),
+            // No suffix icon to keep it clean
           ),
           onChanged: (v) => widget.onChanged(double.tryParse(v) ?? 0),
         ),
@@ -313,12 +390,20 @@ class _DateFieldState extends State<_DateField> {
   static String _parseInput(String input) {
     if (input.isEmpty) return '';
     final parts = input.split('/');
-    if (parts.length == 3 && parts[0].length == 2 && parts[1].length == 2 && parts[2].length == 4) {
+    if (parts.length == 3 &&
+        parts[0].length == 2 &&
+        parts[1].length == 2 &&
+        parts[2].length == 4) {
       try {
         final day = int.parse(parts[0]);
         final month = int.parse(parts[1]);
         final year = int.parse(parts[2]);
-        if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year >= 2000 && year <= 2100) {
+        if (day >= 1 &&
+            day <= 31 &&
+            month >= 1 &&
+            month <= 12 &&
+            year >= 2000 &&
+            year <= 2100) {
           return '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
         }
       } catch (e) {
@@ -343,42 +428,49 @@ class _DateFieldState extends State<_DateField> {
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: _kH,
-    child: TextField(
-      controller: _ctrl,
-      keyboardType: TextInputType.text,
-      inputFormatters: [
-        _DateInputFormatter(),
-      ],
-      style: AppTextStyles.input.copyWith(fontSize: 12),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: 'dd/mm/yyyy',
-        hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400, fontSize: 12),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.slate900),
+        height: _kH,
+        child: TextField(
+          controller: _ctrl,
+          textAlignVertical: TextAlignVertical.bottom,
+          keyboardType: TextInputType.text,
+          inputFormatters: [
+            _DateInputFormatter(),
+          ],
+          style: AppTextStyles.input.copyWith(fontSize: 12),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'dd/mm/yyyy',
+            hintStyle: AppTextStyles.input
+                .copyWith(color: AppColors.slate400, fontSize: 12),
+            contentPadding: const EdgeInsets.only(
+                left: 10, right: 10, bottom: 8, top: 8), // identical padding
+            filled: true,
+            fillColor: AppColors.white,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.slate900),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide:
+                  const BorderSide(color: AppColors.indigo500, width: 1.5),
+            ),
+            suffixIcon: IconButton(
+              splashRadius: 16,
+              onPressed: _pickDate,
+              icon: const Icon(Icons.calendar_today_outlined,
+                  size: 13, color: AppColors.slate500),
+              tooltip: 'Pick from calendar',
+            ),
+          ),
+          onChanged: (input) {
+            final iso = _parseInput(input);
+            if (iso.isNotEmpty) {
+              widget.onChanged(iso);
+            }
+          },
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
-        ),
-        suffixIcon: IconButton(
-          splashRadius: 16,
-          onPressed: _pickDate,
-          icon: const Icon(Icons.calendar_today_outlined, size: 13, color: AppColors.slate500),
-          tooltip: 'Pick from calendar',
-        ),
-      ),
-      onChanged: (input) {
-        final iso = _parseInput(input);
-        if (iso.isNotEmpty) {
-          widget.onChanged(iso);
-        }
-      },
-    ),
-  );
+      );
 }
 
 // Custom formatter to enforce dd/mm/yyyy format
@@ -454,11 +546,11 @@ class _AutoFilledInfo extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _kv('IFSC',  row.ifscCode),
+            _kv('IFSC', row.ifscCode),
             const SizedBox(height: 2),
-            _kv('A/c',   row.accountNumber),
+            _kv('A/c', row.accountNumber),
             const SizedBox(height: 2),
-            _kv('Bank',  row.bankDetails),
+            _kv('Bank', row.bankDetails),
             const SizedBox(height: 2),
             _kv('Place', row.branch),
           ],
@@ -471,10 +563,15 @@ class _AutoFilledInfo extends StatelessWidget {
         text: TextSpan(
           style: const TextStyle(fontSize: 11, color: AppColors.slate500),
           children: [
-            TextSpan(text: '$k: ', style: const TextStyle(fontWeight: FontWeight.w600)),
+            TextSpan(
+                text: '$k: ',
+                style: const TextStyle(fontWeight: FontWeight.w600)),
             TextSpan(
               text: v.isEmpty ? '—' : v,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: AppColors.slate700),
+              style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11,
+                  color: AppColors.slate700),
             ),
           ],
         ),

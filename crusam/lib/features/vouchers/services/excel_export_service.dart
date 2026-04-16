@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui; // Added for image aspect ratio decoding
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
@@ -39,7 +40,7 @@ class ExcelExportService {
   // _signatureSize: square size in pixels (0 = auto‑calculate from spanned columns)
   // ─────────────────────────────────────────────────────────────────────────────
   static const int _signatureColOffset = 8;   // Start at Debit A/C column
-  static const int _signatureRowOffset = 10;   // 8 rows below header (row 4 → row 12)
+  static const int _signatureRowOffset = 12;  // rows below last data row
   static const int _signatureSize      = 0;   // 0 = auto‑size to span Debit A/C + Fr + To
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -359,40 +360,52 @@ class ExcelExportService {
     }
   }
 
+  // Updated to preserve original aspect ratio
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
       final ByteData data = await rootBundle.load('assets/images/aarti_signature.png');
       final Uint8List bytes = data.buffer.asUint8List();
 
+      // Decode image to get natural dimensions
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final int naturalWidth = frameInfo.image.width;
+      final int naturalHeight = frameInfo.image.height;
+      frameInfo.image.dispose();
+      codec.dispose();
+
       final int startCol = _dataStartCol + _signatureColOffset;
       final int imageRow = lastDataRow + _signatureRowOffset;
 
-      final Picture picture = sheet.pictures.addBase64(imageRow, startCol, base64.encode(bytes));
-
-      // Determine size: if _signatureSize == 0, calculate width from spanned columns
+      // Determine target width
+      double targetWidthPx;
       if (_signatureSize == 0) {
-        // Columns: Debit A/C (offset 1), Fr (offset 9), To (offset 10) → width sum
+        // Auto-calculate width from spanned columns (Debit A/C + Fr + To)
         final List<double> widths = [
           _colWidthAmount, _colWidthDebitAc, _colWidthIFSC, _colWidthCreditAc,
           _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthBankDetails,
           _colWidthDebitName, _colWidthFrom, _colWidthTo
         ];
-        double totalWidth = 0.0;
-        // Span from offset 1 to offset 10 inclusive? User wanted Debit A/C + Fr + To
-        // That's columns at offsets 1, 9, 10. We'll sum widths[1] + widths[9] + widths[10]
-        totalWidth = widths[1] + widths[9] + widths[10];
-        // Approximate pixels: Excel default column width ~7 pixels per unit? Actually 1 unit ≈ 7px at default font.
-        // We'll use a rough conversion factor. 1 character unit ≈ 7 pixels.
-        const double pxPerUnit = 7.0;
-        int calculatedSize = (totalWidth * pxPerUnit).round();
-        picture.height = calculatedSize;
-        picture.width = calculatedSize;
+        double totalWidthUnits = widths[1] + widths[9] + widths[10];
+        const double pxPerUnit = 7.0; // approximate conversion
+        targetWidthPx = totalWidthUnits * pxPerUnit;
       } else {
-        picture.height = _signatureSize;
-        picture.width = _signatureSize;
+        targetWidthPx = _signatureSize.toDouble();
       }
+
+      // Compute height preserving aspect ratio
+      final double aspectRatio = naturalHeight / naturalWidth;
+      final int targetHeightPx = (targetWidthPx * aspectRatio).round();
+
+      final Picture picture = sheet.pictures.addBase64(
+        imageRow,   // ← row first
+        startCol,   // ← column second
+        base64.encode(bytes),
+      );
+      picture.height = targetHeightPx;
+      picture.width = targetWidthPx.round();
     } catch (_) {
-      // Asset not found – skip
+      // Asset not found or decode failed – skip
     }
   }
 

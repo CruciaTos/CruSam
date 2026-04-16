@@ -545,20 +545,33 @@ class SalarySlipPreview extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 40),
+              // Signature image replaces the text
               Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    'For ${config.companyName}',
-                    style: _body.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: _black.withOpacity(0.7),
+                  Image.asset(
+                    'assets/images/aarti_signature.png',
+                    height: 60,
+                    errorBuilder: (context, error, stackTrace) => const SizedBox(
+                      height: 60,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(
+                            'For AARTI ENTERPRISES',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Authorised Signatory',
+                            style: TextStyle(fontSize: 8),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 40),
-                  Text(
-                    'Authorised Signatory',
-                    style: _body.copyWith(fontSize: 8.5),
                   ),
                 ],
               ),

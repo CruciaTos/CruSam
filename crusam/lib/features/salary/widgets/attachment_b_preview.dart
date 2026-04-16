@@ -343,16 +343,31 @@ class AttachmentBPreview extends StatelessWidget {
           Text('Certified that particulars given above are true and correct.',
               style: _body.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('Subject to Mumbai jurisdiction.', style: _body),
+          Text('', style: _body),
         ]),
       ),
-      Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Text('For AARTI ENTERPRISES',
-            // ignore: deprecated_member_use
-            style: _body.copyWith(fontWeight: FontWeight.w800, color: _black.withOpacity(0.7))),
-        const SizedBox(height: 45),
-        Text('Partner', style: _body.copyWith(fontSize: 8.5)),
-      ]),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Signature image replaces text
+          Image.asset(
+            'assets/images/aarti_signature.png',
+            height: 60,
+            errorBuilder: (context, error, stackTrace) => const SizedBox(
+              height: 60,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text('For AARTI ENTERPRISES',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 8),
+                  Text('Partner', style: TextStyle(fontSize: 8)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     ],
   );
 }

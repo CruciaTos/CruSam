@@ -172,11 +172,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                           DataCell(_StatusBadge(status: v.status)),
                           DataCell(Row(children: [
                             IconButton(
-                              icon: const Icon(Icons.download_outlined, size: 17, color: AppColors.slate400),
-                              onPressed: () {},
-                              tooltip: 'Download',
-                            ),
-                            IconButton(
                               icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.indigo600),
                               onPressed: () => _editVoucher(context, v),
                               tooltip: 'Edit',

@@ -32,7 +32,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
 
   final _cols = [
     _ColDef('Sr.',          48),
-    _ColDef('Gender',       72),   // ← NEW
+    _ColDef('Gender',       72),
     _ColDef('Name',        180),
     _ColDef('PF No.',      140),
     _ColDef('UAN No.',     130),
@@ -69,12 +69,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     if (_showHorizontalScrollbar == visible || !mounted) return;
     setState(() => _showHorizontalScrollbar = visible);
   }
-
-  Widget _doubleTapToEdit(EmployeeModel e, Widget child) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onDoubleTap: () => _goToForm(e),
-    child: child,
-  );
 
   Future<void> _goToForm([EmployeeModel? emp]) async {
     final result = await showDialog(
@@ -257,13 +251,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                   ),
                 );
 
-                final importBtn = ElevatedButton.icon(
-                  onPressed: _isImporting ? null : _onImportExcel,
-                  icon: _isImporting
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.upload_file, size: 18),
-                  label: Text(_isImporting ? 'Importing...' : 'Import Excel'),
-                );
 
                 final addBtn = ElevatedButton.icon(
                   onPressed: () => _goToForm(),
@@ -282,13 +269,12 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                   return Column(children: [
                     searchField,
                     const SizedBox(height: AppSpacing.md),
-                    Wrap(spacing: AppSpacing.md, runSpacing: AppSpacing.md, children: [importBtn, addBtn, colBtn]),
+                    Wrap(spacing: AppSpacing.md, runSpacing: AppSpacing.md, children: [addBtn, colBtn]),
                   ]);
                 }
                 return Row(children: [
                   Expanded(child: searchField),
-                  const SizedBox(width: AppSpacing.md),
-                  importBtn,
+                
                   const SizedBox(width: AppSpacing.md),
                   addBtn,
                   const SizedBox(width: AppSpacing.md),
@@ -380,44 +366,47 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     ),
   );
 
-   Widget _buildTable() {
+  Widget _buildTable() {
     final headerCells = _cols.map((c) => _th(c.label, c.width)).toList();
- 
+
     final dataRows = _notifier.filtered.asMap().entries.map((entry) {
       final idx = entry.key;
       final e = entry.value;
       final isFemale = e.gender.toUpperCase() == 'F';
-      return TableRow(
-        children: [
-          _doubleTapToEdit(e, _td((idx + 1).toString(), _cols[0].width)),
-          _doubleTapToEdit(e, _tdGender(isFemale, _cols[1].width)),
-          _doubleTapToEdit(e, _td(e.name, _cols[2].width, bold: true)),
-          _doubleTapToEdit(e, _td(e.pfNo, _cols[3].width)),
-          _doubleTapToEdit(e, _td(e.uanNo, _cols[4].width)),
-          _doubleTapToEdit(e, _td(e.code, _cols[5].width)),
-          _doubleTapToEdit(e, _tdMono(e.ifscCode, _cols[6].width)),
-          _doubleTapToEdit(e, _tdMono(e.accountNumber, _cols[7].width)),
-          _doubleTapToEdit(e, _td(e.bankDetails, _cols[8].width)),
-          _doubleTapToEdit(e, _td(e.branch, _cols[9].width)),
-          _doubleTapToEdit(e, _td(e.zone, _cols[10].width)),
-          _doubleTapToEdit(e, _tdNum(e.basicCharges, _cols[11].width)),
-          _doubleTapToEdit(e, _tdNum(e.otherCharges, _cols[12].width)),
-          _doubleTapToEdit(e, _tdNum(e.grossSalary, _cols[13].width)),
+      
+      return _HoverableTableRow(
+        key: ValueKey(e.id),
+        cells: [
+          _td((idx + 1).toString(), _cols[0].width),
+          _tdGender(isFemale, _cols[1].width),
+          _td(e.name, _cols[2].width, bold: true),
+          _td(e.pfNo, _cols[3].width),
+          _td(e.uanNo, _cols[4].width),
+          _td(e.code, _cols[5].width),
+          _tdMono(e.ifscCode, _cols[6].width),
+          _tdMono(e.accountNumber, _cols[7].width),
+          _td(e.bankDetails, _cols[8].width),
+          _td(e.branch, _cols[9].width),
+          _td(e.zone, _cols[10].width),
+          _tdNum(e.basicCharges, _cols[11].width),
+          _tdNum(e.otherCharges, _cols[12].width),
+          _tdNum(e.grossSalary, _cols[13].width),
         ],
+        onDoubleTap: () => _goToForm(e),
       );
     }).toList();
- 
-    final colWidths = { for (int i = 0; i < _cols.length; i++) i: FixedColumnWidth(_cols[i].width) };
- 
+
     return Table(
-      columnWidths: colWidths,
+      columnWidths: {
+        for (int i = 0; i < _cols.length; i++) i: FixedColumnWidth(_cols[i].width)
+      },
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
         TableRow(
           decoration: const BoxDecoration(color: AppColors.slate50),
           children: headerCells,
         ),
-        ...dataRows,
+        ...dataRows.map((row) => row.buildRow()),
       ],
     );
   }
@@ -485,4 +474,78 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
       ),
     ),
   );
+}
+
+// ── Custom hoverable table row widget ─────────────────────────────────────
+class _HoverableTableRow extends StatefulWidget {
+  final List<Widget> cells;
+  final VoidCallback onDoubleTap;
+  
+  const _HoverableTableRow({
+    super.key,
+    required this.cells,
+    required this.onDoubleTap,
+  });
+
+  TableRow buildRow() {
+    return TableRow(
+      children: cells.map((cell) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: onDoubleTap,
+          child: cell,
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  State<_HoverableTableRow> createState() => _HoverableTableRowState();
+}
+
+class _HoverableTableRowState extends State<_HoverableTableRow> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: widget.onDoubleTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            border: Border(
+              bottom: BorderSide(
+                color: _hovered ? AppColors.indigo400 : AppColors.slate100,
+                width: _hovered ? 2 : 1,
+              ),
+            ),
+            boxShadow: _hovered
+                ? [
+                    BoxShadow(
+                      color: AppColors.indigo600.withOpacity(0.12),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                      offset: const Offset(0, 0),
+                    ),
+                  ]
+                : null,
+          ),
+          child: DefaultTextStyle(
+            style: AppTextStyles.body.copyWith(
+              color: _hovered ? AppColors.indigo700 : null,
+            ),
+            child: Row(
+              children: widget.cells,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

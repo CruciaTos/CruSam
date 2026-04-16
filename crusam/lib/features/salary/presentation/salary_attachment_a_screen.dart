@@ -1,4 +1,3 @@
-
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/services/Salary_pdf_export_service.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +8,6 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/widgets/item_description_field.dart';
-import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/attachment_a_preview.dart';
 
@@ -26,6 +24,9 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
 
   String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
+
+  // ── Always show all four company codes regardless of what's in the DB ────────
+  static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
   @override
   void initState() {
@@ -55,7 +56,6 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
-      // ✅ Use correct class name: SalaryPdfService (not SalaryPdfExportService)
       await SalaryPdfExportService.exportAttachmentA(
         config:          _config,
         billNo:          _billNoCtrl.text,
@@ -119,19 +119,13 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                     ),
                 ],
               ),
-              // Second row: Company code filter chips (if any)
-              if (sc.companyCodes.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
-                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
-                    ],
-                  ),
-                ),
-              ],
+              // Second row: Company code filter chips (fixed set)
+              const SizedBox(height: AppSpacing.sm),
+              _CodeFilter(
+                codes:    _allCodes,
+                selected: code,
+                onChanged: (c) => sc.setCompanyCode(c ?? 'All'),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -181,26 +175,55 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
       );
     },
   );
+}
 
-  static Widget _codeChip(String label, bool active, VoidCallback onTap) => Padding(
-    padding: const EdgeInsets.only(right: 6),
-    child: GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active ? AppColors.indigo600 : AppColors.slate800,
-          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label, style: TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w600,
-          color: active ? Colors.white : AppColors.slate400,
-        )),
-      ),
+// ── Code filter — always shows All + F&B + I&L + P&S + A&P ──────────────────
+class _CodeFilter extends StatelessWidget {
+  final List<String> codes;
+  final String       selected;
+  final void Function(String?) onChanged;
+  const _CodeFilter({required this.codes, required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: [
+        _chip('All', null, selected, onChanged),
+        ...codes.map((c) => _chip(c, c, selected, onChanged)),
+      ],
     ),
   );
+
+  static Widget _chip(String label, String? value, String selected,
+      void Function(String?) onTap) {
+    final active = selected == (value ?? 'All');
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => onTap(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? AppColors.indigo600 : AppColors.slate800,
+            border: Border.all(
+              color: active ? AppColors.indigo600 : AppColors.slate600,
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: active ? Colors.white : AppColors.slate400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _LeftPane extends StatelessWidget {

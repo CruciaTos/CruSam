@@ -5,10 +5,6 @@ import '../../../data/models/company_config_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
 // ── Column width configuration ─────────────────────────────────────────────────
-// Each field maps to one column in the voucher table (left→right order).
-// Widths are logical pixels. The ten columns should fit inside:
-//   a4Width − margins.horizontal − 12px (TableBorder.all at 1px × 10 lines)
-// Default total ≈ 631px (removed bank column).
 class VoucherColWidths {
   final double sr;
   final double debitAc;
@@ -51,8 +47,7 @@ class VoucherColWidths {
     amount:   amount   ?? this.amount,
   );
 
-  /// Ordered (label, width) pairs — consumed by the settings panel to build
-  /// its input rows without knowing column indices.
+  /// Ordered (label, width) pairs for UI.
   List<(String label, double width)> get entries => [
     ('Sr.',        sr),
     ('Debit A/c',  debitAc),
@@ -66,7 +61,6 @@ class VoucherColWidths {
     ('Amount',     amount),
   ];
 
-  /// Applies a new width by index (0–9). Used by the panel's onChanged.
   VoucherColWidths withIndex(int index, double value) {
     return copyWith(
       sr:       index == 0 ? value : null,
@@ -85,7 +79,24 @@ class VoucherColWidths {
   double get totalWidth =>
       sr + debitAc + ifsc + creditAc + code + name + place + from + to + amount;
 
-  /// Flutter [TableColumnWidth] map — plug directly into [Table.columnWidths].
+  /// Returns a new configuration scaled to exactly fit `targetWidth`.
+  VoucherColWidths scaleToFit(double targetWidth) {
+    if (totalWidth == 0) return this;
+    final scale = targetWidth / totalWidth;
+    return VoucherColWidths(
+      sr:       sr       * scale,
+      debitAc:  debitAc  * scale,
+      ifsc:     ifsc     * scale,
+      creditAc: creditAc * scale,
+      code:     code     * scale,
+      name:     name     * scale,
+      place:    place    * scale,
+      from:     from     * scale,
+      to:       to       * scale,
+      amount:   amount   * scale,
+    );
+  }
+
   Map<int, TableColumnWidth> get tableColumnWidths => {
     0: FixedColumnWidth(sr),
     1: FixedColumnWidth(debitAc),
@@ -105,11 +116,11 @@ class VoucherPdfPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
-  // Fixed heights of non-row sections (logical px, matches Flutter rendering).
-  static const double _headerH = 46.0; // title row + Divider + SizedBox(8)
-  static const double _tblHdrH = 22.0; // table header row
-  static const double _rowH    = 18.0; // each data row
-  static const double _totalH  = 48.0; // totals block + SizedBox(12)
+  // Fixed heights of non-row sections.
+  static const double _headerH = 46.0;
+  static const double _tblHdrH = 22.0;
+  static const double _rowH    = 18.0;
+  static const double _totalH  = 48.0;
 
   static int _rowsPerPage(EdgeInsets margins, {bool isLastPage = false}) {
     final available = a4Height
@@ -117,7 +128,7 @@ class VoucherPdfPreview extends StatelessWidget {
         - _headerH
         - _tblHdrH
         - (isLastPage ? _totalH : 0)
-        - 8; // safety buffer
+        - 8;
     return (available / _rowH).floor().clamp(1, 80);
   }
 
@@ -125,13 +136,15 @@ class VoucherPdfPreview extends StatelessWidget {
   final CompanyConfigModel config;
   final EdgeInsets         margins;
   final VoucherColWidths   colWidths;
+  final bool               autoFitColumns;   // ← new flag
 
   const VoucherPdfPreview({
     super.key,
     required this.voucher,
     required this.config,
-    this.margins   = const EdgeInsets.all(24),
-    this.colWidths = const VoucherColWidths(),
+    this.margins         = const EdgeInsets.all(24),
+    this.colWidths       = const VoucherColWidths(),
+    this.autoFitColumns  = true,            // ← default to true
   });
 
   static const _black = Color(0xFF000000);
@@ -144,13 +157,18 @@ class VoucherPdfPreview extends StatelessWidget {
     required CompanyConfigModel config,
     EdgeInsets                  margins   = const EdgeInsets.all(24),
     VoucherColWidths            colWidths = const VoucherColWidths(),
+    bool                        autoFitColumns = true,
   }) {
-    final preview    = VoucherPdfPreview(
-      voucher: voucher, config: config, margins: margins, colWidths: colWidths,
+    final preview = VoucherPdfPreview(
+      voucher: voucher,
+      config: config,
+      margins: margins,
+      colWidths: colWidths,
+      autoFitColumns: autoFitColumns,
     );
     final sortedRows = _sorted(voucher.rows);
-    final pages      = <Widget>[];
-    int offset       = 0;
+    final pages = <Widget>[];
+    int offset = 0;
 
     while (true) {
       final isLast  = offset + _rowsPerPage(margins, isLastPage: false) >= sortedRows.length;
@@ -158,7 +176,8 @@ class VoucherPdfPreview extends StatelessWidget {
       final end     = (offset + perPage).clamp(0, sortedRows.length);
 
       pages.add(preview._buildPage(
-        width: a4Width, height: a4Height,
+        width: a4Width,
+        height: a4Height,
         rows: sortedRows.sublist(offset, end),
         startIndex: offset,
         showTotal: isLast,
@@ -170,8 +189,11 @@ class VoucherPdfPreview extends StatelessWidget {
 
     if (pages.isEmpty) {
       pages.add(preview._buildPage(
-        width: a4Width, height: a4Height,
-        rows: const [], startIndex: 0, showTotal: true,
+        width: a4Width,
+        height: a4Height,
+        rows: const [],
+        startIndex: 0,
+        showTotal: true,
       ));
     }
 
@@ -181,7 +203,11 @@ class VoucherPdfPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pages = buildPdfPages(
-      voucher: voucher, config: config, margins: margins, colWidths: colWidths,
+      voucher: voucher,
+      config: config,
+      margins: margins,
+      colWidths: colWidths,
+      autoFitColumns: autoFitColumns,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -194,7 +220,6 @@ class VoucherPdfPreview extends StatelessWidget {
     );
   }
 
-  // ── Single A4 page ─────────────────────────────────────────────────────────
   Widget _buildPage({
     required double width,
     required double height,
@@ -202,7 +227,13 @@ class VoucherPdfPreview extends StatelessWidget {
     required int startIndex,
     required bool showTotal,
   }) {
-    final contentH = height - margins.vertical;
+    // Compute available width for the table (margins already applied).
+    final availableWidth = width - margins.horizontal;
+
+    // Scale column widths if auto-fit is enabled.
+    final effectiveColWidths = autoFitColumns
+        ? colWidths.scaleToFit(availableWidth)
+        : colWidths;
 
     return Container(
       width: width,
@@ -218,41 +249,42 @@ class VoucherPdfPreview extends StatelessWidget {
         padding: margins,
         child: DefaultTextStyle(
           style: _body,
-          child: SizedBox(
-            height: contentH,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        'AARTI ENTERPRISES : ${voucher.title.isEmpty ? "Expenses Statement" : voucher.title}',
-                        style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      'AARTI ENTERPRISES : ${voucher.title.isEmpty ? "Expenses Statement" : voucher.title}',
+                      style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    Text(voucher.deptCode,
-                        style: _body.copyWith(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-                const Divider(color: _black),
-                const SizedBox(height: 8),
-                _buildTable(rows, startIndex),
-                if (showTotal) ...[
-                  const SizedBox(height: 12),
-                  _buildTotalSection(),
+                  ),
+                  Text(voucher.deptCode,
+                      style: _body.copyWith(fontWeight: FontWeight.w700)),
                 ],
+              ),
+              const Divider(color: _black),
+              const SizedBox(height: 8),
+              _buildTable(rows, startIndex, effectiveColWidths),
+              if (showTotal) ...[
+                const SizedBox(height: 12),
+                _buildTotalSection(),
               ],
-            ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTable(List<VoucherRowModel> rows, int startIndex) {
+  Widget _buildTable(
+    List<VoucherRowModel> rows,
+    int startIndex,
+    VoucherColWidths colWidths,
+  ) {
     const headers = [
       'Sr.', 'Debit A/c', 'IFSC', 'Credit A/c',
       'Code', 'Name', 'Place', 'Fr.', 'To', 'Amount',

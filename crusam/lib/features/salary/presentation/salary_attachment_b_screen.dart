@@ -26,6 +26,9 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
 
+  // ── Always show all four company codes regardless of what's in the DB ────────
+  static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+
   @override
   void initState() {
     super.initState();
@@ -58,7 +61,6 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
       await SalaryPdfExportService.exportAttachmentB(
-    
         config:          _config,
         billNo:          _billNoCtrl.text,
         date:            _buildDate(n),
@@ -102,7 +104,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                   const SizedBox(width: AppSpacing.md),
                   _MonthBadge(monthName: n.monthName, year: n.year),
                   const Spacer(),
-                  // Download PDF button (same as Attachment A)
+                  // Download PDF button
                   if (_exporting)
                     const SizedBox(width: 24, height: 24,
                         child: CircularProgressIndicator(strokeWidth: 2))
@@ -118,19 +120,13 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                     ),
                 ],
               ),
-              // Second row: Company code filter chips (if any)
-              if (sc.companyCodes.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.sm),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _codeChip('All', code == 'All', () => sc.setCompanyCode('All')),
-                      ...sc.companyCodes.map((c) => _codeChip(c, code == c, () => sc.setCompanyCode(c))),
-                    ],
-                  ),
-                ),
-              ],
+              // Second row: Company code filter chips (fixed set)
+              const SizedBox(height: AppSpacing.sm),
+              _CodeFilter(
+                codes:    _allCodes,
+                selected: code,
+                onChanged: (c) => sc.setCompanyCode(c ?? 'All'),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
@@ -223,26 +219,55 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
           )),
         ]),
       );
+}
 
-  static Widget _codeChip(String label, bool active, VoidCallback onTap) => Padding(
-    padding: const EdgeInsets.only(right: 6),
-    child: GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: active ? AppColors.indigo600 : AppColors.slate800,
-          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label, style: TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w600,
-          color: active ? Colors.white : AppColors.slate400,
-        )),
-      ),
+// ── Code filter — always shows All + F&B + I&L + P&S + A&P ──────────────────
+class _CodeFilter extends StatelessWidget {
+  final List<String> codes;
+  final String       selected;
+  final void Function(String?) onChanged;
+  const _CodeFilter({required this.codes, required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: Row(
+      children: [
+        _chip('All', null, selected, onChanged),
+        ...codes.map((c) => _chip(c, c, selected, onChanged)),
+      ],
     ),
   );
+
+  static Widget _chip(String label, String? value, String selected,
+      void Function(String?) onTap) {
+    final active = selected == (value ?? 'All');
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => onTap(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? AppColors.indigo600 : AppColors.slate800,
+            border: Border.all(
+              color: active ? AppColors.indigo600 : AppColors.slate600,
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: active ? Colors.white : AppColors.slate400,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Month Badge Widget ─────────────────────────────────────────────────────────

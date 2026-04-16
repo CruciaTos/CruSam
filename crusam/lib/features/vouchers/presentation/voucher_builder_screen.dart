@@ -766,7 +766,7 @@ class _RowsTable extends StatelessWidget {
                   Icon(Icons.table_rows_outlined,
                       size: 36, color: AppColors.slate300),
                   const SizedBox(height: 8),
-                  Text('No rows yet.', style: AppTextStyles.small),
+                  Text('No Employees yet.', style: AppTextStyles.small),
                 ]),
               ),
             Container(

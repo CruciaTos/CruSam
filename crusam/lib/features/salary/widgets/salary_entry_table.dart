@@ -34,10 +34,10 @@ class SalaryEntryTable extends StatefulWidget {
     required this.daysFocusNodes,
     required this.onDaysChanged,
     required this.monthName,
-    this.totalsBarGap            = 8,
-    this.totalsBarHPadding       = 0,
-    this.totalsBarTopPadding     = 10,
-    this.totalsBarBottomPadding  = 10,
+    this.totalsBarGap = 8,
+    this.totalsBarHPadding = 0,
+    this.totalsBarTopPadding = 10,
+    this.totalsBarBottomPadding = 10,
   });
 
   @override
@@ -95,19 +95,19 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
   int _msw() => widget.isMsw ? 6 : 0;
 
   int _pt(EmployeeModel e) {
-    final g        = _earnedGross(e);
+    final g = _earnedGross(e);
     final isFemale = e.gender.toUpperCase() == 'F';
     if (isFemale) {
       if (g < 25000) return 0;
       return widget.isFeb ? 300 : 200;
     } else {
-      if (g < 7500)       return 0;
-      if (g < 10000)      return 175;
+      if (g < 7500) return 0;
+      if (g < 10000) return 175;
       return widget.isFeb ? 300 : 200;
     }
   }
 
-  int    _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
+  int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
   double _net(EmployeeModel e) => _earnedGross(e) - _td(e);
 
   void _focusNextEmployee(EmployeeModel current) {
@@ -119,19 +119,22 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     }
   }
 
-  // ── Column widths ─────────────────────────────────────────────────────────────
+  // ── Column widths (proportional to fill available space) ─────────────────────
   Map<int, TableColumnWidth> _colWidths() {
-    final cols = <double>[
+    final baseWidths = <double>[
       48.0, 240.0, 55.0, 100.0, 100.0, 110.0, 80.0, 110.0, 80.0,
       if (widget.isMsw) 72.0,
       100.0, 80.0, 95.0, 110.0,
     ];
-    return {for (int i = 0; i < cols.length; i++) i: FixedColumnWidth(cols[i])};
+    final totalFixed = baseWidths.fold(0.0, (sum, w) => sum + w);
+    final Map<int, TableColumnWidth> widths = {};
+    for (int i = 0; i < baseWidths.length; i++) {
+      widths[i] = FractionColumnWidth(baseWidths[i] / totalFixed);
+    }
+    return widths;
   }
 
-  double get _totalTableWidth => _colWidths().values
-      .map((w) => (w as FixedColumnWidth).value)
-      .fold(0.0, (a, b) => a + b);
+  double get _totalTableWidth => 1.0; // sum of fractions = 1.0
 
   // ── Headers ───────────────────────────────────────────────────────────────────
   List<Widget> _headers() {
@@ -156,14 +159,14 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
 
   // ── Data row ──────────────────────────────────────────────────────────────────
   TableRow _dataRow(EmployeeModel e, int idx) {
-    final bg       = idx.isEven ? AppColors.white : const Color(0xFFF8FAFC);
-    final pf       = _pf(e);
-    final esic     = _esic(e);
-    final msw      = _msw();
-    final pt       = _pt(e);
-    final td       = _td(e);
-    final net      = _net(e);
-    final earned   = _earnedGross(e);
+    final bg = idx.isEven ? AppColors.white : const Color(0xFFF8FAFC);
+    final pf = _pf(e);
+    final esic = _esic(e);
+    final msw = _msw();
+    final pt = _pt(e);
+    final td = _td(e);
+    final net = _net(e);
+    final earned = _earnedGross(e);
     final isFemale = e.gender.toUpperCase() == 'F';
 
     return TableRow(
@@ -204,9 +207,9 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
             child: _DaysField(
               key: ValueKey('d_${e.id}_${widget.month}_${widget.year}'),
               controller: widget.daysCtrls[e.id!]!,
-              focusNode:  widget.daysFocusNodes[e.id],
-              max:        widget.totalDays,
-              onChanged:  (_) => widget.onDaysChanged(),
+              focusNode: widget.daysFocusNodes[e.id],
+              max: widget.totalDays,
+              onChanged: (_) => widget.onDaysChanged(),
               onSubmitted: () => _focusNextEmployee(e),
             ),
           ),
@@ -236,17 +239,17 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     );
   }
 
-  // ── Totals bar ────────────────────────────────────────────────────────────────
+  // ── Totals bar (exact layout as specified) ───────────────────────────────────
   Widget _totalsBar(double availableWidth, List<EmployeeModel> employees) {
-    final totalBasic     = employees.fold(0.0, (s, e) => s + e.basicCharges);
-    final totalOther     = employees.fold(0.0, (s, e) => s + e.otherCharges);
+    final totalBasic = employees.fold(0.0, (s, e) => s + e.basicCharges);
+    final totalOther = employees.fold(0.0, (s, e) => s + e.otherCharges);
     final totalGrossFull = totalBasic + totalOther;
-    final totalPf        = employees.fold(0,   (s, e) => s + _pf(e));
-    final totalEsic      = employees.fold(0,   (s, e) => s + _esic(e));
-    final totalMsw       = widget.isMsw ? employees.length * 6 : 0;
-    final totalPt        = employees.fold(0,   (s, e) => s + _pt(e));
-    final totalTd        = employees.fold(0,   (s, e) => s + _td(e));
-    final totalNet       = employees.fold(0.0, (s, e) => s + _net(e));
+    final totalPf = employees.fold(0, (s, e) => s + _pf(e));
+    final totalEsic = employees.fold(0, (s, e) => s + _esic(e));
+    final totalMsw = widget.isMsw ? employees.length * 6 : 0;
+    final totalPt = employees.fold(0, (s, e) => s + _pt(e));
+    final totalTd = employees.fold(0, (s, e) => s + _td(e));
+    final totalNet = employees.fold(0.0, (s, e) => s + _net(e));
 
     return SizedBox(
       width: availableWidth,
@@ -262,74 +265,50 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top row: Gross/Basic/Other  |  Net Payable
+            // Top row
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Expanded(
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.end,
-                    spacing: 0,
-                    runSpacing: 4,
-                    children: [
-                      _chip('Total Gross', '₹${totalGrossFull.toStringAsFixed(0)}',
-                          AppColors.indigo400,
-                          labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 16)),
-                      _separator(),
-                      _chip('Total Basic', '₹${totalBasic.toStringAsFixed(0)}',
-                          AppColors.indigo400,
-                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 10)),
-                      _separator(),
-                      _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}',
-                          AppColors.indigo400,
-                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.indigo400, fontSize: 10)),
-                    ],
-                  ),
+                // Left: Total Gross
+                _chip('Total Gross', '₹${totalGrossFull.toStringAsFixed(0)}', AppColors.indigo400),
+                const Spacer(),
+                // Centered group: Basic | Other
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _chip('Total Basic', '₹${totalBasic.toStringAsFixed(0)}', AppColors.indigo400),
+                    _separator(), // exactly centered in the bar
+                    _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}', AppColors.indigo400),
+                  ],
                 ),
-                _chip('Net Payable', '₹${totalNet.toStringAsFixed(0)}',
-                    AppColors.emerald700,
-                    labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
-                    valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.emerald700, fontSize: 16)),
+                const Spacer(),
+                // Right: Net Payable
+                _chip('Net Payable', '₹${totalNet.toStringAsFixed(0)}', const Color.fromARGB(255, 12, 186, 47)),
               ],
             ),
             const SizedBox(height: 8),
-            // Bottom row: Deductions
+            // Bottom row
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Expanded(
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.end,
-                    spacing: 0,
-                    runSpacing: 4,
-                    children: [
-                      _chip('Total Deductions ', '₹$totalTd', Colors.redAccent,
-                          labelStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate500, fontSize: 16),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: Colors.redAccent, fontSize: 16)),
-                      _separator(),
-                      _chip('Total PF', '₹$totalPf', AppColors.slate400,
-                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
-                      _separator(),
-                      if (widget.isMsw) ...[
-                        _chip('Total MSW', '₹$totalMsw', AppColors.amber700,
-                            labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                            valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.amber700, fontSize: 10)),
-                        _separator(),
-                      ],
-                      _chip('Total ESIC', '₹$totalEsic', AppColors.slate400,
-                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
-                      _separator(),
-                      _chip('Total PT', '₹$totalPt', AppColors.slate400,
-                          labelStyle: AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 10),
-                          valueStyle: AppTextStyles.bodyMedium.copyWith(color: AppColors.slate400, fontSize: 10)),
-                    ],
-                  ),
+                // Left: Total Deductions
+                _chip('Total Deductions', '₹$totalTd', Colors.redAccent),
+                const Spacer(),
+                // Centered group: PF | ESIC | PT
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _chip('Total PF', '₹$totalPf              ',  Colors.redAccent),
+                    _separator(),
+                    _chip('   Total ESIC', '₹$totalEsic   ',  Colors.redAccent), // centered under top separator
+                    _separator(),
+                    _chip('              Total PT', '₹$totalPt', Colors.redAccent),
+                  ],
                 ),
+                const Spacer(),
+                // Right: MSW (if applicable)
+                if (widget.isMsw)
+                  _chip('Total MSW', '₹$totalMsw', AppColors.amber700)
+                else
+                  const SizedBox(width: 100), // placeholder to keep layout consistent
               ],
             ),
           ],
@@ -341,8 +320,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
   // ── Build ─────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final employees = _sortedEmployees; // Use sorted list
-    final totalWidth = _totalTableWidth;
+    final employees = _sortedEmployees;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -369,8 +347,11 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                     child: SingleChildScrollView(
                       controller: _hScrollController,
                       scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: totalWidth,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minWidth: availableWidth,
+                          maxWidth: double.infinity,
+                        ),
                         child: Scrollbar(
                           controller: _vScrollController,
                           thumbVisibility: true,
@@ -385,7 +366,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                                   children: _headers(),
                                 ),
                                 ...employees.asMap().entries.map(
-                                  (entry) => _dataRow(entry.value, entry.key),
+                                      (entry) => _dataRow(entry.value, entry.key),
                                 ),
                               ],
                             ),
@@ -409,12 +390,12 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     child: Text('|', style: AppTextStyles.body.copyWith(color: AppColors.slate500)),
   );
 
-  static Widget _chip(String label, String value, Color color,
-      {TextStyle? labelStyle, TextStyle? valueStyle, double fontSize = 14}) {
+  static Widget _chip(String label, String value, Color color, {TextStyle? labelStyle, TextStyle? valueStyle}) {
     final lStyle = labelStyle ??
-        AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: fontSize);
+        AppTextStyles.body.copyWith(color: AppColors.slate500, fontSize: 16);
     final vStyle = valueStyle ??
-        AppTextStyles.bodyMedium.copyWith(color: color, fontSize: fontSize);
+        AppTextStyles.bodyMedium.copyWith(color: color, fontSize: 16);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -465,10 +446,10 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
 // ── Days input field ───────────────────────────────────────────────────────────
 class _DaysField extends StatelessWidget {
   final TextEditingController controller;
-  final FocusNode?            focusNode;
-  final int                   max;
-  final ValueChanged<String>  onChanged;
-  final VoidCallback?         onSubmitted;
+  final FocusNode? focusNode;
+  final int max;
+  final ValueChanged<String> onChanged;
+  final VoidCallback? onSubmitted;
 
   const _DaysField({
     super.key,
@@ -483,13 +464,13 @@ class _DaysField extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
     height: 32, width: 70,
     child: TextField(
-      controller:       controller,
-      focusNode:        focusNode,
-      textAlign:        TextAlign.center,
+      controller: controller,
+      focusNode: focusNode,
+      textAlign: TextAlign.center,
       textAlignVertical: TextAlignVertical.center,
-      keyboardType:     TextInputType.number,
-      textInputAction:  TextInputAction.next,
-      inputFormatters:  [FilteringTextInputFormatter.digitsOnly, _MaxValueFormatter()],
+      keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.next,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly, _MaxValueFormatter()],
       style: AppTextStyles.input.copyWith(fontSize: 13),
       decoration: InputDecoration(
         isDense: true,

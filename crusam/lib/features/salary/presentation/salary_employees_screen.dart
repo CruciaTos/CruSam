@@ -17,7 +17,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   final _ctrl = SalaryStateController.instance;
 
   int _month = DateTime.now().month;
-  int _year  = DateTime.now().year;
+  final int _year = DateTime.now().year;
 
   final Map<int, TextEditingController> _daysCtrls     = {};
   final Map<int, FocusNode>             _daysFocusNodes = {};
@@ -77,17 +77,16 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     setState(() {});
   }
 
-  void _onMonthYearChange(int month, int year) {
-    final newTotal = DateTime(year, month + 1, 0).day;
+  void _onMonthChange(int month) {
+    final newTotal = DateTime(_year, month + 1, 0).day;
     setState(() {
       _month = month;
-      _year  = year;
       for (final c in _daysCtrls.values) {
         final v = int.tryParse(c.text) ?? 0;
         if (v > newTotal) c.text = newTotal.toString();
       }
     });
-    SalaryDataNotifier.instance.setMonthYear(month, year);
+    SalaryDataNotifier.instance.setMonthYear(month, _year);
   }
 
   List<EmployeeModel> get _displayEmployees => _ctrl.filteredEmployees;
@@ -107,15 +106,12 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
             _Toolbar(
               title:          title,
               month:          _month,
-              year:           _year,
               months:         _months,
               isMsw:          _isMsw,
               isFeb:          _isFeb,
-              // ✅ Hard‑coded list matching the Salary Slips screen
               codes:          const ['F&B', 'I&L', 'P&S', 'A&P'],
               selectedCode:   _ctrl.selectedCompanyCode,
-              onMonthChanged: (v) => _onMonthYearChange(v, _year),
-              onYearChanged:  (v) => _onMonthYearChange(_month, v),
+              onMonthChanged: _onMonthChange,
               onCodeChanged:  (c) => _ctrl.setCompanyCode(c),
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -159,31 +155,101 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   );
 }
 
-// ── Toolbar ───────────────────────────────────────────────────────────────────
+// ─── Smooth Month Dropdown (opens exactly below, scrollable, max 4 items) ─────
+class SmoothDropdown<T> extends StatelessWidget {
+  final T value;
+  final List<T> items;
+  final String Function(T) display;
+  final ValueChanged<T> onChanged;
+  final double width;
+  final int maxVisibleItems;
+
+  const SmoothDropdown({
+    super.key,
+    required this.value,
+    required this.items,
+    required this.display,
+    required this.onChanged,
+    required this.width,
+    this.maxVisibleItems = 4,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const double itemHeight = 48.0;
+    final double maxHeight = maxVisibleItems * itemHeight;
+
+    return PopupMenuButton<T>(
+      initialValue: value,
+      onSelected: onChanged,
+      offset: Offset(0, 50) , // 👈 No gap, opens directly below
+      color: const Color(0xFF1E293B),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: AppColors.slate400.withOpacity(0.3)),
+      ),
+      constraints: BoxConstraints(
+        minWidth: width,        // Match button width
+        maxHeight: maxHeight,   // Limit visible items
+      ),
+      itemBuilder: (context) {
+        return items.map((item) {
+          return PopupMenuItem<T>(
+            value: item,
+            height: itemHeight,
+            child: Text(
+              display(item),
+              style: AppTextStyles.input.copyWith(color: Colors.white),
+            ),
+          );
+        }).toList();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        width: width,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.slate400),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              display(value),
+              style: AppTextStyles.input.copyWith(color: Colors.white),
+            ),
+            const Icon(Icons.arrow_drop_down, color: AppColors.slate400, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Toolbar (unchanged) ──────────────────────────────────────────────────────
 class _Toolbar extends StatelessWidget {
   final String title;
-  final int    month;
-  final int    year;
+  final int month;
   final List<String> months;
-  final bool   isMsw;
-  final bool   isFeb;
+  final bool isMsw;
+  final bool isFeb;
   final List<String> codes;
   final String selectedCode;
-  final ValueChanged<int>    onMonthChanged;
-  final ValueChanged<int>    onYearChanged;
+  final ValueChanged<int> onMonthChanged;
   final ValueChanged<String> onCodeChanged;
 
   const _Toolbar({
     required this.title,
     required this.month,
-    required this.year,
     required this.months,
     required this.isMsw,
     required this.isFeb,
     required this.codes,
     required this.selectedCode,
     required this.onMonthChanged,
-    required this.onYearChanged,
     required this.onCodeChanged,
   });
 
@@ -192,42 +258,17 @@ class _Toolbar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // First row: Title, month/year, badges
         Row(
           children: [
             Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
             const Spacer(),
-            SizedBox(
-              width: 150, height: 40,
-              child: DropdownButtonFormField<int>(
-                value: month,
-                style: AppTextStyles.input,
-                decoration: const InputDecoration(
-                  labelText: 'Month', isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                items: List.generate(12, (i) => DropdownMenuItem(
-                  value: i + 1, child: Text(months[i], style: AppTextStyles.input),
-                )),
-                onChanged: (v) { if (v != null) onMonthChanged(v); },
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            SizedBox(
-              width: 100, height: 40,
-              child: DropdownButtonFormField<int>(
-                value: year,
-                style: AppTextStyles.input,
-                decoration: const InputDecoration(
-                  labelText: 'Year', isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                items: List.generate(6, (i) {
-                  final y = DateTime.now().year - 1 + i;
-                  return DropdownMenuItem(value: y, child: Text(y.toString(), style: AppTextStyles.input));
-                }),
-                onChanged: (v) { if (v != null) onYearChanged(v); },
-              ),
+            SmoothDropdown<int>(
+              value: month,
+              items: List.generate(12, (i) => i + 1),
+              display: (m) => months[m - 1],
+              onChanged: onMonthChanged,
+              width: 150,
+              maxVisibleItems: 4,
             ),
             const SizedBox(width: AppSpacing.lg),
             if (isMsw) _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
@@ -237,7 +278,6 @@ class _Toolbar extends StatelessWidget {
             ],
           ],
         ),
-        // Second row: Company code filter chips
         if (codes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           SingleChildScrollView(
@@ -262,8 +302,8 @@ class _Toolbar extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: active ? AppColors.indigo600 : AppColors.slate800,
-          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate600),
+          color: active ? AppColors.indigo600 : const Color(0xFF1E293B),
+          border: Border.all(color: active ? AppColors.indigo600 : AppColors.slate400),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(label, style: TextStyle(
