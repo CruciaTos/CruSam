@@ -19,26 +19,29 @@ class TaxInvoicePreview extends StatelessWidget {
     this.margins = const EdgeInsets.all(24),
   });
 
-  // ── Palette ────────────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────────────────────────
+  // Design Constants
+  // ────────────────────────────────────────────────────────────────────────────
   static const _black = Color(0xFF000000);
   static const _green = Color(0xFF1A6B2F);
-  static const _hdrBg = Color(0xFFE3E8F4);
-  static const _grandBg = Color(0xFFD6DCF5);
+  static const _headerBg = Color(0xFFE3E8F4);
+  static const _grandTotalBg = Color(0xFFD6DCF5);
+  static const _borderSide = BorderSide(color: _black, width: 0.75);
+  static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
 
-  static const _bSide = BorderSide(color: _black, width: 0.75);
-  static const _bSideThin = BorderSide(color: _black, width: 0.5);
+  static const _bodyStyle = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
-  // ── Typography ─────────────────────────────────────────────────────────────
-  static const _body = TextStyle(fontSize: 9, color: _black, height: 1.45);
+  // Fixed column widths
+  static const _colSr = 28.0;
+  static const _colDateFrom = 58.0;
+  static const _colDateTo = 58.0;
+  static const _colQty = 36.0;
+  static const _colRate = 50.0;
+  static const _colAmount = 90.0;
 
-  // ── Fixed column widths ────────────────────────────────────────────────────
-  static const _wSr = 28.0;
-  static const _wDateFr = 58.0;
-  static const _wDateTo = 58.0;
-  static const _wQty = 36.0;
-  static const _wRate = 50.0;
-  static const _wAmt = 90.0;
-
+  // ────────────────────────────────────────────────────────────────────────────
+  // Public static method for PDF generation
+  // ────────────────────────────────────────────────────────────────────────────
   static List<Widget> buildPdfPages({
     required VoucherModel voucher,
     required CompanyConfigModel config,
@@ -49,279 +52,266 @@ class TaxInvoicePreview extends StatelessWidget {
       config: config,
       margins: margins,
     );
-
-    return [
-      preview._buildPage(width: a4Width, height: a4Height),
-    ];
+    return [preview._buildPage(width: a4Width, height: a4Height)];
   }
 
   @override
   Widget build(BuildContext context) =>
       Center(child: _buildPage(width: a4Width, height: a4Height));
 
-  Widget _buildPage({required double width, required double height}) => Container(
-        width: width,
-        height: height,
-        clipBehavior:
-            Clip.hardEdge, // hard clip — nothing bleeds outside the page
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: margins,
-          child: DefaultTextStyle(
-            style: _body,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(),
-                const SizedBox(height: 2),   // reduced from 4
-                _divider(0.8),
-                const SizedBox(height: 8),   // reduced from 10
-                _taxInvoiceLabel(),
-                const SizedBox(height: 6),   // reduced from 8
-                _billToSection(),
-                const SizedBox(height: 10),  // reduced from 12
-                _itemTable(),
-                const SizedBox(height: 12),  // reduced from 16
-                _belowTableSection(),
-              ],
-            ),
+  Widget _buildPage({required double width, required double height}) {
+    return Container(
+      width: width,
+      height: height,
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: margins,
+        child: DefaultTextStyle(
+          style: _bodyStyle,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 2),
+              _buildDivider(0.8),
+              const SizedBox(height: 8),
+              _buildTaxInvoiceLabel(),
+              const SizedBox(height: 6),
+              _buildBillToSection(),
+              const SizedBox(height: 10),
+              _buildItemTable(),
+              const SizedBox(height: 12),
+              _buildBelowTableSection(),
+            ],
           ),
         ),
-      );
-
-  // ── HEADER ─────────────────────────────────────────────────────────────────
-  Widget _header() => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      _logo(),
-      const SizedBox(width: 20),
-      Expanded(child: _companyInfo()),
-    ],
-  );
-
-  Widget _logo() => SizedBox(
-    width: 110,
-    height: 75,   // reduced from 90
-    child: Image.asset(
-      'assets/images/aarti_logo.png',
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => const _FallbackLogo(),
-    ),
-  );
-
-  Widget _companyInfo() => Column(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Text(
-        config.companyName.toUpperCase(),
-        textAlign: TextAlign.right,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-          color: _green,
-          letterSpacing: 0.6,
-        ),
       ),
-      const SizedBox(height: 4),
-      Text(
-        config.address,
-        textAlign: TextAlign.right,
-        style: _body.copyWith(fontSize: 10),
-      ),
-      const SizedBox(height: 2),
-      Text(
-        'Tel.  Office  :  ${config.phone}',
-        textAlign: TextAlign.right,
-        style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-      ),
-    ],
-  );
+    );
+  }
 
-  Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);   // reduced from 6
-
-  Widget _taxInvoiceLabel() => Center(
-    child: Text(
-      'TAX INVOICE',
-      style: _body.copyWith(
-        fontSize: 13,
-        fontWeight: FontWeight.w900,
-        decoration: TextDecoration.underline,
-        letterSpacing: 1.2,
-      ),
-    ),
-  );
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // BILL TO – full-width bordered box (reference image has outer border)
-  // Layout: "BILL To," header, then address LEFT + Bill/Date/PO RIGHT,
-  //         then GST line spanning full width at bottom.
-  // ══════════════════════════════════════════════════════════════════════════
-  Widget _billToSection() => Container(
-    decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
-    child: Column(
+  // ────────────────────────────────────────────────────────────────────────────
+  // Header Section
+  // ────────────────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('BILL To,', style: _body.copyWith(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 2),
-        // Client name (left) | Bill No (right)
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                voucher.clientName,
-                style: _body.copyWith(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-            _refRow(
-              'Bill No',
-              voucher.billNo.isEmpty ? 'AE/-/25-26' : voucher.billNo,
-            ),
-          ],
-        ),
-        // Address (left) | Date (right)
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Text(voucher.clientAddress, style: _body)),
-            _refRow('Date', voucher.date),
-          ],
-        ),
-        const SizedBox(height: 2),
-        // GST (left) | PO No (right)
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text('', style: _body.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                'GST No. ${voucher.clientGstin}',
-                style: _body.copyWith(fontWeight: FontWeight.w700),
-              ),
-            ),
-            _refRow('PO.No.', voucher.poNo.isEmpty ? '-' : voucher.poNo),
-          ],
-        ),
+        _buildLogo(),
+        const SizedBox(width: 20),
+        Expanded(child: _buildCompanyInfo()),
       ],
-    ),
-  );
+    );
+  }
 
-  Widget _refRow(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 3),
-    child: Row(
+  Widget _buildLogo() {
+    return SizedBox(
+      width: 110,
+      height: 75,
+      child: Image.asset(
+        'assets/images/aarti_logo.png',
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => const _FallbackLogo(),
+      ),
+    );
+  }
+
+  Widget _buildCompanyInfo() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('$label :-  ', style: _body.copyWith(fontWeight: FontWeight.w600)),
-        Text(value, style: _body),
-      ],
-    ),
-  );
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // ITEM TABLE
-  // ══════════════════════════════════════════════════════════════════════════
-  Widget _itemTable() => LayoutBuilder(
-    builder: (ctx, bc) {
-      final fixedWidth = _wSr + _wDateFr + _wDateTo + _wQty + _wRate + _wAmt;
-      final descW = (bc.maxWidth - fixedWidth - 2.0).clamp(
-        0.0,
-        double.infinity,
-      );
-
-      return Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: _black, width: 0.9),
+        Text(
+          config.companyName.toUpperCase(),
+          textAlign: TextAlign.right,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: _green,
+            letterSpacing: 0.6,
+          ),
         ),
-        child: Column(
-          children: [
-            _headerRow(descW),
-            _dataRow(descW),
-            _tableBottom(descW),
-            _declarationRow(),
-          ],
+        const SizedBox(height: 4),
+        Text(
+          config.address,
+          textAlign: TextAlign.right,
+          style: _bodyStyle.copyWith(fontSize: 10),
         ),
-      );
-    },
-  );
-
-  // ── Column headers (updated to match reference: "Sr. No", "Date upto") ─────
-  Widget _headerRow(double descW) => Container(
-    decoration: const BoxDecoration(
-      color: _hdrBg,
-      border: Border(bottom: _bSide),
-    ),
-    child: Row(
-      children: [
-        _hCell('Sr. No', _wSr, center: true),
-        _hCell('Date Fr.', _wDateFr, center: true),
-        _hCell('Date upto', _wDateTo, center: true),
-        _hCell('Item Description', descW),
-        _hCell('QTY', _wQty, center: true),
-        _hCell('RATE', _wRate, center: true),
-        _hCell('AMOUNT', _wAmt, center: true, isLast: true),
+        const SizedBox(height: 2),
+        Text(
+          'Tel.  Office  :  ${config.phone}',
+          textAlign: TextAlign.right,
+          style: _bodyStyle.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
+        ),
       ],
-    ),
-  );
+    );
+  }
 
-  // ── Data row – QTY and RATE blank per reference image ──────────────────────
-  Widget _dataRow(double descW) {
-    final sorted = _sorted(voucher.rows);
+  Widget _buildDivider(double thickness) {
+    return Divider(color: _black, thickness: thickness, height: 4);
+  }
+
+  Widget _buildTaxInvoiceLabel() {
+    return Center(
+      child: Text(
+        'TAX INVOICE',
+        style: _bodyStyle.copyWith(
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          decoration: TextDecoration.underline,
+          letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Bill To Section
+  // ────────────────────────────────────────────────────────────────────────────
+  Widget _buildBillToSection() {
     return Container(
-      decoration: const BoxDecoration(border: Border(bottom: _bSide)),
+      decoration: const BoxDecoration(border: Border.fromBorderSide(_borderSide)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('BILL To,', style: _bodyStyle.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          _buildBillToRow1(),
+          _buildBillToRow2(),
+          const SizedBox(height: 2),
+          _buildBillToRow3(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBillToRow1() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(
+            voucher.clientName,
+            style: _bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
+          ),
+        ),
+        _ReferenceRow(
+          label: 'Bill No',
+          value: voucher.billNo.isEmpty ? 'AE/-/25-26' : voucher.billNo,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBillToRow2() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: Text(voucher.clientAddress, style: _bodyStyle)),
+        _ReferenceRow(label: 'Date', value: voucher.date),
+      ],
+    );
+  }
+
+  Widget _buildBillToRow3() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            'GST No. ${voucher.clientGstin}',
+            style: _bodyStyle.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        _ReferenceRow(
+          label: 'PO.No.',
+          value: voucher.poNo.isEmpty ? '-' : voucher.poNo,
+        ),
+      ],
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Item Table
+  // ────────────────────────────────────────────────────────────────────────────
+  Widget _buildItemTable() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fixedWidth =
+            _colSr + _colDateFrom + _colDateTo + _colQty + _colRate + _colAmount;
+        final descriptionWidth =
+            (constraints.maxWidth - fixedWidth - 2.0).clamp(0.0, double.infinity);
+
+        return Container(
+          decoration: const BoxDecoration(
+            border: Border.fromBorderSide(BorderSide(color: _black, width: 0.9)),
+          ),
+          child: Column(
+            children: [
+              _buildTableHeader(descriptionWidth),
+              _buildTableDataRow(descriptionWidth),
+              _buildTableBottom(descriptionWidth),
+              _buildDeclarationRow(),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTableHeader(double descriptionWidth) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _headerBg,
+        border: Border(bottom: _borderSide),
+      ),
+      child: Row(
+        children: [
+          _HeaderCell('Sr. No', _colSr, centered: true),
+          _HeaderCell('Date Fr.', _colDateFrom, centered: true),
+          _HeaderCell('Date upto', _colDateTo, centered: true),
+          _HeaderCell('Item Description', descriptionWidth),
+          _HeaderCell('QTY', _colQty, centered: true),
+          _HeaderCell('RATE', _colRate, centered: true),
+          _HeaderCell('AMOUNT', _colAmount, centered: true, isLast: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableDataRow(double descriptionWidth) {
+    final sortedRows = _sorted(voucher.rows);
+    final fromDate = sortedRows.isNotEmpty ? sortedRows.first.fromDate : '';
+    final toDate = sortedRows.isNotEmpty ? sortedRows.last.toDate : '';
+
+    return Container(
+      decoration: const BoxDecoration(border: Border(bottom: _borderSide)),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _dCell('1', _wSr, center: true),
-            _dCell(
-              _fmtDate(sorted.isNotEmpty ? sorted.first.fromDate : ''),
-              _wDateFr,
-              center: true,
+            _DataCell('1', _colSr, centered: true),
+            _DataCell(_formatDate(fromDate), _colDateFrom, centered: true),
+            _DataCell(_formatDate(toDate), _colDateTo, centered: true),
+            _DescriptionCell(
+              width: descriptionWidth,
+              description: voucher.itemDescription,
             ),
-            _dCell(
-              _fmtDate(sorted.isNotEmpty ? sorted.last.toDate : ''),
-              _wDateTo,
-              center: true,
-            ),
-            Container(
-              width: descW,
-              decoration: const BoxDecoration(border: Border(right: _bSide)),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),   // reduced from 12
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(voucher.itemDescription, style: _body),
-                  const SizedBox(height: 6),   // reduced from 12
-                  const Text(
-                    '( Vouchers attached with this original bill )',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontStyle: FontStyle.italic,
-                      color: _black,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _dCell('', _wQty, center: true),
-            _dCell('', _wRate, center: true),
-            _dCell(
+            _DataCell('', _colQty, centered: true),
+            _DataCell('', _colRate, centered: true),
+            _DataCell(
               voucher.baseTotal.toStringAsFixed(2),
-              _wAmt,
-              right: true,
+              _colAmount,
+              rightAligned: true,
               bold: true,
               isLast: true,
             ),
@@ -331,303 +321,94 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TABLE BOTTOM
-  //
-  // Column mapping (reference image):
-  //  ┌─Sr─┬─DateFr─┬─DateTo─┬──────── descW ────────┐  ← bankInfoW
-  //                                                    ├─QTY─┬─RATE─┤  ← taxLabelW
-  //                                                                   ├──AMOUNT──┤
-  //
-  //  bankInfoW = wSr + wDateFr + wDateTo + descW
-  //  taxLabelW = wQty + wRate
-  //  valueW    = wAmt
-  // ══════════════════════════════════════════════════════════════════════════
-  Widget _tableBottom(double descW) {
-    final bankInfoW = _wSr + _wDateFr + _wDateTo + descW;
-    final taxLabelW = _wQty + _wRate;
+  Widget _buildTableBottom(double descriptionWidth) {
+    final bankInfoWidth =
+        _colSr + _colDateFrom + _colDateTo + descriptionWidth;
+    final taxLabelWidth = _colQty + _colRate;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── LEFT: PAN / GSTIN / HSN + bank details (full-height merged cell)
-          Container(
-            width: bankInfoW,
-            decoration: const BoxDecoration(border: Border(right: _bSide)),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'PAN NO :-  ${config.pan}',
-                  style: _body.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'GSTIN  :  ${config.gstin}          HSN: SAC99851',
-                  style: _body.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Bank Details for   :  RTGS / NEFT',
-                  style: _body.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                _bankLine('Bank Name', config.bankName),
-                _bankLine('Branch', config.branch),
-                _bankLine('Account No.', config.accountNo),
-                _bankLine('IFSC Code', config.ifscCode),
-              ],
-            ),
-          ),
-          // ── RIGHT: individual tax rows (each has its own top divider line)
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _btaxRow(
-                taxLabelW,
-                'Total amount before Tax',
-                voucher.baseTotal.toStringAsFixed(2),
-              ),
-              _btaxRow(
-                taxLabelW,
-                'Add : CGST 9%',
-                voucher.cgst.toStringAsFixed(2),
-              ),
-              _btaxRow(
-                taxLabelW,
-                'Add : SGST 9%',
-                voucher.sgst.toStringAsFixed(2),
-              ),
-              _btaxRow(
-                taxLabelW,
-                'Total Tax Amount',
-                voucher.totalTax.toStringAsFixed(2),
-                bold: true,
-              ),
-              _btaxRow(
-                taxLabelW,
-                'Round Up',
-                '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
-              ),
-              _btaxGrand(
-                taxLabelW,
-                'Total Amount after Tax',
-                '₹ ${voucher.finalTotal.toStringAsFixed(2)}',
-              ),
-            ],
+          _BankInfoPanel(width: bankInfoWidth, config: config),
+          _TaxSummaryPanel(
+            taxLabelWidth: taxLabelWidth,
+            amountWidth: _colAmount,
+            voucher: voucher,
           ),
         ],
       ),
     );
   }
 
-  /// Single label:value row inside bank info left block.
-  Widget _bankLine(String label, String value) => Padding(
-    padding: const EdgeInsets.only(bottom: 1),   // reduced from 2
-    child: Row(
+  Widget _buildDeclarationRow() {
+    return Container(
+      decoration: const BoxDecoration(border: Border(top: _borderSide)),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        config.declarationText,
+        style: _bodyStyle.copyWith(fontStyle: FontStyle.italic, fontSize: 8.5),
+      ),
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Below Table Section
+  // ────────────────────────────────────────────────────────────────────────────
+  Widget _buildBelowTableSection() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        SizedBox(
-          width: 90,
-          child: Text(
-            label,
-            style: _body.copyWith(
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
+        Expanded(child: _buildCertificationText()),
+        _buildSignature(),
+      ],
+    );
+  }
+
+  Widget _buildCertificationText() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Certified that particulars given above are true and correct.',
+          style: _bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 9),
         ),
-        Flexible(
-          child: Text(
-            ':  $value',
-            style: _body.copyWith(fontSize: 12),
+        const SizedBox(height: 2),
+        Text(
+          'Subject to Mumbai jurisdiction.',
+          style: _bodyStyle.copyWith(fontSize: 9),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSignature() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const SizedBox(height: 4),
+        SizedBox(
+          width: 200,
+          height: 90,
+          child: Image.asset(
+            'assets/images/aarti_signature.png',
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox(),
           ),
         ),
       ],
-    ),
-  );
+    );
+  }
 
-  /// Tax summary row in right block with top separator.
-  Widget _btaxRow(
-    double labelW,
-    String label,
-    String value, {
-    bool bold = false,
-  }) => Container(
-    decoration: const BoxDecoration(border: Border(top: _bSideThin)),
-    child: Row(
-      children: [
-        Container(
-          width: labelW,
-          decoration: const BoxDecoration(border: Border(right: _bSide)),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),   // reduced from 4
-          child: Text(
-            label,
-            textAlign: TextAlign.right,
-            style: _body.copyWith(
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-            ),
-          ),
-        ),
-        SizedBox(
-          width: _wAmt,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),   // reduced from 4
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: _body.copyWith(
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  /// Grand total row – highlighted + bold.
-  Widget _btaxGrand(double labelW, String label, String value) => Container(
-    decoration: const BoxDecoration(
-      color: _grandBg,
-      border: Border(top: _bSide),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: labelW,
-          decoration: const BoxDecoration(border: Border(right: _bSide)),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),   // reduced from 6
-          child: Text(
-            label,
-            textAlign: TextAlign.right,
-            style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w900),
-          ),
-        ),
-        SizedBox(
-          width: _wAmt,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),   // reduced from 6
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w900),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-
-  /// Full-width declaration row – last row inside the table outer border.
-  Widget _declarationRow() => Container(
-    decoration: const BoxDecoration(border: Border(top: _bSide)),
-    width: double.infinity,
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),   // reduced from 5
-    child: Text(
-      config.declarationText,
-      style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 8.5),
-    ),
-  );
-
-  // ── Table cell builders ────────────────────────────────────────────────────
-  Widget _hCell(
-    String t,
-    double w, {
-    bool center = false,
-    bool isLast = false,
-  }) => Container(
-    width: w,
-    decoration: BoxDecoration(
-      border: Border(right: isLast ? BorderSide.none : _bSide),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-    child: Text(
-      t,
-      textAlign: center ? TextAlign.center : TextAlign.left,
-      style: _body.copyWith(fontSize: 9, fontWeight: FontWeight.w800),
-    ),
-  );
-
-  Widget _dCell(
-    String t,
-    double w, {
-    bool center = false,
-    bool right = false,
-    bool bold = false,
-    bool isLast = false,
-  }) => Container(
-    width: w,
-    decoration: BoxDecoration(
-      border: Border(right: isLast ? BorderSide.none : _bSide),
-    ),
-    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
-    child: Text(
-      t,
-      textAlign:
-          right
-              ? TextAlign.right
-              : center
-              ? TextAlign.center
-              : TextAlign.left,
-      style: _body.copyWith(
-        fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-      ),
-    ),
-  );
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // BELOW TABLE – certification text (left) + "For Company" + signature (right)
-  // ══════════════════════════════════════════════════════════════════════════
-  Widget _belowTableSection() => Row(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      // Left: bold certification + jurisdiction line
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Certified that particulars given above are true and correct.',
-              style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              'Subject to Mumbai jurisdiction.',
-              style: _body.copyWith(fontSize: 9),
-            ),
-          ],
-        ),
-      ),
-      // Right: company name label + signature image
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const SizedBox(height: 4),
-          SizedBox(
-            width: 200,
-            height: 90,   // reduced from 130
-            child: Image.asset(
-              'assets/images/aarti_signature.png',
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const SizedBox(),
-            ),
-          ),
-        ],
-      ),
-    ],
-  );
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  static String _fmtDate(String iso) {
+  // ────────────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ────────────────────────────────────────────────────────────────────────────
+  static String _formatDate(String iso) {
     if (iso.isEmpty) return '-';
     if (iso.contains('-') && iso.length == 10) {
-      final p = iso.split('-');
-      return '${p[2]}/${p[1]}/${p[0]}';
+      final parts = iso.split('-');
+      return '${parts[2]}/${parts[1]}/${parts[0]}';
     }
     return iso;
   }
@@ -644,28 +425,424 @@ class TaxInvoicePreview extends StatelessWidget {
   }
 }
 
-// ── Fallback logo (asset not found) ───────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Reusable Widgets
+// ──────────────────────────────────────────────────────────────────────────────
+
+class _ReferenceRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ReferenceRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: Row(
+        children: [
+          Text(
+            '$label :-  ',
+            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w600),
+          ),
+          Text(value, style: TaxInvoicePreview._bodyStyle),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderCell extends StatelessWidget {
+  final String text;
+  final double width;
+  final bool centered;
+  final bool isLast;
+
+  const _HeaderCell(
+    this.text,
+    this.width, {
+    this.centered = false,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        border: Border(
+          right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+      child: Text(
+        text,
+        textAlign: centered ? TextAlign.center : TextAlign.left,
+        style: TaxInvoicePreview._bodyStyle.copyWith(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _DataCell extends StatelessWidget {
+  final String text;
+  final double width;
+  final bool centered;
+  final bool rightAligned;
+  final bool bold;
+  final bool isLast;
+
+  const _DataCell(
+    this.text,
+    this.width, {
+    this.centered = false,
+    this.rightAligned = false,
+    this.bold = false,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    TextAlign alignment;
+    if (rightAligned) {
+      alignment = TextAlign.right;
+    } else if (centered) {
+      alignment = TextAlign.center;
+    } else {
+      alignment = TextAlign.left;
+    }
+
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        border: Border(
+          right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
+      child: Text(
+        text,
+        textAlign: alignment,
+        style: TaxInvoicePreview._bodyStyle.copyWith(
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+        ),
+      ),
+    );
+  }
+}
+
+class _DescriptionCell extends StatelessWidget {
+  final double width;
+  final String description;
+
+  const _DescriptionCell({required this.width, required this.description});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      decoration: const BoxDecoration(
+        border: Border(right: TaxInvoicePreview._borderSide),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(description, style: TaxInvoicePreview._bodyStyle),
+          const SizedBox(height: 6),
+          const Text(
+            '( Vouchers attached with this original bill )',
+            style: TextStyle(
+              fontSize: 8,
+              fontStyle: FontStyle.italic,
+              color: TaxInvoicePreview._black,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankInfoPanel extends StatelessWidget {
+  final double width;
+  final CompanyConfigModel config;
+
+  const _BankInfoPanel({required this.width, required this.config});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      decoration: const BoxDecoration(
+        border: Border(right: TaxInvoicePreview._borderSide),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PAN NO :-  ${config.pan}',
+            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'GSTIN  :  ${config.gstin}          HSN: SAC99851',
+            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Bank Details for   :  RTGS / NEFT',
+            style: TaxInvoicePreview._bodyStyle.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 5),
+          _BankDetailRow(label: 'Bank Name', value: config.bankName),
+          _BankDetailRow(label: 'Branch', value: config.branch),
+          _BankDetailRow(label: 'Account No.', value: config.accountNo),
+          _BankDetailRow(label: 'IFSC Code', value: config.ifscCode),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _BankDetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 1),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(
+              label,
+              style: TaxInvoicePreview._bodyStyle.copyWith(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          Flexible(
+            child: Text(
+              ':  $value',
+              style: TaxInvoicePreview._bodyStyle.copyWith(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaxSummaryPanel extends StatelessWidget {
+  final double taxLabelWidth;
+  final double amountWidth;
+  final VoucherModel voucher;
+
+  const _TaxSummaryPanel({
+    required this.taxLabelWidth,
+    required this.amountWidth,
+    required this.voucher,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _TaxRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Total amount before Tax',
+          value: voucher.baseTotal.toStringAsFixed(2),
+        ),
+        _TaxRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Add : CGST 9%',
+          value: voucher.cgst.toStringAsFixed(2),
+        ),
+        _TaxRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Add : SGST 9%',
+          value: voucher.sgst.toStringAsFixed(2),
+        ),
+        _TaxRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Total Tax Amount',
+          value: voucher.totalTax.toStringAsFixed(2),
+          bold: true,
+        ),
+        _TaxRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Round Up',
+          value: '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
+        ),
+        _GrandTotalRow(
+          labelWidth: taxLabelWidth,
+          amountWidth: amountWidth,
+          label: 'Total Amount after Tax',
+          value: '₹ ${voucher.finalTotal.toStringAsFixed(2)}',
+        ),
+      ],
+    );
+  }
+}
+
+class _TaxRow extends StatelessWidget {
+  final double labelWidth;
+  final double amountWidth;
+  final String label;
+  final String value;
+  final bool bold;
+
+  const _TaxRow({
+    required this.labelWidth,
+    required this.amountWidth,
+    required this.label,
+    required this.value,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: TaxInvoicePreview._thinBorderSide),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: labelWidth,
+            decoration: const BoxDecoration(
+              border: Border(right: TaxInvoicePreview._borderSide),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            child: Text(
+              label,
+              textAlign: TextAlign.right,
+              style: TaxInvoicePreview._bodyStyle.copyWith(
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: amountWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: TaxInvoicePreview._bodyStyle.copyWith(
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GrandTotalRow extends StatelessWidget {
+  final double labelWidth;
+  final double amountWidth;
+  final String label;
+  final String value;
+
+  const _GrandTotalRow({
+    required this.labelWidth,
+    required this.amountWidth,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: TaxInvoicePreview._grandTotalBg,
+        border: Border(top: TaxInvoicePreview._borderSide),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: labelWidth,
+            decoration: const BoxDecoration(
+              border: Border(right: TaxInvoicePreview._borderSide),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(
+              label,
+              textAlign: TextAlign.right,
+              style: TaxInvoicePreview._bodyStyle.copyWith(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: amountWidth,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: TaxInvoicePreview._bodyStyle.copyWith(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Fallback Logo
+// ──────────────────────────────────────────────────────────────────────────────
 class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 110,
-    height: 75,   // reduced from 90 to match _logo
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(52),
-      border: Border.all(color: const Color(0xFF1A237E), width: 3),
-      color: const Color(0xFF1A237E),
-    ),
-    alignment: Alignment.center,
-    child: const Text(
-      'Aarti\nEnterprises',
-      textAlign: TextAlign.center,
-      style: TextStyle(
-        fontSize: 10,
-        color: Colors.white,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      height: 75,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(52),
+        border: Border.all(color: const Color(0xFF1A237E), width: 3),
+        color: const Color(0xFF1A237E),
       ),
-    ),
-  );
+      alignment: Alignment.center,
+      child: const Text(
+        'Aarti\nEnterprises',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10,
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }

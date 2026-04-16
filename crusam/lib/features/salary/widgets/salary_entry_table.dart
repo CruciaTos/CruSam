@@ -119,22 +119,53 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     }
   }
 
-  // ── Column widths (proportional to fill available space) ─────────────────────
+  // ── Column widths: fixed Name + flexible rest ────────────────────────────────
   Map<int, TableColumnWidth> _colWidths() {
-    final baseWidths = <double>[
-      48.0, 240.0, 55.0, 100.0, 100.0, 110.0, 80.0, 110.0, 80.0,
-      if (widget.isMsw) 72.0,
-      100.0, 80.0, 95.0, 110.0,
-    ];
-    final totalFixed = baseWidths.fold(0.0, (sum, w) => sum + w);
+    // Column indices:
+    // 0: Sr.   1: Name   2: Gender   3: Basic   4: Other   5: Gross
+    // 6: Days  7: Earned Gross   8: PF   9: MSW (optional)  10/9: ESIC
+    // 11/10: PT   12/11: Total Deductions   13/12: Net Salary
+    final nameColIndex = 1;
+    final int totalCols = widget.isMsw ? 14 : 13;
+
     final Map<int, TableColumnWidth> widths = {};
-    for (int i = 0; i < baseWidths.length; i++) {
-      widths[i] = FractionColumnWidth(baseWidths[i] / totalFixed);
+    for (int i = 0; i < totalCols; i++) {
+      if (i == nameColIndex) {
+        // Fixed width for Name – never shrinks, always readable
+        widths[i] = const FixedColumnWidth(350.0);
+      } else {
+        // Flexible columns – share remaining space proportionally
+        double flex;
+        if (i == 0) {
+          flex = 0.5; // Sr.
+        } else if (i == 2) {
+          flex = 0.6; // Gender
+        } else if (i == 3 || i == 4 || i == 5) {
+          flex = 1.0; // Basic / Other / Gross
+        } else if (i == 6) {
+          flex = 0.8; // Days
+        } else if (i == 7) {
+          flex = 1.0; // Earned Gross
+        } else if (i == 8) {
+          flex = 1.0; // PF
+        } else if (widget.isMsw && i == 9) {
+          flex = 0.8; // MSW
+        } else if ((widget.isMsw && i == 10) || (!widget.isMsw && i == 9)) {
+          flex = 0.9; // ESIC
+        } else if ((widget.isMsw && i == 11) || (!widget.isMsw && i == 10)) {
+          flex = 0.8; // PT
+        } else if ((widget.isMsw && i == 12) || (!widget.isMsw && i == 11)) {
+          flex = 1.0; // Total Deductions
+        } else if ((widget.isMsw && i == 13) || (!widget.isMsw && i == 12)) {
+          flex = 1.0; // Net Salary
+        } else {
+          flex = 1.0;
+        }
+        widths[i] = FlexColumnWidth(flex);
+      }
     }
     return widths;
   }
-
-  double get _totalTableWidth => 1.0; // sum of fractions = 1.0
 
   // ── Headers ───────────────────────────────────────────────────────────────────
   List<Widget> _headers() {
@@ -178,8 +209,11 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
         _cTxt((idx + 1).toString()),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Center(
-            child: Text(e.name, style: AppTextStyles.bodyMedium, overflow: TextOverflow.ellipsis),
+          child: Text(
+            e.name,
+            style: AppTextStyles.bodyMedium,
+            overflow: TextOverflow.visible,
+            softWrap: false,
           ),
         ),
         Center(
@@ -276,7 +310,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _chip('Total Basic', '₹${totalBasic.toStringAsFixed(0)}', AppColors.indigo400),
-                    _separator(), // exactly centered in the bar
+                    _separator(),
                     _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}', AppColors.indigo400),
                   ],
                 ),
@@ -298,7 +332,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                   children: [
                     _chip('Total PF', '₹$totalPf              ',  Colors.redAccent),
                     _separator(),
-                    _chip('   Total ESIC', '₹$totalEsic   ',  Colors.redAccent), // centered under top separator
+                    _chip('   Total ESIC', '₹$totalEsic   ',  Colors.redAccent),
                     _separator(),
                     _chip('              Total PT', '₹$totalPt', Colors.redAccent),
                   ],
@@ -308,7 +342,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                 if (widget.isMsw)
                   _chip('Total MSW', '₹$totalMsw', AppColors.amber700)
                 else
-                  const SizedBox(width: 100), // placeholder to keep layout consistent
+                  const SizedBox(width: 100),
               ],
             ),
           ],
@@ -348,6 +382,8 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                       controller: _hScrollController,
                       scrollDirection: Axis.horizontal,
                       child: ConstrainedBox(
+                        // minWidth ensures the table uses the full width when
+                        // content is narrower; maxWidth allows it to grow for scrolling.
                         constraints: BoxConstraints(
                           minWidth: availableWidth,
                           maxWidth: double.infinity,
