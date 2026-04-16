@@ -363,7 +363,7 @@ class ExcelExportService {
   // Updated to preserve original aspect ratio
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
-      final ByteData data = await rootBundle.load('assets/images/aarti_signature.png');
+      final ByteData data = await rootBundle.load('');
       final Uint8List bytes = data.buffer.asUint8List();
 
       // Decode image to get natural dimensions

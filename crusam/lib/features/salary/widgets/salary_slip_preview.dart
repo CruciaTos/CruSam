@@ -127,8 +127,9 @@ class SalarySlipPreview extends StatelessWidget {
                 _earningsAndDeductions(),
                 const SizedBox(height: 12),
                 _netPayBlock(),
-                const Spacer(),
+                const SizedBox(height: 16), // spacing before footer
                 _footer(),
+                // No Spacer — footer sits directly under net pay block
               ],
             ),
           ),

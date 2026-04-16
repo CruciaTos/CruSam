@@ -21,7 +21,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   bool _deleting = false;
   String _gender = 'M';
 
-  // Dropdown data
   List<String> _codeList = [];
   String? _selectedCode;
 
@@ -56,7 +55,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       _ctrl['pfNo']!.text = m.pfNo;
       _ctrl['uanNo']!.text = m.uanNo;
       _ctrl['code']!.text = m.code;
-      _selectedCode = m.code; // set selected value for dropdown
+      _selectedCode = m.code;
       _ctrl['ifscCode']!.text = m.ifscCode;
       _ctrl['accountNumber']!.text = m.accountNumber;
       _ctrl['aartiAcNo']!.text = m.aartiAcNo;
@@ -79,17 +78,10 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     super.dispose();
   }
 
-  /// Load available codes (replace with actual DB call if needed)
   Future<void> _loadCodes() async {
-    // Example: Fetch from database
-    // final codes = await DatabaseHelper.instance.getAllCodes();
-    
-    // Static list for demonstration – replace with actual data source
-    final codes = ['EMP001', 'EMP002', 'EMP003', 'EMP004', 'EMP005'];
-    
+    const codes = ['F&B', 'I&L', 'P&S', 'A&P'];
     setState(() {
       _codeList = codes;
-      // If editing an existing employee, keep the current code
       if (_selectedCode == null && _codeList.isNotEmpty) {
         _selectedCode = _codeList.first;
         _ctrl['code']!.text = _selectedCode!;
@@ -320,7 +312,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                   child: Form(
                     key: _formKey,
                     child: Column(children: [
-                      // Dropdown for Code (replaces text field)
                       _codeDropdown(),
                       _field('name', 'Name',
                           required: true, cap: TextCapitalization.words),
@@ -379,8 +370,8 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                                   ? const SizedBox(
                                       width: 16,
                                       height: 16,
-                                      child:
-                                          CircularProgressIndicator(strokeWidth: 2))
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
                                   : const Icon(Icons.delete_outline,
                                       color: Colors.red),
                               label: const Text('Delete'),

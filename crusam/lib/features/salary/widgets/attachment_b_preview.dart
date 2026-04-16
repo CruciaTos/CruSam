@@ -107,8 +107,9 @@ class AttachmentBPreview extends StatelessWidget {
                 _billingInfo(),
                 const SizedBox(height: 12),
                 _mainTable(),
-                const Spacer(),
+                const SizedBox(height: 16), // spacing before footer
                 _footer(),
+                // No Spacer — footer sits directly under table
               ],
             ),
           ),
