@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/update/update_dialog.dart';
-import '../../../core/update/update_notifier.dart';
-import '../../../core/update/version_constants.dart';
+import '../../../core/updater/update_dialog.dart';
+import '../../../core/updater/update_notifier.dart';
+import '../../../core/updater/version_constants.dart';
 
 class UpdateCard extends StatelessWidget {
   const UpdateCard({super.key});
