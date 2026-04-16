@@ -15,6 +15,7 @@ import '../../../data/db/database_helper.dart';
 import '../../auth/notifiers/auth_notifier.dart';
 import '../../auth/data/models/user_model.dart';
 import '../widgets/avatar_widget.dart';
+import '../widgets/update_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -194,8 +195,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   setState(() => _obscureConf = !_obscureConf),
                             ),
                             const SizedBox(height: 20),
-                            // ── NEW: Export Paths card ──────────────────────
                             const _ExportPathsCard(),
+                            const SizedBox(height: 20),
+                            const UpdateCard(),
                           ],
                         ),
                       ),
@@ -717,7 +719,7 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _prefs,
-      builder: (_, __) => Container(
+      builder: (context, child) => Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,

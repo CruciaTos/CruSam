@@ -27,6 +27,8 @@ class AppRouter {
   static final _root = GlobalKey<NavigatorState>();
   static final _shell = GlobalKey<NavigatorState>();
 
+  static GlobalKey<NavigatorState> get rootNavigatorKey => _root;
+
   // Public routes that do not require authentication
   static const _publicPaths = {'/landing', '/login'};
 

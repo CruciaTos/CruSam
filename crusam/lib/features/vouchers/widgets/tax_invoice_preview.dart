@@ -371,7 +371,7 @@ class TaxInvoicePreview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Certified that particulars given above are true and correct.',
+          '',
           style: _bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 9),
         ),
         const SizedBox(height: 2),

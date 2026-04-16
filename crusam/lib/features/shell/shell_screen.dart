@@ -275,15 +275,7 @@ class _CollapsedSidebar extends StatelessWidget {
       ),
     ),
     const Divider(color: AppColors.slate800, height: 1),
-    const Padding(
-      padding: EdgeInsets.all(10),
-      child: _CollapsedTile(
-        icon: Icons.logout,
-        label: 'Logout',
-        selected: false,
-        onTap: _noop,
-      ),
-    ),
+   
   ]);
 
   static void _noop() {}

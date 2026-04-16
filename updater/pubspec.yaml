@@ -1,0 +1,10 @@
+name: updater
+description: External Windows updater for Crusam
+publish_to: 'none'
+
+environment:
+  sdk: ^3.7.0
+
+dependencies:
+  archive: ^3.6.1
+  path: ^1.9.1

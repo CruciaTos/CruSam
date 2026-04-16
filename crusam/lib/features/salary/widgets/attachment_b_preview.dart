@@ -295,7 +295,7 @@ class AttachmentBPreview extends StatelessWidget {
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text('Certified that particulars given above are true and correct.',
+        child: Text('',
             style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 8)),
       ),
     ]),
@@ -341,7 +341,7 @@ class AttachmentBPreview extends StatelessWidget {
     children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Certified that particulars given above are true and correct.',
+          Text('',
               style: _body.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text('', style: _body),

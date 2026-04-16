@@ -387,7 +387,7 @@ class SalaryBillPreview extends StatelessWidget {
     children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Certified that particulars given above are true and correct.',
+          Text('',
               style: _body.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text('', style: _body),
