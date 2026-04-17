@@ -19,9 +19,7 @@ class TaxInvoicePreview extends StatelessWidget {
     this.margins = const EdgeInsets.all(24),
   });
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Design Constants
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Design Constants ───────────────────────────────────────────────────────
   static const _black = Color(0xFF000000);
   static const _green = Color(0xFF1A6B2F);
   static const _headerBg = Color(0xFFE3E8F4);
@@ -29,9 +27,8 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _borderSide = BorderSide(color: _black, width: 0.75);
   static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
 
-  static const _bodyStyle = TextStyle(fontSize: 11, color: _black, height: 1.87);
+  static const _bodyStyle = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
-  // Fixed column widths
   static const _colSr = 28.0;
   static const _colDateFrom = 58.0;
   static const _colDateTo = 58.0;
@@ -39,9 +36,11 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _colRate = 50.0;
   static const _colAmount = 90.0;
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Public static method for PDF generation
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Helper: comma → newline for multi-line display in previews ─────────────
+  static String _multiline(String text) =>
+      text.replaceAll(', ', '\n').replaceAll(',', '\n');
+
+  // ── Static method for PDF generation ──────────────────────────────────────
   static List<Widget> buildPdfPages({
     required VoucherModel voucher,
     required CompanyConfigModel config,
@@ -99,9 +98,7 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Header Section
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Header Section ─────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,9 +170,7 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Bill To Section
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Bill To Section ────────────────────────────────────────────────────────
   Widget _buildBillToSection() {
     return Container(
       decoration: const BoxDecoration(border: Border.fromBorderSide(_borderSide)),
@@ -198,9 +193,10 @@ class TaxInvoicePreview extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Client name — commas become newlines
         Expanded(
           child: Text(
-            voucher.clientName,
+            _multiline(voucher.clientName),
             style: _bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 10),
           ),
         ),
@@ -213,13 +209,17 @@ class TaxInvoicePreview extends StatelessWidget {
   }
 
   Widget _buildBillToRow2() {
-    // Format the voucher date to dd/mm/yyyy
-    final formattedDate = _formatDate(voucher.date);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: Text(voucher.clientAddress, style: _bodyStyle)),
-        _ReferenceRow(label: 'Date', value: formattedDate),
+        // Client address — commas become newlines
+        Expanded(
+          child: Text(
+            _multiline(voucher.clientAddress),
+            style: _bodyStyle,
+          ),
+        ),
+        _ReferenceRow(label: 'Date', value: voucher.date),
       ],
     );
   }
@@ -242,9 +242,7 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Item Table
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Item Table ─────────────────────────────────────────────────────────────
   Widget _buildItemTable() {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -355,9 +353,7 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Below Table Section
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Below Table Section ────────────────────────────────────────────────────
   Widget _buildBelowTableSection() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -403,9 +399,7 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
-  // Helpers
-  // ────────────────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   static String _formatDate(String iso) {
     if (iso.isEmpty) return '-';
     if (iso.contains('-') && iso.length == 10) {
@@ -427,9 +421,7 @@ class TaxInvoicePreview extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Reusable Widgets
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Reusable Widgets ───────────────────────────────────────────────────────────
 
 class _ReferenceRow extends StatelessWidget {
   final String label;
@@ -552,10 +544,9 @@ class _DescriptionCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.max,
         children: [
           Text(description, style: TaxInvoicePreview._bodyStyle),
-          const SizedBox(height: 120),
+          const SizedBox(height: 6),
           const Text(
             '( Vouchers attached with this original bill )',
             style: TextStyle(
@@ -820,9 +811,7 @@ class _GrandTotalRow extends StatelessWidget {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Fallback Logo
-// ──────────────────────────────────────────────────────────────────────────────
+// ── Fallback Logo ──────────────────────────────────────────────────────────────
 class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
 
