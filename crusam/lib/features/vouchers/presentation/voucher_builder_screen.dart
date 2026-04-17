@@ -24,7 +24,26 @@ class VoucherBuilderScreen extends StatefulWidget {
 class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   final _notifier = VoucherNotifier.instance;
   bool _exporting = false;
-  bool _exportingBankSheet = false; // ← tracks the new bank-sheet export
+  bool _exportingBankSheet = false;
+
+  // Helper to show a consistent 4-second SnackBar
+  void _showSnackBar(String message, {bool isError = false}) {
+    // Hide any existing snackbar to prevent stacking
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 4),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+        action: isError
+            ? null
+            : SnackBarAction(
+                label: 'DISMISS',
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+              ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -40,18 +59,12 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   // ── Save as Draft ─────────────────────────────────────────────────────────
   Future<void> _saveVoucher() async {
     if (_notifier.current.title.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a voucher title')),
-      );
+      _showSnackBar('Please enter a voucher title');
       return;
     }
     final ok = await _notifier.saveVoucher();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                ok ? 'Invoice saved successfully' : 'Error saving invoice')),
-      );
+      _showSnackBar(ok ? 'Invoice saved successfully' : 'Error saving invoice');
     }
   }
 
@@ -60,17 +73,13 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     if (_exportingBankSheet) return;
 
     if (_notifier.current.rows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Add at least one row before exporting the bank sheet')),
-      );
+      _showSnackBar('Add at least one row before exporting the bank sheet');
       return;
     }
 
     setState(() => _exportingBankSheet = true);
 
     try {
-      // Pass bank split values to include the summary box in the Excel
       final path = await ExcelExportService.exportBankDisbursement(
         _notifier.enriched,
         _notifier.config,
@@ -78,29 +87,15 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         idbiToIdbi: _notifier.idbiToIdbi,
       );
 
-      // Open the saved file with the default OS application (Excel / Numbers)
       await ExcelExportService.openFile(path);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Bank sheet saved: ${File(path).uri.pathSegments.last}'),
-            action: SnackBarAction(
-              label: 'Open Folder',
-              onPressed: () => _openFolder(File(path).parent.path),
-            ),
-          ),
-        );
+        _showSnackBar('Bank sheet saved: ${File(path).uri.pathSegments.last}');
+        // Additional action: open folder button is inside the SnackBar itself
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Bank sheet export failed: $e'),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
+        _showSnackBar('Bank sheet export failed: $e', isError: true);
       }
     } finally {
       if (mounted) setState(() => _exportingBankSheet = false);
@@ -112,23 +107,16 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     if (_exporting) return;
 
     if (_notifier.current.title.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please enter a voucher title before exporting')),
-      );
+      _showSnackBar('Please enter a voucher title before exporting');
       return;
     }
     if (_notifier.current.rows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Add at least one row before exporting')),
-      );
+      _showSnackBar('Add at least one row before exporting');
       return;
     }
 
     setState(() => _exporting = true);
 
-    // Show progress dialog
     if (!mounted) return;
     showDialog(
       context: context,
@@ -170,7 +158,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       if (mounted) setState(() => _exporting = false);
     }
 
-    // Dismiss progress dialog
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
 
@@ -394,7 +381,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
                   onSave: _saveVoucher,
                   onFinalise: _finaliseAndExport,
                   exporting: _exporting,
-                  // ↓ New bank-sheet wiring
                   onExportBankSheet: _exportBankSheet,
                   exportingBankSheet: _exportingBankSheet,
                 ),
@@ -424,6 +410,30 @@ class _MetadataCardState extends State<_MetadataCard> {
   late final TextEditingController _poCtrl      = TextEditingController();
   late final ItemDescriptionNotifier _descNotifier = ItemDescriptionNotifier();
 
+  // Date format helpers
+  static String _isoToDisplay(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final parts = iso.split('-');
+      if (parts.length == 3) {
+        return '${parts[2]}/${parts[1]}/${parts[0]}';
+      }
+    } catch (_) {}
+    return iso;
+  }
+
+  static String _displayToIso(String display) {
+    if (display.isEmpty) return '';
+    final parts = display.split('/');
+    if (parts.length == 3) {
+      final day = parts[0].padLeft(2, '0');
+      final month = parts[1].padLeft(2, '0');
+      final year = parts[2];
+      return '$year-$month-$day';
+    }
+    return display;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -444,7 +454,7 @@ class _MetadataCardState extends State<_MetadataCard> {
 
   void _syncFromNotifier(VoucherModel c) {
     if (_titleCtrl.text   != c.title)         _titleCtrl.text   = c.title;
-    if (_dateCtrl.text    != c.date)          _dateCtrl.text    = c.date;
+    if (_dateCtrl.text    != _isoToDisplay(c.date)) _dateCtrl.text = _isoToDisplay(c.date);
     if (_clientCtrl.text  != c.clientName)    _clientCtrl.text  = c.clientName;
     if (_gstnCtrl.text    != c.clientGstin)   _gstnCtrl.text    = c.clientGstin;
     if (_addressCtrl.text != c.clientAddress) _addressCtrl.text = c.clientAddress;
@@ -454,7 +464,7 @@ class _MetadataCardState extends State<_MetadataCard> {
   void _onVoucherChanged() {
     final c = widget.notifier.current;
     if (_titleCtrl.text   != c.title        ||
-        _dateCtrl.text    != c.date         ||
+        _dateCtrl.text    != _isoToDisplay(c.date) ||
         _clientCtrl.text  != c.clientName   ||
         _gstnCtrl.text    != c.clientGstin  ||
         _poCtrl.text      != c.poNo         ||
@@ -531,26 +541,27 @@ class _MetadataCardState extends State<_MetadataCard> {
                         style: AppTextStyles.input,
                         readOnly: true,
                         onTap: () async {
-                          final p = await showDatePicker(
+                          final initial = DateTime.tryParse(
+                                  widget.notifier.current.date) ??
+                              DateTime.now();
+                          final picked = await showDatePicker(
                             context: context,
-                            initialDate:
-                                DateTime.tryParse(
-                                        widget.notifier.current.date) ??
-                                    DateTime.now(),
+                            initialDate: initial,
                             firstDate: DateTime(2000),
                             lastDate: DateTime(2100),
                           );
                           if (!mounted) return;
-                          if (p != null)
-                            widget.notifier.update((c) => c.copyWith(
-                                date: p
-                                    .toIso8601String()
-                                    .split('T')
-                                    .first));
+                          if (picked != null) {
+                            final iso = picked.toIso8601String().split('T').first;
+                            widget.notifier.update((c) => c.copyWith(date: iso));
+                            _dateCtrl.text = _isoToDisplay(iso);
+                          }
                         },
                         decoration: const InputDecoration(
                             suffixIcon:
-                                Icon(Icons.calendar_today, size: 16)),
+                                Icon(Icons.calendar_today, size: 16),
+                            hintText: 'DD/MM/YYYY',
+                        ),
                       ),
                     )),
               ],
@@ -597,6 +608,7 @@ class _MetadataCardState extends State<_MetadataCard> {
                   ],
                 ),
             const SizedBox(height: AppSpacing.md),
+            // ---------- UPDATED: Dynamic multiline address field ----------
             _lf(
               'Client Address',
               TextField(
@@ -604,7 +616,13 @@ class _MetadataCardState extends State<_MetadataCard> {
                 onChanged: (v) => widget.notifier
                     .update((c) => c.copyWith(clientAddress: v)),
                 style: AppTextStyles.input,
-                maxLines: 2,
+                maxLines: null,                 // Expands dynamically
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                decoration: const InputDecoration(
+                  hintText: 'e.g. 501,5th flr,Ackruti center point,\nMIDC Central Road,\nAndheri (East),\nMumbai-400093',
+      
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
@@ -815,9 +833,7 @@ class _ActionButtons extends StatelessWidget {
   final VoidCallback onSave;
   final VoidCallback onFinalise;
   final bool exporting;
-  /// Called when the user taps "Preview Bank Sheet" – exports the exact Excel.
   final VoidCallback onExportBankSheet;
-  /// True while the bank-sheet export is in progress.
   final bool exportingBankSheet;
 
   const _ActionButtons({
@@ -835,7 +851,6 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment: WrapAlignment.end,
         children: [
-          // ── Discard Draft ─────────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: () async {
               final confirm = await showDialog<bool>(
@@ -858,9 +873,12 @@ class _ActionButtons extends StatelessWidget {
                 ),
               );
               if (confirm == true) {
+                // ---------- FIXED: Added mounted guard ----------
                 WidgetsBinding.instance
                     .addPostFrameCallback((_) async {
-                  await notifier.discardDraft();
+                  if (context.mounted) {   // Check if the widget is still mounted
+                    await notifier.discardDraft();
+                  }
                 });
               }
             },
@@ -871,7 +889,6 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Save as Draft ─────────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: onSave,
             icon: const Icon(Icons.save, size: 16),
@@ -881,7 +898,6 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Preview Invoice (PDF dialog) ───────────────────────────────────
           OutlinedButton.icon(
             onPressed: () => InvoicePreviewDialog.show(
                 context, notifier, notifier.config, PreviewType.invoice),
@@ -889,7 +905,6 @@ class _ActionButtons extends StatelessWidget {
             label: const Text('Preview Invoice'),
           ),
 
-          // ── Preview Bank Sheet → exports exact Excel & opens it ───────────
           OutlinedButton.icon(
             onPressed: exportingBankSheet ? null : onExportBankSheet,
             icon: exportingBankSheet
@@ -904,7 +919,6 @@ class _ActionButtons extends StatelessWidget {
                 exportingBankSheet ? 'Exporting…' : 'Preview Bank Sheet'),
           ),
 
-          // ── Finalise & Export ─────────────────────────────────────────────
           ElevatedButton.icon(
             onPressed: exporting ? null : onFinalise,
             icon: exporting

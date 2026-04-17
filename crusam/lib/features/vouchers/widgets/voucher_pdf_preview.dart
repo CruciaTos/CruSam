@@ -47,7 +47,6 @@ class VoucherColWidths {
     amount:   amount   ?? this.amount,
   );
 
-  /// Ordered (label, width) pairs for UI.
   List<(String label, double width)> get entries => [
     ('Sr.',        sr),
     ('Debit A/c',  debitAc),
@@ -79,7 +78,6 @@ class VoucherColWidths {
   double get totalWidth =>
       sr + debitAc + ifsc + creditAc + code + name + place + from + to + amount;
 
-  /// Returns a new configuration scaled to exactly fit `targetWidth`.
   VoucherColWidths scaleToFit(double targetWidth) {
     if (totalWidth == 0) return this;
     final scale = targetWidth / totalWidth;
@@ -117,18 +115,16 @@ class VoucherPdfPreview extends StatelessWidget {
   static const double a4Height = 1122.5;
 
   // Fixed heights of non-row sections.
-  static const double _headerH = 46.0;
-  static const double _tblHdrH = 22.0;
-  static const double _rowH    = 18.0;
-  static const double _totalH  = 48.0;
+  static const double _headerH   = 46.0;
+  static const double _tblHdrH   = 22.0;
+  static const double _rowH      = 18.0;
+  static const double _totalH    = 48.0;
+  static const double _signatureH = 60.0;  // Space for signature row
 
   static int _rowsPerPage(EdgeInsets margins, {bool isLastPage = false}) {
-    final available = a4Height
-        - margins.vertical
-        - _headerH
-        - _tblHdrH
-        - (isLastPage ? _totalH : 0)
-        - 8;
+    double extra = _headerH + _tblHdrH;
+    if (isLastPage) extra += _totalH + _signatureH;
+    final available = a4Height - margins.vertical - extra - 8;
     return (available / _rowH).floor().clamp(1, 80);
   }
 
@@ -136,7 +132,7 @@ class VoucherPdfPreview extends StatelessWidget {
   final CompanyConfigModel config;
   final EdgeInsets         margins;
   final VoucherColWidths   colWidths;
-  final bool               autoFitColumns;   // ← new flag
+  final bool               autoFitColumns;
 
   const VoucherPdfPreview({
     super.key,
@@ -144,14 +140,13 @@ class VoucherPdfPreview extends StatelessWidget {
     required this.config,
     this.margins         = const EdgeInsets.all(24),
     this.colWidths       = const VoucherColWidths(),
-    this.autoFitColumns  = true,            // ← default to true
+    this.autoFitColumns  = true,
   });
 
   static const _black = Color(0xFF000000);
   static const _hdrBg = Color(0xFFE3E8F4);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
-  // ── Static entry point used by PdfExportService ───────────────────────────
   static List<Widget> buildPdfPages({
     required VoucherModel       voucher,
     required CompanyConfigModel config,
@@ -227,10 +222,8 @@ class VoucherPdfPreview extends StatelessWidget {
     required int startIndex,
     required bool showTotal,
   }) {
-    // Compute available width for the table (margins already applied).
     final availableWidth = width - margins.horizontal;
 
-    // Scale column widths if auto-fit is enabled.
     final effectiveColWidths = autoFitColumns
         ? colWidths.scaleToFit(availableWidth)
         : colWidths;
@@ -272,6 +265,8 @@ class VoucherPdfPreview extends StatelessWidget {
               if (showTotal) ...[
                 const SizedBox(height: 12),
                 _buildTotalSection(),
+                const SizedBox(height: 16),
+                _buildSignatureSection(),
               ],
             ],
           ),
@@ -333,6 +328,44 @@ class VoucherPdfPreview extends StatelessWidget {
         ],
       );
 
+   Widget _buildSignatureSection() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Certified that the particulars given above are true and correct.',
+                style: _body.copyWith(fontSize: 8, fontStyle: FontStyle.italic),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Subject to Mumbai jurisdiction.',
+                style: _body.copyWith(fontSize: 8),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 20),
+        Column(
+          children: [
+            const SizedBox(height: 4),
+            SizedBox(
+              width: 200,
+              height: 90,
+              child: Image.asset(
+                'assets/images/aarti_signature.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox(),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
   // ── Cell helpers ──────────────────────────────────────────────────────────
   static Widget _hCell(String t) => Padding(
         padding: const EdgeInsets.all(3),

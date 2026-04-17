@@ -131,15 +131,15 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     final Map<int, TableColumnWidth> widths = {};
     for (int i = 0; i < totalCols; i++) {
       if (i == nameColIndex) {
-        // Fixed width for Name – never shrinks, always readable
-        widths[i] = const FixedColumnWidth(350.0);
+        // Fixed width for Name – reduced to 300
+        widths[i] = const FixedColumnWidth(300.0);
       } else {
         // Flexible columns – share remaining space proportionally
         double flex;
         if (i == 0) {
           flex = 0.5; // Sr.
         } else if (i == 2) {
-          flex = 0.6; // Gender
+          flex = 0.7; // Gender – increased from 0.6
         } else if (i == 3 || i == 4 || i == 5) {
           flex = 1.0; // Basic / Other / Gross
         } else if (i == 6) {
@@ -180,12 +180,21 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
       'Total\nDeductions',
       'Net\nSalary',
     ];
-    return labels.map((l) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      child: Text(l,
-          textAlign: TextAlign.center,
-          style: AppTextStyles.label.copyWith(color: AppColors.slate400)),
-    )).toList();
+    return labels.asMap().entries.map((entry) {
+      final idx = entry.key;
+      final label = entry.value;
+      final isNameColumn = (idx == 1); // Name is index 1
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+        alignment: isNameColumn ? Alignment.centerLeft : Alignment.center,
+        child: Text(
+          label,
+          textAlign: isNameColumn ? TextAlign.left : TextAlign.center,
+          style: AppTextStyles.label.copyWith(color: AppColors.slate400),
+        ),
+      );
+    }).toList();
   }
 
   // ── Data row ──────────────────────────────────────────────────────────────────
@@ -207,13 +216,17 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
       ),
       children: [
         _cTxt((idx + 1).toString()),
+        // Name cell – left aligned
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Text(
-            e.name,
-            style: AppTextStyles.bodyMedium,
-            overflow: TextOverflow.visible,
-            softWrap: false,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              e.name,
+              style: AppTextStyles.bodyMedium,
+              overflow: TextOverflow.visible,
+              softWrap: false,
+            ),
           ),
         ),
         Center(
@@ -382,8 +395,6 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                       controller: _hScrollController,
                       scrollDirection: Axis.horizontal,
                       child: ConstrainedBox(
-                        // minWidth ensures the table uses the full width when
-                        // content is narrower; maxWidth allows it to grow for scrolling.
                         constraints: BoxConstraints(
                           minWidth: availableWidth,
                           maxWidth: double.infinity,
@@ -479,7 +490,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
   );
 }
 
-// ── Days input field ───────────────────────────────────────────────────────────
+// ── Days input field with focus‑out validation ─────────────────────────────────
 class _DaysField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode? focusNode;
@@ -497,41 +508,51 @@ class _DaysField extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 32, width: 70,
-    child: TextField(
-      controller: controller,
-      focusNode: focusNode,
-      textAlign: TextAlign.center,
-      textAlignVertical: TextAlignVertical.center,
-      keyboardType: TextInputType.number,
-      textInputAction: TextInputAction.next,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly, _MaxValueFormatter()],
-      style: AppTextStyles.input.copyWith(fontSize: 13),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: '0',
-        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.slate300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+  Widget build(BuildContext context) {
+    return Focus(
+      onFocusChange: (hasFocus) {
+        if (!hasFocus) {
+          final val = int.tryParse(controller.text) ?? 0;
+          if (val > max) {
+            controller.clear();
+            onChanged('');
+          }
+        }
+      },
+      child: SizedBox(
+        height: 32,
+        width: 70,
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          textAlign: TextAlign.center,
+          textAlignVertical: TextAlignVertical.center,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            _MaxValueFormatter(),
+          ],
+          style: AppTextStyles.input.copyWith(fontSize: 13),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: '0',
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.slate300),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.indigo500, width: 1.5),
+            ),
+          ),
+          onChanged: onChanged,
+          onSubmitted: (_) => onSubmitted?.call(),
         ),
       ),
-      onChanged: onChanged,
-      onSubmitted: (value) {
-        final v = int.tryParse(value) ?? 0;
-        if (v > max) {
-          controller.clear();
-          onChanged('');
-        }
-        onSubmitted?.call();
-      },
-    ),
-  );
+    );
+  }
 }
 
 class _MaxValueFormatter extends TextInputFormatter {

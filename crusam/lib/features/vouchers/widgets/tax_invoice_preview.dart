@@ -29,7 +29,7 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _borderSide = BorderSide(color: _black, width: 0.75);
   static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
 
-  static const _bodyStyle = TextStyle(fontSize: 9, color: _black, height: 1.45);
+  static const _bodyStyle = TextStyle(fontSize: 11, color: _black, height: 1.87);
 
   // Fixed column widths
   static const _colSr = 28.0;
@@ -213,11 +213,13 @@ class TaxInvoicePreview extends StatelessWidget {
   }
 
   Widget _buildBillToRow2() {
+    // Format the voucher date to dd/mm/yyyy
+    final formattedDate = _formatDate(voucher.date);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: Text(voucher.clientAddress, style: _bodyStyle)),
-        _ReferenceRow(label: 'Date', value: voucher.date),
+        _ReferenceRow(label: 'Date', value: formattedDate),
       ],
     );
   }
@@ -550,9 +552,10 @@ class _DescriptionCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.max,
         children: [
           Text(description, style: TaxInvoicePreview._bodyStyle),
-          const SizedBox(height: 6),
+          const SizedBox(height: 120),
           const Text(
             '( Vouchers attached with this original bill )',
             style: TextStyle(

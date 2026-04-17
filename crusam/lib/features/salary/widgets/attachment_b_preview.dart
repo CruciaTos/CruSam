@@ -339,6 +339,8 @@ class AttachmentBPreview extends StatelessWidget {
   Widget _footer() => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      const Divider(color: _black, thickness: 0.5),
+
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('',
