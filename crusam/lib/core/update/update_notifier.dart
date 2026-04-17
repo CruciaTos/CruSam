@@ -36,10 +36,12 @@ class UpdateNotifier extends ChangeNotifier {
     _setState(UpdateState.checking);
 
     try {
+      // checkForUpdate now throws on any failure — caught below.
       _info = await UpdateService.checkForUpdate();
       _setState(UpdateState.idle);
     } catch (e) {
-      _errorMessage = e.toString();
+      _info = null;
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _setState(UpdateState.error);
     }
   }
@@ -64,12 +66,12 @@ class UpdateNotifier extends ChangeNotifier {
     );
 
     if (zipPath == null) {
-      _errorMessage =
-          'Download failed. Please check your internet connection.';
+      _errorMessage = 'Download failed. Please check your internet connection.';
       _setState(UpdateState.error);
       return;
     }
 
+    // Set launching state THEN attempt launch, so errors revert to error state.
     _setState(UpdateState.launching);
 
     final launched = await UpdateService.launchUpdaterAndExit(zipPath);
@@ -78,6 +80,7 @@ class UpdateNotifier extends ChangeNotifier {
           'updater.exe not found. Please reinstall the application or update manually.';
       _setState(UpdateState.error);
     }
+    // If launched == true the process called exit(0), so we never reach here.
   }
 
   void clearError() {
