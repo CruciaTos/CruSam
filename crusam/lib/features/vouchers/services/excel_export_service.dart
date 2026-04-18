@@ -28,7 +28,7 @@ class ExcelExportService {
   static const double _colWidthCode        = 10.0;
   static const double _colWidthBeneficiary = 22.0;
   static const double _colWidthPlace       = 29.0;
-  static const double _colWidthBlankAfterPlace = 12.0;   // blank column
+  static const double _colWidthExpenses    = 20.0; // ← was blank column
   static const double _colWidthBankDetails = 25.0;
   static const double _colWidthDebitName   = 18.0;
   static const double _colWidthFrom        = 10.0;
@@ -36,11 +36,8 @@ class ExcelExportService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🖼️ SIGNATURE IMAGE CONFIGURATION
-  // _signatureColOffset: 0 = Amount, 1 = Debit A/C, ... updated for new columns
-  // _signatureRowOffset: rows below the last data row (Fr./To. column end)
-  // _signatureSize: square size in pixels (0 = auto‑calculate from spanned columns)
   // ─────────────────────────────────────────────────────────────────────────────
-  static const int _signatureColOffset = 10;
+  static const int _signatureColOffset = 8;
   static const int _signatureRowOffset = 12;
   static const int _signatureSize      = 0;
 
@@ -63,6 +60,8 @@ class ExcelExportService {
   static const String _splitTextColor    = '#FFFFFFFF';
   static const String _splitLabelColor   = '#FF94A3B8';
   static const String _splitValueColor   = '#FFCBD5E1';
+  // 👇 Number of columns between the label and the value in the bank split box
+  static const int _bankSplitColumnOffset = 3;   // <-- CHANGE THIS TO ADJUST BLANK COLUMNS
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔲 DATA TABLE OUTER BORDER
@@ -72,13 +71,9 @@ class ExcelExportService {
   // ─────────────────────────────────────────────────────────────────────────────
   // 📏 TOTAL IN WORDS CELL MERGING
   // ─────────────────────────────────────────────────────────────────────────────
-  static const int _wordsCellMergeCount = 5;  // Increased to span more columns
+  static const int _wordsCellMergeCount = 2;
 
-  // ── Helper to get the actual starting column index for data ─────────────────
   static int get _dataStartCol => _includeLeftBlankColumn ? 2 : 1;
-
-  // Number of data columns (excluding optional left blank) – Aarti column removed
-  static const int _dataColumnCount = 12;  // Amount .. To (12 columns)
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -105,7 +100,7 @@ class ExcelExportService {
     CompanyConfigModel config,
   ) => _runGenerator(voucher, config);
 
-  // ── Bank Sheet – exact reference format using Syncfusion ──────────────────
+  // ── Bank Sheet ──────────────────────────────────────────────────────────────
 
   static Future<String> _exportBankSheet(
     VoucherModel voucher,
@@ -118,6 +113,9 @@ class ExcelExportService {
     final sheetName =
         'Bill-Data-${voucher.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
     final Worksheet sheet = workbook.worksheets.addWithName(sheetName);
+
+    // Derive month name once from the voucher date
+    final String monthName = _monthFromDate(voucher.date);
 
     _setColumnWidths(sheet);
     _writeTitleRow(sheet, voucher, config);
@@ -132,7 +130,7 @@ class ExcelExportService {
 
     int rowIndex = 4;
     for (final r in sortedRows) {
-      _writeDataRow(sheet, rowIndex, r, config);
+      _writeDataRow(sheet, rowIndex, r, config, monthName);
       rowIndex++;
     }
     final int lastDataRow = rowIndex;
@@ -140,12 +138,12 @@ class ExcelExportService {
     if (_dataTableOuterBorder) {
       final int headerRow = 4;
       final int startCol = _dataStartCol;
-      final int endCol = startCol + _dataColumnCount - 1;
+      final int endCol = startCol + 11; // 12 columns (indices 0..11)
       final Range tableRange = sheet.getRangeByIndex(headerRow, startCol, lastDataRow, endCol);
       _applyBorder(tableRange);
     }
 
-    rowIndex++; // blank row
+    rowIndex++;
     final int totalRowIndex = rowIndex;
     _writeTotalRow(sheet, totalRowIndex, sortedRows.isNotEmpty, voucher.baseTotal, lastDataRow);
     final int totalRowExcel = totalRowIndex + 1;
@@ -171,7 +169,7 @@ class ExcelExportService {
     return await _saveExcelFileWithIncrement(bytes, voucher, 'bank_disbursement');
   }
 
-  // ── Column widths ─────────────────────────────────────────────────────────
+  // ── Column widths ──────────────────────────────────────────────────────────
 
   static void _setColumnWidths(Worksheet sheet) {
     int col = 1;
@@ -179,52 +177,38 @@ class ExcelExportService {
       sheet.getRangeByIndex(1, col).columnWidth = _colWidthBlankLeft;
       col++;
     }
-    // Data columns (12 columns, Aarti removed)
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthAmount;          col++; // Amount
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitAc;         col++; // Debit A/c
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthIFSC;            col++; // IFSC
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCreditAc;        col++; // Credit A/c
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;            col++; // Code
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary;     col++; // Beneficiary
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;           col++; // Place
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBlankAfterPlace; col++; // Blank
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails;     col++; // Bank Details
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitName;       col++; // Debit Name
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthFrom;            col++; // Fr.
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthTo;              // To
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthAmount;      col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitAc;     col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthIFSC;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCreditAc;    col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary; col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;       col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthExpenses;    col++; // ← Expenses
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails; col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitName;   col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthFrom;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthTo;
   }
 
   static void _writeTitleRow(Worksheet sheet, VoucherModel voucher,
       CompanyConfigModel config) {
-    // Merge across more columns for better appearance (up to Place column)
-    final int mergeEndCol = _dataStartCol + 6; // up to Place column
-    final Range titleRange = sheet.getRangeByIndex(2, 2, 2, mergeEndCol);
+    final Range titleRange = sheet.getRangeByIndex(2, 2, 2, 7);
     titleRange.merge();
     final titleText =
         '${config.companyName} : ${voucher.title.isEmpty ? 'Expenses Statement' : voucher.title}';
     titleRange.setText(titleText);
     _applyCellStyle(titleRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
 
-    // Dept code placed in column after title merge area
-    final Range deptRange = sheet.getRangeByIndex(2, mergeEndCol + 1);
+    final Range deptRange = sheet.getRangeByIndex(2, 8);
     deptRange.setText(voucher.deptCode);
     _applyCellStyle(deptRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
   }
 
   static void _writeHeaderRow(Worksheet sheet) {
     const headers = [
-      'Amount',
-      'Debit A/c no.',
-      'IFSC',
-      'Credit A/c no.',
-      'Code',
-      'Beneficiary',
-      'Place',
-      '',          // blank column header
-      'Bank Details',
-      'Debit Name',
-      'Fr.',
-      'To',
+      'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
+      'Beneficiary', 'Place', 'Expenses', 'Bank Details', 'Debit Name', 'Fr.', 'To',
     ];
     final int row = 4;
     int col = _dataStartCol;
@@ -236,36 +220,34 @@ class ExcelExportService {
     }
   }
 
-  static void _writeDataRow(Worksheet sheet, int rowIndex, dynamic r,
-      CompanyConfigModel config) {
+  static void _writeDataRow(
+    Worksheet sheet,
+    int rowIndex,
+    dynamic r,
+    CompanyConfigModel config,
+    String monthName,
+  ) {
     int col = _dataStartCol;
 
-    // 1. Amount
     _setCellValue(sheet, rowIndex, col, r.amount, isNumber: true, hAlign: HAlignType.center); col++;
-    // 2. Debit A/c
     _setCellValue(sheet, rowIndex, col, config.accountNo, hAlign: HAlignType.center); col++;
-    // 3. IFSC
     _setCellValue(sheet, rowIndex, col, r.ifscCode, hAlign: HAlignType.center); col++;
-    // 4. Credit A/c
     _setCellValue(sheet, rowIndex, col, r.accountNumber, hAlign: HAlignType.center); col++;
-    // 5. Code
     _setCellValue(sheet, rowIndex, col, r.sbCode, hAlign: HAlignType.center); col++;
-    // 6. Beneficiary
     _setCellValue(sheet, rowIndex, col, r.employeeName, hAlign: HAlignType.center); col++;
-    // 7. Place
     _setCellValue(sheet, rowIndex, col, r.branch, hAlign: HAlignType.center); col++;
-    // 8. Blank column (empty)
-    _setCellValue(sheet, rowIndex, col, '', hAlign: HAlignType.center); col++;
-    // 9. Bank Details
+    // Expenses column — dynamically populated from voucher date month
+    _setCellValue(
+      sheet, rowIndex, col,
+      monthName.isNotEmpty ? 'Exp. for - $monthName' : '',
+      hAlign: HAlignType.center,
+    ); col++;
     _setCellValue(sheet, rowIndex, col, r.bankDetails, hAlign: HAlignType.center); col++;
-    // 10. Debit Name
-    _setCellValue(sheet, rowIndex, col, config.companyName.toLowerCase(), hAlign: HAlignType.center); col++;
-    // 11. Fr.
+    _setCellValue(sheet, rowIndex, col, config.companyName.toLowerCase(),
+        hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, _fmtDate(r.fromDate), hAlign: HAlignType.center); col++;
-    // 12. To
     _setCellValue(sheet, rowIndex, col, _fmtDate(r.toDate), hAlign: HAlignType.center);
 
-    // Apply border to all cells in this row
     for (int c = _dataStartCol; c < col; c++) {
       _applyBorder(sheet.getRangeByIndex(rowIndex + 1, c));
     }
@@ -289,7 +271,6 @@ class ExcelExportService {
     final int excelRow = rowIndex + 1;
     final int amountCol = _dataStartCol;
 
-    // Amount sum formula
     final Range sumCell = sheet.getRangeByIndex(excelRow, amountCol);
     if (hasData) {
       sumCell.setFormula('SUM(${_colIndexToLetter(amountCol)}5:${_colIndexToLetter(amountCol)}$lastDataRow)');
@@ -298,11 +279,12 @@ class ExcelExportService {
     }
     _applyCellStyle(sumCell, bold: true, hAlign: HAlignType.center, border: true);
 
-    // Merge cells for total in words (span from column after Amount to the end of data columns)
     final int wordsStartCol = amountCol + 1;
-    final int wordsEndCol = _dataStartCol + _dataColumnCount - 1;
+    final int wordsEndCol = wordsStartCol + _wordsCellMergeCount;
     final Range wordsRange = sheet.getRangeByIndex(excelRow, wordsStartCol, excelRow, wordsEndCol);
-    wordsRange.merge();
+    if (_wordsCellMergeCount > 0) {
+      wordsRange.merge();
+    }
     wordsRange.setText(numberToWords(baseTotal));
     _applyCellStyle(wordsRange, hAlign: HAlignType.center, border: true);
   }
@@ -327,8 +309,7 @@ class ExcelExportService {
   }) {
     int row = startRow;
     final int labelCol = _dataStartCol;
-    // Merge across many columns for a wide box (e.g., up to Debit Name or To)
-    final int valueCol = labelCol + 3; // Span 11 columns total (labelCol to valueCol)
+    final int valueCol = labelCol + _bankSplitColumnOffset;   // ← NOW CONFIGURABLE
 
     final Range titleRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
     titleRange.merge();
@@ -344,7 +325,7 @@ class ExcelExportService {
     row++;
     _writeSplitRow(sheet, row, labelCol, valueCol, 'From IDBI to IDBI Bank', idbiToIdbi);
     row++;
-    row++; // spacer
+    row++;
     final Range dividerRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
     dividerRange.merge();
     dividerRange.cellStyle.borders.bottom.lineStyle = LineStyle.thin;
@@ -393,7 +374,6 @@ class ExcelExportService {
     }
   }
 
-  // Updated signature insertion to account for removed Aarti column
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
       final ByteData data = await rootBundle.load('');
@@ -411,13 +391,10 @@ class ExcelExportService {
 
       double targetWidthPx;
       if (_signatureSize == 0) {
-        // Auto-calculate width from spanned columns (Debit A/C + Fr + To)
-        // Indices (0-based from dataStartCol): Debit A/C = 1, Fr = 10, To = 11
         final List<double> widths = [
           _colWidthAmount, _colWidthDebitAc, _colWidthIFSC, _colWidthCreditAc,
-          _colWidthCode, _colWidthBeneficiary, _colWidthPlace,
-          _colWidthBlankAfterPlace, _colWidthBankDetails,
-          _colWidthDebitName, _colWidthFrom, _colWidthTo
+          _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthExpenses,
+          _colWidthBankDetails, _colWidthDebitName, _colWidthFrom, _colWidthTo,
         ];
         double totalWidthUnits = widths[1] + widths[10] + widths[11];
         const double pxPerUnit = 7.0;
@@ -442,19 +419,17 @@ class ExcelExportService {
   }
 
   static void _configurePrintSetup(Worksheet sheet, int lastRow) {
-    final int toColumnIndex = _dataStartCol + _dataColumnCount - 1;
+    final int toColumnIndex = _dataStartCol + 11; // 12 columns (0..11)
     final String endColLetter = _colIndexToLetter(toColumnIndex);
     final String printArea = '$_printStartColumn$_printStartRow:$endColLetter$lastRow';
     sheet.pageSetup.printArea = printArea;
-    // Set page orientation to landscape
-    sheet.pageSetup.orientation = ExcelPageOrientation.landscape;
     if (_fitToPage) {
       sheet.pageSetup.fitToPagesTall = 1;
       sheet.pageSetup.fitToPagesWide = 1;
     }
   }
 
-  // ── Style helpers ─────────────────────────────────────────────────────────
+  // ── Style helpers ──────────────────────────────────────────────────────────
   static void _applyCellStyle(Range range,
       {bool bold = false,
       double fontSize = 11,
@@ -470,7 +445,22 @@ class ExcelExportService {
     range.cellStyle.borders.all.lineStyle = LineStyle.thin;
   }
 
-  // ── File saving with auto‑increment ──────────────────────────────────────
+  // ── Month name from voucher date (YYYY-MM-DD) ──────────────────────────────
+  static String _monthFromDate(String date) {
+    if (date.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(date);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return months[dt.month - 1];
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // ── File saving with auto‑increment ───────────────────────────────────────
   static Future<String> _saveExcelFileWithIncrement(
       List<int> bytes, VoucherModel voucher, String prefix) async {
     final outDir = await _outputDir();
@@ -496,7 +486,7 @@ class ExcelExportService {
     return file.path;
   }
 
-  // ── Python‑based invoice export (unchanged) ───────────────────────────────
+  // ── Python‑based invoice export (unchanged) ────────────────────────────────
   static Future<_ExportPaths> _runGenerator(
     VoucherModel voucher,
     CompanyConfigModel config,

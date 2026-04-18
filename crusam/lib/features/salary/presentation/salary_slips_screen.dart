@@ -454,14 +454,25 @@ class _PreviewPanel extends StatelessWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),
               child: SalarySlipPreview(
-                config: config, employeeName: employee.name,
-                pfNo: employee.pfNo, uanNo: employee.uanNo,
-                bankName: employee.bankDetails, accountNo: employee.accountNumber,
-                ifscCode: employee.ifscCode, month: month, year: year,
-                daysInMonth: calc.totalDays, daysPresent: calc.days,
-                basicSalary: employee.basicCharges, otherAllowances: employee.otherCharges,
-                pfDeduction: calc.pf, esicDeduction: calc.esic,
-                mswDeduction: calc.msw, ptDeduction: calc.pt,
+                config: config,
+                employeeName: employee.name,
+                employeeCode: employee.code,
+                department: department,
+                pfNo: employee.pfNo,
+                uanNo: employee.uanNo,
+                bankName: employee.bankDetails,
+                accountNo: employee.accountNumber,
+                ifscCode: employee.ifscCode,
+                month: month,
+                year: year,
+                daysInMonth: calc.totalDays,
+                daysPresent: calc.days,
+                basicSalary: employee.basicCharges,
+                otherAllowances: employee.otherCharges,
+                pfDeduction: calc.pf,
+                esicDeduction: calc.esic,
+                mswDeduction: calc.msw,
+                ptDeduction: calc.pt,
               ),
             ),
           ),
@@ -480,7 +491,7 @@ class _PreviewPanel extends StatelessWidget {
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
-  Widget build(BuildContext  context) => Center(
+  Widget build(BuildContext context) => Center(
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Icon(Icons.receipt_long_outlined, size: 56, color: AppColors.slate300),
       const SizedBox(height: 16),
