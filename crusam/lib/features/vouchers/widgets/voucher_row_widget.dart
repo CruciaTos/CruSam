@@ -6,7 +6,8 @@ import '../../../../data/models/employee_model.dart';
 import '../../../../data/models/voucher_row_model.dart';
 import 'employee_search_dropdown.dart';
 
-const double _kH = 38.0; // uniform field height across all row cells
+const double _kH = 38.0;
+const EdgeInsets _kInputPadding = EdgeInsets.symmetric(horizontal: 8);
 
 TableRow buildVoucherRow({
   required int index,
@@ -33,41 +34,23 @@ TableRow buildVoucherRow({
           bottom: BorderSide(color: AppColors.slate200, width: 0.6)),
     ),
     children: [
-      // # index
-      _cell(
-        Text('${index + 1}',
-            style:
-                AppTextStyles.small.copyWith(color: AppColors.slate500),
-            textAlign: TextAlign.center),
-      ),
-      // Employee dropdown
+      _cell(Text('${index + 1}',
+          style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+          textAlign: TextAlign.center)),
       _cell(_EmpDropdown(
         employees: employees,
         selectedId: row.employeeId,
         onChanged: onSelectEmployee,
         highlight: highlight,
       )),
-      // Amount
       _cell(_AmountField(
         value: row.amount,
         onChanged: onAmountChanged,
         highlight: highlight,
       )),
-      // From date – masked input
-      _cell(_DateField(
-        value: row.fromDate,
-        onChanged: onFromDateChanged,
-        height: _kH,
-      )),
-      // To date – masked input
-      _cell(_DateField(
-        value: row.toDate,
-        onChanged: onToDateChanged,
-        height: _kH,
-      )),
-      // Auto-filled details
+      _cell(_DateField(value: row.fromDate, onChanged: onFromDateChanged)),
+      _cell(_DateField(value: row.toDate, onChanged: onToDateChanged)),
       _cell(_AutoFilledInfo(row: row)),
-      // Delete
       _cell(
         SizedBox(
           height: _kH,
@@ -88,9 +71,15 @@ TableRow buildVoucherRow({
 Widget _cell(Widget child, {bool center = false}) => TableCell(
       verticalAlignment: TableCellVerticalAlignment.middle,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: center ? Center(child: child) : child,
       ),
+    );
+
+OutlineInputBorder _border(Color color, {double width = 1.0}) =>
+    OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: BorderSide(color: color, width: width),
     );
 
 // ── Employee Dropdown ─────────────────────────────────────────────────────────
@@ -128,8 +117,8 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   void _sync() {
     final s = _sel;
     final t = s != null ? _label(s) : '';
-    _sc.value = TextEditingValue(
-        text: t, selection: TextSelection.collapsed(offset: t.length));
+    _sc.value =
+        TextEditingValue(text: t, selection: TextSelection.collapsed(offset: t.length));
   }
 
   @override
@@ -191,8 +180,7 @@ class _EmpDropdownState extends State<_EmpDropdown> {
                       final lbl = _label(emp);
                       _sc.value = TextEditingValue(
                           text: lbl,
-                          selection:
-                              TextSelection.collapsed(offset: lbl.length));
+                          selection: TextSelection.collapsed(offset: lbl.length));
                       widget.onChanged(id.toString());
                     }
                     _close(restore: false);
@@ -218,53 +206,62 @@ class _EmpDropdownState extends State<_EmpDropdown> {
         link: _layerLink,
         child: SizedBox(
           height: _kH,
-          child: TextField(
-            controller: _sc,
-            focusNode: _fn,
-            textAlignVertical: TextAlignVertical.bottom,
-            style: AppTextStyles.input.copyWith(color: AppColors.slate700),
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: 'Select employee…',
-              hintStyle:
-                  AppTextStyles.input.copyWith(color: AppColors.slate400),
-              contentPadding: const EdgeInsets.only(
-                  left: 10, right: 10, bottom: 8, top: 8),
-              filled: true,
-              fillColor: widget.highlight
-                  ? const Color(0xFFFFFDE7)
-                  : AppColors.white,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: BorderSide(
-                  color: widget.highlight
-                      ? const Color(0xFFF59E0B)
-                      : AppColors.slate900,
-                  width: widget.highlight ? 1.5 : 1.0,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _sc,
+                  focusNode: _fn,
+                  maxLines: null,
+                  minLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: AppTextStyles.input.copyWith(color: AppColors.slate700),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'Select employee…',
+                    hintStyle:
+                        AppTextStyles.input.copyWith(color: AppColors.slate400),
+                    contentPadding: _kInputPadding,
+                    filled: true,
+                    fillColor: widget.highlight
+                        ? const Color(0xFFFFFDE7)
+                        : AppColors.white,
+                    enabledBorder: _border(
+                      widget.highlight
+                          ? const Color(0xFFF59E0B)
+                          : AppColors.slate900,
+                      width: widget.highlight ? 1.5 : 1.0,
+                    ),
+                    focusedBorder: _border(AppColors.indigo500, width: 1.5),
+                  ),
+                  onTap: () => _open(),
+                  onChanged: (_) {
+                    if (_oe == null) _open(reset: false);
+                  },
                 ),
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(
-                    color: AppColors.indigo500, width: 1.5),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 28,
+                child: IconButton(
+                  splashRadius: 14,
+                  onPressed: () => _oe == null ? _open() : _close(),
+                  icon: const Icon(Icons.unfold_more,
+                      size: 14, color: AppColors.slate400),
+                  tooltip: 'Select employee',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                ),
               ),
-              suffixIcon: IconButton(
-                splashRadius: 16,
-                onPressed: () => _oe == null ? _open() : _close(),
-                icon: const Icon(Icons.unfold_more,
-                    size: 14, color: AppColors.slate400),
-              ),
-            ),
-            onTap: () => _open(),
-            onChanged: (_) {
-              if (_oe == null) _open(reset: false);
-            },
+            ],
           ),
         ),
       );
 }
 
-// ── Amount Field (unchanged) ──────────────────────────────────────────────────
+// ── Amount Field ──────────────────────────────────────────────────────────────
 
 class _AmountField extends StatefulWidget {
   final double value;
@@ -293,10 +290,10 @@ class _AmountFieldState extends State<_AmountField> {
   void didUpdateWidget(covariant _AmountField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
-      final newText = widget.value == 0 ? '' : widget.value.toStringAsFixed(2);
-      if (_ctrl.text != newText) {
-        _ctrl.text = newText;
-        _ctrl.selection = TextSelection.collapsed(offset: _ctrl.text.length);
+      final t = widget.value == 0 ? '' : widget.value.toStringAsFixed(2);
+      if (_ctrl.text != t) {
+        _ctrl.text = t;
+        _ctrl.selection = TextSelection.collapsed(offset: t.length);
       }
     }
   }
@@ -312,56 +309,40 @@ class _AmountFieldState extends State<_AmountField> {
         height: _kH,
         child: TextField(
           controller: _ctrl,
+          maxLines: null,
+          minLines: null,
+          expands: true,
           textAlign: TextAlign.right,
-          textAlignVertical: TextAlignVertical.bottom,
+          textAlignVertical: TextAlignVertical.center,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[\d.]')),
-          ],
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
           style: AppTextStyles.input.copyWith(color: AppColors.slate700),
           decoration: InputDecoration(
             isDense: true,
             hintText: '0.00',
-            hintStyle:
-                AppTextStyles.input.copyWith(color: AppColors.slate400),
-            contentPadding: const EdgeInsets.only(
-                left: 10, right: 10, bottom: 8, top: 8),
+            hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
+            contentPadding: _kInputPadding,
             filled: true,
-            fillColor: widget.highlight
-                ? const Color(0xFFFFFDE7)
-                : AppColors.white,
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: BorderSide(
-                color: widget.highlight
-                    ? const Color(0xFFF59E0B)
-                    : AppColors.slate900,
-                width: widget.highlight ? 1.5 : 1.0,
-              ),
+            fillColor:
+                widget.highlight ? const Color(0xFFFFFDE7) : AppColors.white,
+            enabledBorder: _border(
+              widget.highlight ? const Color(0xFFF59E0B) : AppColors.slate900,
+              width: widget.highlight ? 1.5 : 1.0,
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(
-                  color: AppColors.indigo500, width: 1.5),
-            ),
+            focusedBorder: _border(AppColors.indigo500, width: 1.5),
           ),
           onChanged: (v) => widget.onChanged(double.tryParse(v) ?? 0),
         ),
       );
 }
 
-// ── Date Field (Masked input with persistent hint overlay) ───────────────────
+// ── Date Field ────────────────────────────────────────────────────────────────
 
 class _DateField extends StatefulWidget {
-  final String value;       // ISO string (YYYY-MM-DD)
+  final String value;
   final void Function(String) onChanged;
-  final double? height;
 
-  const _DateField({
-    required this.value,
-    required this.onChanged,
-    this.height,
-  });
+  const _DateField({required this.value, required this.onChanged});
 
   @override
   State<_DateField> createState() => _DateFieldState();
@@ -372,7 +353,7 @@ class _DateFieldState extends State<_DateField> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
   bool _isValid = false;
-  bool _isInternalUpdate = false; // <-- Add this flag
+  bool _isInternalUpdate = false;
 
   @override
   void initState() {
@@ -381,26 +362,35 @@ class _DateFieldState extends State<_DateField> {
     _focusNode = FocusNode();
     _setInitialValue(widget.value);
     _controller.addListener(_handleChange);
+
+    // Cursor-to-start: fires after platform settles cursor position
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus && _controller.text == _mask) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _focusNode.hasFocus && _controller.text == _mask) {
+            _controller.selection = const TextSelection.collapsed(offset: 0);
+          }
+        });
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant _DateField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _setInitialValue(widget.value);
-    }
+    if (oldWidget.value != widget.value) _setInitialValue(widget.value);
   }
 
   void _setInitialValue(String iso) {
-    _isInternalUpdate = true; // <-- Prevent onChanged during setup
+    _isInternalUpdate = true;
     String displayText = _mask;
     if (iso.isNotEmpty) {
       try {
         final date = DateTime.parse(iso);
-        final day = date.day.toString().padLeft(2, '0');
-        final month = date.month.toString().padLeft(2, '0');
-        final year = date.year.toString();
-        displayText = '$day/$month/$year';
+        final d = date.day.toString().padLeft(2, '0');
+        final m = date.month.toString().padLeft(2, '0');
+        final y = date.year.toString();
+        displayText = '$d/$m/$y';
         _isValid = true;
       } catch (_) {
         _isValid = false;
@@ -409,18 +399,17 @@ class _DateFieldState extends State<_DateField> {
       _isValid = false;
     }
     _controller.text = displayText;
-    _controller.selection = TextSelection.collapsed(offset: displayText.length);
-    _isInternalUpdate = false; // <-- Re-enable notifications
+    _controller.selection =
+        TextSelection.collapsed(offset: displayText.length);
+    _isInternalUpdate = false;
   }
 
   void _handleChange() {
-    if (_isInternalUpdate) return; // <-- Ignore programmatic changes
-
+    if (_isInternalUpdate) return;
     final text = _controller.text;
     final newIsValid = _isCompleteAndValid(text);
     if (newIsValid != _isValid) {
       _isValid = newIsValid;
-      // Schedule setState after the current frame to avoid build-phase errors
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});
       });
@@ -434,19 +423,16 @@ class _DateFieldState extends State<_DateField> {
   bool _isCompleteAndValid(String text) {
     if (text.length != 10) return false;
     if (text[2] != '/' || text[5] != '/') return false;
-    
     final day = int.tryParse(text.substring(0, 2));
     final month = int.tryParse(text.substring(3, 5));
     final year = int.tryParse(text.substring(6, 10));
-    
     if (day == null || month == null || year == null) return false;
-    if (day < 1 || day > 31) return false;
-    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31 || month < 1 || month > 12) return false;
     if (year < 1900 || year > 2100) return false;
-    
     int maxDay;
     if (month == 2) {
-      maxDay = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) ? 29 : 28;
+      maxDay =
+          ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) ? 29 : 28;
     } else {
       maxDay = [4, 6, 9, 11].contains(month) ? 30 : 31;
     }
@@ -456,22 +442,15 @@ class _DateFieldState extends State<_DateField> {
   String? _toIsoString(String text) {
     final parts = text.split('/');
     if (parts.length != 3) return null;
-    final day = parts[0];
-    final month = parts[1];
-    final year = parts[2];
-    return '$year-$month-$day';
+    return '${parts[2]}-${parts[1]}-${parts[0]}';
   }
 
   bool get _hasInput => _controller.text != _mask;
 
   Future<void> _pickDate() async {
-    DateTime initial;
-    final currentIso = widget.value;
-    if (currentIso.isNotEmpty) {
-      initial = DateTime.tryParse(currentIso) ?? DateTime.now();
-    } else {
-      initial = DateTime.now();
-    }
+    final initial = widget.value.isNotEmpty
+        ? (DateTime.tryParse(widget.value) ?? DateTime.now())
+        : DateTime.now();
 
     final picked = await showDatePicker(
       context: context,
@@ -492,11 +471,11 @@ class _DateFieldState extends State<_DateField> {
     );
 
     if (picked != null) {
-      _isInternalUpdate = true; // <-- Prevent listener from firing
-      final day = picked.day.toString().padLeft(2, '0');
-      final month = picked.month.toString().padLeft(2, '0');
-      final year = picked.year.toString();
-      _controller.text = '$day/$month/$year';
+      _isInternalUpdate = true;
+      final d = picked.day.toString().padLeft(2, '0');
+      final m = picked.month.toString().padLeft(2, '0');
+      final y = picked.year.toString();
+      _controller.text = '$d/$m/$y';
       _isInternalUpdate = false;
       widget.onChanged(picked.toIso8601String().split('T').first);
       setState(() => _isValid = true);
@@ -512,90 +491,66 @@ class _DateFieldState extends State<_DateField> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final field = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: _kH,
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              textAlign: TextAlign.center,
-              textAlignVertical: TextAlignVertical.bottom,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                _DateMaskFormatter(),
-              ],
-              style: AppTextStyles.input.copyWith(
-                color: AppColors.slate700,
-                fontFamily: 'monospace',
-              ),
-              decoration: InputDecoration(
-                isDense: true,
-                hintText: _mask,
-                hintStyle: AppTextStyles.input.copyWith(
-                  color: AppColors.slate400,
-                  fontSize: 12,
+  Widget build(BuildContext context) => SizedBox(
+        height: _kH,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                maxLines: null,
+                minLines: null,
+                expands: true,
+                textAlign: TextAlign.center,
+                textAlignVertical: TextAlignVertical.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: [_DateMaskFormatter()],
+                style: AppTextStyles.input.copyWith(
+                  color: AppColors.slate700,
                   fontFamily: 'monospace',
                 ),
-                contentPadding: const EdgeInsets.only(
-                  left: 8,
-                  right: 4,
-                  bottom: 8,
-                  top: 8,
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: AppColors.slate300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(
-                    color: AppColors.indigo500,
-                    width: 1.6,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: _mask,
+                  hintStyle: AppTextStyles.input.copyWith(
+                    color: AppColors.slate400,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
                   ),
+                  contentPadding: _kInputPadding,
+                  filled: true,
+                  fillColor: Colors.white,
+                  enabledBorder: _border(AppColors.slate300),
+                  focusedBorder: _border(AppColors.indigo500, width: 1.6),
+                  errorBorder: _border(Colors.red, width: 1.5),
+                  focusedErrorBorder: _border(Colors.red, width: 1.5),
+                  errorText: !_isValid && _hasInput ? '' : null,
+                  errorStyle: const TextStyle(height: 0, fontSize: 0),
                 ),
-                errorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: Colors.red, width: 1.5),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(color: Colors.red, width: 1.5),
-                ),
-                errorText: !_isValid && _hasInput ? '' : null,
-                errorStyle: const TextStyle(height: 0, fontSize: 0),
               ),
             ),
-          ),
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 28,
+              child: IconButton(
+                splashRadius: 14,
+                onPressed: _pickDate,
+                icon: const Icon(Icons.calendar_month_rounded,
+                    size: 16, color: AppColors.slate500),
+                tooltip: 'Pick date',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 30,
-          height: 30,
-          child: IconButton(
-            splashRadius: 14,
-            onPressed: _pickDate,
-            icon: const Icon(Icons.calendar_month_rounded,
-                size: 16, color: AppColors.slate500),
-            tooltip: 'Pick date',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
-          ),
-        ),
-      ],
-    );
-
-    return widget.height != null
-        ? SizedBox(height: widget.height, child: Center(child: field))
-        : field;
-  }
+      );
 }
-/// Formatter that maintains the "dd/mm/yyyy" mask while typing digits.
+
+// ── Date Mask Formatter ───────────────────────────────────────────────────────
+
 class _DateMaskFormatter extends TextInputFormatter {
   static const String _mask = 'dd/mm/yyyy';
   static const List<int> _digitPositions = [0, 1, 3, 4, 6, 7, 8, 9];
@@ -609,19 +564,16 @@ class _DateMaskFormatter extends TextInputFormatter {
     final oldText = oldValue.text;
     final newTextRaw = newValue.text;
 
-    // Ensure we always start with the mask if empty
     if (oldText.isEmpty) {
-      return TextEditingValue(
+      return const TextEditingValue(
         text: _mask,
-        selection: const TextSelection.collapsed(offset: 0),
+        selection: TextSelection.collapsed(offset: 0),
       );
     }
 
-    // If user pressed delete/backspace
     if (newTextRaw.length < oldText.length) {
       int deletePos = oldValue.selection.baseOffset;
       if (deletePos > 0) {
-        // If trying to delete a slash, delete the preceding digit instead
         if (_separatorPositions.contains(deletePos - 1)) {
           if (deletePos - 2 >= 0) {
             final newText = _replaceWithPlaceholder(oldText, deletePos - 2);
@@ -632,7 +584,6 @@ class _DateMaskFormatter extends TextInputFormatter {
           }
           return oldValue;
         } else {
-          // Deleting a digit: replace with placeholder letter
           final newText = _replaceWithPlaceholder(oldText, deletePos - 1);
           return TextEditingValue(
             text: newText,
@@ -642,19 +593,16 @@ class _DateMaskFormatter extends TextInputFormatter {
       }
     }
 
-    // Inserting characters
     if (newTextRaw.length > oldText.length) {
       int insertPos = newValue.selection.baseOffset - 1;
       if (insertPos < 0) insertPos = 0;
       if (insertPos >= _mask.length) return oldValue;
 
       final insertedChar = newTextRaw[insertPos];
-      
-      // If inserting a digit at a digit position
-      if (_digitPositions.contains(insertPos) && RegExp(r'\d').hasMatch(insertedChar)) {
+      if (_digitPositions.contains(insertPos) &&
+          RegExp(r'\d').hasMatch(insertedChar)) {
         final newMaskedText = _replaceCharAt(oldText, insertPos, insertedChar);
         int nextPos = insertPos + 1;
-        // Jump over slash if next position is a separator
         if (nextPos < _mask.length && _separatorPositions.contains(nextPos)) {
           nextPos++;
         }
@@ -674,13 +622,11 @@ class _DateMaskFormatter extends TextInputFormatter {
     return chars.join('');
   }
 
-  String _replaceWithPlaceholder(String text, int index) {
-    final placeholder = _mask[index];
-    return _replaceCharAt(text, index, placeholder);
-  }
+  String _replaceWithPlaceholder(String text, int index) =>
+      _replaceCharAt(text, index, _mask[index]);
 }
 
-// ── Auto-filled Info (unchanged) ──────────────────────────────────────────────
+// ── Auto-filled Info ──────────────────────────────────────────────────────────
 
 class _AutoFilledInfo extends StatelessWidget {
   final VoucherRowModel row;
