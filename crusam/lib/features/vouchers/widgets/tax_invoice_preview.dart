@@ -36,9 +36,9 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _colRate = 50.0;
   static const _colAmount = 90.0;
 
-  // ── Helper: comma → newline for multi-line display in previews ─────────────
+  // ── Helper: // or legacy /n → newline for multi-line display in previews ───
   static String _multiline(String text) =>
-      text.replaceAll(', ', '\n').replaceAll(',', '\n');
+      text.replaceAll('//', '\n').replaceAll('/n', '\n');
 
   // ── Static method for PDF generation ──────────────────────────────────────
   static List<Widget> buildPdfPages({
@@ -304,7 +304,7 @@ class TaxInvoicePreview extends StatelessWidget {
             _DataCell(_formatDate(toDate), _colDateTo, centered: true),
             _DescriptionCell(
               width: descriptionWidth,
-              description: voucher.itemDescription,
+              description: _multiline(voucher.itemDescription),
             ),
             _DataCell('', _colQty, centered: true),
             _DataCell('', _colRate, centered: true),

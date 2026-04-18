@@ -231,7 +231,7 @@ class _EmpDropdownState extends State<_EmpDropdown> {
                     enabledBorder: _border(
                       widget.highlight
                           ? const Color(0xFFF59E0B)
-                          : AppColors.slate900,
+                          : const Color(0xFF1E1B4B),
                       width: widget.highlight ? 1.5 : 1.0,
                     ),
                     focusedBorder: _border(AppColors.indigo500, width: 1.5),
@@ -279,18 +279,19 @@ class _AmountField extends StatefulWidget {
 class _AmountFieldState extends State<_AmountField> {
   late final TextEditingController _ctrl;
 
+  String _formatWhole(double v) => v == 0 ? '' : v.toStringAsFixed(0);
+
   @override
   void initState() {
     super.initState();
-    _ctrl = TextEditingController(
-        text: widget.value == 0 ? '' : widget.value.toStringAsFixed(2));
+    _ctrl = TextEditingController(text: _formatWhole(widget.value));
   }
 
   @override
   void didUpdateWidget(covariant _AmountField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
-      final t = widget.value == 0 ? '' : widget.value.toStringAsFixed(2);
+      final t = _formatWhole(widget.value);
       if (_ctrl.text != t) {
         _ctrl.text = t;
         _ctrl.selection = TextSelection.collapsed(offset: t.length);
@@ -314,24 +315,26 @@ class _AmountFieldState extends State<_AmountField> {
           expands: true,
           textAlign: TextAlign.right,
           textAlignVertical: TextAlignVertical.center,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           style: AppTextStyles.input.copyWith(color: AppColors.slate700),
           decoration: InputDecoration(
             isDense: true,
-            hintText: '0.00',
+            hintText: '0',
             hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
             contentPadding: _kInputPadding,
             filled: true,
             fillColor:
                 widget.highlight ? const Color(0xFFFFFDE7) : AppColors.white,
             enabledBorder: _border(
-              widget.highlight ? const Color(0xFFF59E0B) : AppColors.slate900,
+              widget.highlight
+                  ? const Color(0xFFF59E0B)
+                  : const Color(0xFF1E1B4B),
               width: widget.highlight ? 1.5 : 1.0,
             ),
             focusedBorder: _border(AppColors.indigo500, width: 1.5),
           ),
-          onChanged: (v) => widget.onChanged(double.tryParse(v) ?? 0),
+          onChanged: (v) => widget.onChanged((int.tryParse(v) ?? 0).toDouble()),
         ),
       );
 }

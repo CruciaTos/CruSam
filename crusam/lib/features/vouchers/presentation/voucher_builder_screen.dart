@@ -471,7 +471,7 @@ class _MetadataCardState extends State<_MetadataCard> {
                   children: [
                     Expanded(
                       child: _LF(
-                        'Client Address  —  commas become new lines in previews',
+                        'Client Address  —  // makes new lines in previews',
                         TextField(
                           controller: _addressCtrl,
                           style     : _Tok.tsInput,

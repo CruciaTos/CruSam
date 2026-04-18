@@ -288,8 +288,8 @@ class SalaryPdfExportService {
     required int year,
     required int daysInMonth,
   }) {
+    const borderSide = pw.BorderSide(color: _black, width: 0.75);
     final bAll   = pw.BoxDecoration(border: pw.Border.all(color: _black, width: 0.75));
-    pw.Widget vl() => pw.Container(width: 0.75, color: _black);
 
     final earnings = <(String, String)>[
       ('Basic Salary (Full)',      _fmt(emp.basicCharges)),
@@ -352,102 +352,152 @@ class SalaryPdfExportService {
               child: pw.Text('Employee Details',
                   style: _style(fontWeight: pw.FontWeight.bold, fontSize: 10)),
             ),
-            pw.Container(height: 0.75, color: _black),
-            pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Expanded(child: pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  _detailRow('Employee Name',  _sanitizePdfText(emp.name)),
-                  _detailRow('Dept / Code',    '${_codeToDept(emp.code)} (${emp.code})'),
-                  _detailRow('Designation',    'Technician'),
-                  _detailRow('PF No.',         emp.pfNo.isEmpty     ? '-' : emp.pfNo),
-                  _detailRow('UAN No.',        emp.uanNo.isEmpty    ? '-' : emp.uanNo),
-                ]),
-              )),
-              vl(),
-              pw.Expanded(child: pw.Padding(
-                padding: const pw.EdgeInsets.all(8),
-                child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                  _detailRow('Bank Name',    _sanitizePdfText(emp.bankDetails.isEmpty  ? '-' : emp.bankDetails)),
-                  _detailRow('Account No.', emp.accountNumber.isEmpty ? '-' : emp.accountNumber),
-                  _detailRow('IFSC Code',   emp.ifscCode.isEmpty      ? '-' : emp.ifscCode),
-                  _detailRow('Days in Month', daysInMonth.toString()),
-                  _detailRow('Days Present',  calc.days.toString()),
-                ]),
-              )),
-            ]),
+            pw.Table(
+              border: const pw.TableBorder(
+                top: borderSide,
+                verticalInside: borderSide,
+              ),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(),
+                1: pw.FlexColumnWidth(),
+              },
+              children: [
+                pw.TableRow(
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          _detailRow('Employee Name',  _sanitizePdfText(emp.name)),
+                          _detailRow('Dept / Code',    '${_codeToDept(emp.code)} (${emp.code})'),
+                          _detailRow('Designation',    'Technician'),
+                          _detailRow('PF No.',         emp.pfNo.isEmpty     ? '-' : emp.pfNo),
+                          _detailRow('UAN No.',        emp.uanNo.isEmpty    ? '-' : emp.uanNo),
+                        ],
+                      ),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(8),
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          _detailRow('Bank Name',    _sanitizePdfText(emp.bankDetails.isEmpty  ? '-' : emp.bankDetails)),
+                          _detailRow('Account No.', emp.accountNumber.isEmpty ? '-' : emp.accountNumber),
+                          _detailRow('IFSC Code',   emp.ifscCode.isEmpty      ? '-' : emp.ifscCode),
+                          _detailRow('Days in Month', daysInMonth.toString()),
+                          _detailRow('Days Present',  calc.days.toString()),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ]),
         ),
         pw.SizedBox(height: 10),
         // Earnings & Deductions
-        pw.Container(
-          decoration: bAll,
-          child: pw.Column(children: [
-            pw.Row(children: [
-              pw.Expanded(flex: 60, child: pw.Container(color: _hdrBg,
+        pw.Table(
+          border: const pw.TableBorder(
+            top: borderSide,
+            bottom: borderSide,
+            left: borderSide,
+            right: borderSide,
+            horizontalInside: borderSide,
+            verticalInside: borderSide,
+          ),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(60),
+            1: pw.FlexColumnWidth(20),
+            2: pw.FlexColumnWidth(60),
+            3: pw.FlexColumnWidth(20),
+          },
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _hdrBg),
+              children: [
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text('EARNINGS', style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)))),
-              vl(),
-              pw.Expanded(flex: 20, child: pw.Container(color: _hdrBg,
+                  child: pw.Text('EARNINGS',
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text('AMOUNT (₹)', textAlign: pw.TextAlign.center,
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)))),
-              vl(),
-              pw.Expanded(flex: 60, child: pw.Container(color: _hdrBg,
+                  child: pw.Text('AMOUNT (₹)',
+                      textAlign: pw.TextAlign.center,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text('DEDUCTIONS', style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)))),
-              vl(),
-              pw.Expanded(flex: 20, child: pw.Container(color: _hdrBg,
+                  child: pw.Text('DEDUCTIONS',
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text('AMOUNT (₹)', textAlign: pw.TextAlign.center,
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)))),
-            ]),
-            pw.Container(height: 0.75, color: _black),
+                  child: pw.Text('AMOUNT (₹)',
+                      textAlign: pw.TextAlign.center,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 8.5)),
+                ),
+              ],
+            ),
             ...List.generate(4, (i) {
               final bg = i.isOdd ? _altBg : PdfColors.white;
-              return pw.Container(color: bg, child: pw.Row(children: [
-                pw.Expanded(flex: 60, child: pw.Padding(
+              return pw.TableRow(
+                decoration: pw.BoxDecoration(color: bg),
+                children: [
+                  pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: pw.Text(earnings[i].$1, style: _style(fontSize: 9)))),
-                vl(),
-                pw.Expanded(flex: 20, child: pw.Padding(
+                    child: pw.Text(earnings[i].$1, style: _style(fontSize: 9)),
+                  ),
+                  pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: pw.Text(earnings[i].$2, textAlign: pw.TextAlign.right,
-                        style: _style(fontSize: 9, fontWeight: pw.FontWeight.bold)))),
-                vl(),
-                pw.Expanded(flex: 60, child: pw.Padding(
+                    child: pw.Text(earnings[i].$2,
+                        textAlign: pw.TextAlign.right,
+                        style: _style(fontSize: 9, fontWeight: pw.FontWeight.bold)),
+                  ),
+                  pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: pw.Text(deductions[i].$1, style: _style(fontSize: 9)))),
-                vl(),
-                pw.Expanded(flex: 20, child: pw.Padding(
+                    child: pw.Text(deductions[i].$1, style: _style(fontSize: 9)),
+                  ),
+                  pw.Padding(
                     padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: pw.Text(deductions[i].$2, textAlign: pw.TextAlign.right,
-                        style: _style(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _red)))),
-              ]));
+                    child: pw.Text(deductions[i].$2,
+                        textAlign: pw.TextAlign.right,
+                        style: _style(fontSize: 9, fontWeight: pw.FontWeight.bold, color: _red)),
+                  ),
+                ],
+              );
             }),
-            pw.Container(height: 0.75, color: _black),
-            pw.Row(children: [
-              pw.Expanded(flex: 60, child: pw.Container(color: _hdrBg,
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: _hdrBg),
+              children: [
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                   child: pw.Text('Gross Salary (Earned)',
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9)))),
-              vl(),
-              pw.Expanded(flex: 20, child: pw.Container(color: _hdrBg,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text(_fmt(calc.eGross), textAlign: pw.TextAlign.right,
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9, color: _green)))),
-              vl(),
-              pw.Expanded(flex: 60, child: pw.Container(color: _hdrBg,
+                  child: pw.Text(_fmt(calc.eGross),
+                      textAlign: pw.TextAlign.right,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9, color: _green)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                   child: pw.Text('Total Deductions',
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9)))),
-              vl(),
-              pw.Expanded(flex: 20, child: pw.Container(color: _hdrBg,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                ),
+                pw.Padding(
                   padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                  child: pw.Text(_fmt(calc.totalDeductions), textAlign: pw.TextAlign.right,
-                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9, color: _red)))),
-            ]),
-          ]),
+                  child: pw.Text(_fmt(calc.totalDeductions),
+                      textAlign: pw.TextAlign.right,
+                      style: _style(fontWeight: pw.FontWeight.bold, fontSize: 9, color: _red)),
+                ),
+              ],
+            ),
+          ],
         ),
         pw.SizedBox(height: 10),
         // Net pay

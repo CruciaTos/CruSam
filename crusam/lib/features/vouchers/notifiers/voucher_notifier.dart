@@ -37,12 +37,28 @@ class VoucherNotifier extends ChangeNotifier {
   double get finalTotal  => rawTotal.roundToDouble();
   double get roundOff    => finalTotal - rawTotal;
 
+  String get _companyBankIfscPrefix {
+    final ifsc = config.ifscCode.trim().toUpperCase();
+    if (ifsc.length >= 4) return ifsc.substring(0, 4);
+    if (config.bankName.toLowerCase().contains('idbi')) return 'IBKL';
+    return ifsc;
+  }
+
+  bool _isCompanyBankTransfer(VoucherRowModel row) {
+    final rowIfsc = row.ifscCode.trim().toUpperCase();
+    final bankName = row.bankDetails.trim().toLowerCase();
+    final prefix = _companyBankIfscPrefix;
+
+    return (prefix.isNotEmpty && rowIfsc.startsWith(prefix)) ||
+        bankName.contains('idbi');
+  }
+
   double get idbiToOther => current.rows
-      .where((r) => !r.ifscCode.startsWith('IDIB'))
+      .where((r) => !_isCompanyBankTransfer(r))
       .fold(0, (a, r) => a + r.amount);
 
   double get idbiToIdbi  => current.rows
-      .where((r) =>  r.ifscCode.startsWith('IDIB'))
+      .where(_isCompanyBankTransfer)
       .fold(0, (a, r) => a + r.amount);
 
   VoucherModel get enriched => current.copyWith(

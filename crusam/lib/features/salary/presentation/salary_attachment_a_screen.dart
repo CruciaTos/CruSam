@@ -6,6 +6,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/margin_settings_model.dart';
+import '../../../shared/utils/title_utils.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
 import '../../vouchers/services/pdf_export_service.dart';
@@ -39,6 +40,11 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
+    // Pre-fill bill no from SalaryDataNotifier (synced by SalaryBillsScreen)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final n = SalaryDataNotifier.instance;
+      if (n.billNo.isNotEmpty) _billNoCtrl.text = n.billNo;
+    });
   }
 
   @override
@@ -79,12 +85,12 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
           esicAmount:      sc.attachmentAEsic,
           totalAfterTax:   sc.attachmentATotal,
           billNo:          _billNoCtrl.text,
-          date:            '${n.year}-${n.month.toString().padLeft(2, '0')}-01',
+          date:            n.dateDisplay,
           poNo:            n.poNo,
           itemDescription: _itemDescription,
-          customerName:    _config.companyName,
-          customerAddress: _config.address,
-          customerGst:     _config.gstin,
+          customerName:    n.clientName.isNotEmpty ? n.clientName : _config.companyName,
+          customerAddress: n.clientAddr.isNotEmpty ? n.clientAddr : _config.address,
+          customerGst:     n.clientGstin.isNotEmpty ? n.clientGstin : _config.gstin,
         ),
         fileNameSlug:         'attachment_a',
         filePrefix:           'attachment_a',
@@ -118,8 +124,8 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
       final sc   = SalaryStateController.instance;
       final n    = SalaryDataNotifier.instance;
       final code = sc.selectedCompanyCode;
-      final title = code == 'All' ? 'Attachment A' : 'Attachment A - $code';
-      final date  = '${n.year}-${n.month.toString().padLeft(2, '0')}-01';
+      final title = getTitle('Attachment A', code == 'All' ? null : code);
+      final date  = n.dateDisplay;
 
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
@@ -202,6 +208,17 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                           pfAmount:        sc.attachmentAPf,
                           esicAmount:      sc.attachmentAEsic,
                           totalAfterTax:   sc.attachmentATotal,
+                          customerName: n.clientName.isNotEmpty
+                              ? n.clientName
+                              : 'M/s Diversey India Hygiene Private Ltd.',
+                          customerAddress: n.clientAddr.isNotEmpty
+                              ? n.clientAddr
+                              : '501,5th flr,Ackruti center point, '
+                                  'MIDC Central Road,Andheri (East), '
+                                  'Mumbai-400093',
+                          customerGst: n.clientGstin.isNotEmpty
+                              ? n.clientGstin
+                              : '27AABCC1597Q1Z2',
                         ),
                       ),
                     ),

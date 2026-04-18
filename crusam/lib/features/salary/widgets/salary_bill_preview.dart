@@ -64,6 +64,9 @@ class SalaryBillPreview extends StatelessWidget {
   static const _bSide = BorderSide(color: _black, width: 0.75);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
+  static String _multiline(String text) =>
+      text.replaceAll('//', '\n').replaceAll('/n', '\n');
+
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
     EdgeInsets margins          = const EdgeInsets.all(24),
@@ -163,9 +166,10 @@ class SalaryBillPreview extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('BILL To,', style: _body),
               const SizedBox(height: 4),
-              Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+              Text(_multiline(customerName),
+                  style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
               const SizedBox(height: 2),
-              Text(customerAddress, style: _body),
+              Text(_multiline(customerAddress), style: _body),
               const SizedBox(height: 10),
               Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
             ]),
@@ -324,7 +328,8 @@ class SalaryBillPreview extends StatelessWidget {
 
   Widget _itemCellDesc(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
-    final parts = text.split('(Vouchers');
+    final normalized = _multiline(text);
+    final parts = normalized.split('(Vouchers');
     return Expanded(
       flex: flex,
       child: Container(
@@ -337,7 +342,7 @@ class SalaryBillPreview extends StatelessWidget {
                 TextSpan(text: '(Vouchers${parts[1]}',
                     style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 9)),
               ]))
-            : Text(text, style: _body.copyWith(fontSize: 10)),
+            : Text(normalized, style: _body.copyWith(fontSize: 10)),
       ),
     );
   }

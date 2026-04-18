@@ -105,7 +105,12 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
       final voucher = widget.notifier.enriched;
       final path = widget.type == PreviewType.invoice
           ? await ExcelExportService.exportTaxInvoice(voucher, widget.config)
-          : await ExcelExportService.exportBankDisbursement(voucher, widget.config);
+          : await ExcelExportService.exportBankDisbursement(
+              voucher,
+              widget.config,
+              idbiToOther: widget.notifier.idbiToOther,
+              idbiToIdbi: widget.notifier.idbiToIdbi,
+            );
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(path)],

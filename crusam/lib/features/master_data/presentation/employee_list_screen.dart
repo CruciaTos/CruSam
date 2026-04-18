@@ -731,25 +731,26 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
                     onKeyEvent: _handleTableKeyEvent,
                     canRequestFocus: true,
                     descendantsAreFocusable: false,
-                    child: MouseRegion(
-                      onEnter: (_) => _toggleHorizontalScrollbar(true),
-                      onExit: (_) => _toggleHorizontalScrollbar(false),
-                      child: Scrollbar(
-                        controller: _horizontalScrollController,
-                        thumbVisibility: _showHorizontalScrollbar,
-                        trackVisibility: false,
-                        thickness: 8,
-                        radius: const Radius.circular(8),
-                        notificationPredicate: (n) =>
-                            n.metrics.axis == Axis.horizontal,
-                        child: SingleChildScrollView(
-                          controller: _horizontalScrollController,
-                          scrollDirection: Axis.horizontal,
+                    child: Scrollbar(
+                      // ── Vertical scrollbar OUTSIDE horizontal — always visible ──
+                      controller: _verticalScrollController,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _verticalScrollController,
+                        child: MouseRegion(
+                          onEnter: (_) => _toggleHorizontalScrollbar(true),
+                          onExit: (_) => _toggleHorizontalScrollbar(false),
                           child: Scrollbar(
-                            controller: _verticalScrollController,
-                            thumbVisibility: true,
+                            controller: _horizontalScrollController,
+                            thumbVisibility: _showHorizontalScrollbar,
+                            trackVisibility: false,
+                            thickness: 8,
+                            radius: const Radius.circular(8),
+                            notificationPredicate: (n) =>
+                                n.metrics.axis == Axis.horizontal,
                             child: SingleChildScrollView(
-                              controller: _verticalScrollController,
+                              controller: _horizontalScrollController,
+                              scrollDirection: Axis.horizontal,
                               child: _buildTable(),
                             ),
                           ),

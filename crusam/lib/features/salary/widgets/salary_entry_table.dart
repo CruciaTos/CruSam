@@ -173,7 +173,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
       'Sr.', 'Name', 'Gender',
       'Basic', 'Other', 'Gross',
       'Days\nPresent', 'Earned\nGross',
-      'Provident\n Fund(12%)',
+      'Provident\nFund (12%)',
       if (widget.isMsw) 'MSW\n(₹6)',
       'ESIC\n(0.75%)',
       'Prof.\nTax',
@@ -343,11 +343,11 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _chip('Total PF', '₹$totalPf              ',  Colors.redAccent),
+                    _chip('Total PF', '₹$totalPf', Colors.redAccent),
                     _separator(),
-                    _chip('   Total ESIC', '₹$totalEsic   ',  Colors.redAccent),
+                    _chip('Total ESIC', '₹$totalEsic', Colors.redAccent),
                     _separator(),
-                    _chip('              Total PT', '₹$totalPt', Colors.redAccent),
+                    _chip('Total PT', '₹$totalPt', Colors.redAccent),
                   ],
                 ),
                 const Spacer(),

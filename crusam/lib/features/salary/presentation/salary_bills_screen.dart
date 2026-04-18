@@ -5,9 +5,11 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
+import '../../../shared/utils/title_utils.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
+import '../../vouchers/notifiers/voucher_notifier.dart';
 import '../../vouchers/widgets/item_description_field.dart';
 import '../widgets/salary_bill_preview.dart';
 
@@ -31,7 +33,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       text: '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093');
   final _clientGstCtrl  = TextEditingController(text: '27AABCC1597Q1Z2');
   final _dateCtrl       = TextEditingController(
-      text: DateTime.now().toIso8601String().split('T').first);
+      text: SalaryDataNotifier.instance.dateDisplay);
 
   // Hardcoded company codes – same as in SalaryEmployeesScreen
   static const List<String> _companyCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
@@ -40,12 +42,64 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     _billNoCtrl, _poNoCtrl, _clientNameCtrl, _clientAddrCtrl, _clientGstCtrl, _dateCtrl,
   ]);
 
+  String _toDisplayDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    final d = dt.day.toString().padLeft(2, '0');
+    final m = dt.month.toString().padLeft(2, '0');
+    final y = dt.year.toString();
+    return '$d/$m/$y';
+  }
+
   @override
   void initState() {
     super.initState();
     _descNotifier.load();
     _loadConfig();
     _poNoCtrl.addListener(() => SalaryDataNotifier.instance.setPoNo(_poNoCtrl.text));
+    _dateCtrl.addListener(() => SalaryDataNotifier.instance.setDateDisplay(_dateCtrl.text));
+
+    // ── Sync metadata from VoucherBuilder if it has active data ──────────────
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final vc = VoucherNotifier.instance.current;
+      final hasData = vc.rows.isNotEmpty || vc.title.isNotEmpty;
+      if (!hasData) return;
+
+      if (vc.billNo.isNotEmpty) _billNoCtrl.text = vc.billNo;
+      if (vc.poNo.isNotEmpty) {
+        _poNoCtrl.text = vc.poNo;
+        SalaryDataNotifier.instance.setPoNo(vc.poNo);
+      }
+      if (vc.date.isNotEmpty) {
+        _dateCtrl.text = _toDisplayDate(vc.date);
+        SalaryDataNotifier.instance.setDateIso(vc.date);
+      }
+      if (vc.clientName.isNotEmpty) _clientNameCtrl.text = vc.clientName;
+      if (vc.clientAddress.isNotEmpty) _clientAddrCtrl.text = vc.clientAddress;
+      if (vc.clientGstin.isNotEmpty) _clientGstCtrl.text = vc.clientGstin;
+      if (vc.deptCode.isNotEmpty) {
+        SalaryDataNotifier.instance.setDeptCode(vc.deptCode);
+        // Propagate dept code to salary state so downstream screens filter correctly
+        SalaryStateController.instance.setCompanyCode(vc.deptCode);
+      }
+
+      // Persist in SalaryDataNotifier for downstream screens
+      SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text);
+      SalaryDataNotifier.instance.setDateDisplay(_dateCtrl.text);
+      SalaryDataNotifier.instance.setClientName(_clientNameCtrl.text);
+      SalaryDataNotifier.instance.setClientAddr(_clientAddrCtrl.text);
+      SalaryDataNotifier.instance.setClientGstin(_clientGstCtrl.text);
+    });
+
+    // Keep SalaryDataNotifier in sync as user edits fields
+    _billNoCtrl.addListener(() => SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text));
+    _clientNameCtrl.addListener(
+        () => SalaryDataNotifier.instance.setClientName(_clientNameCtrl.text));
+    _clientAddrCtrl.addListener(
+        () => SalaryDataNotifier.instance.setClientAddr(_clientAddrCtrl.text));
+    _clientGstCtrl.addListener(
+        () => SalaryDataNotifier.instance.setClientGstin(_clientGstCtrl.text));
+
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
@@ -68,10 +122,14 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   Future<void> _pickDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.tryParse(_dateCtrl.text) ?? DateTime.now(),
+      initialDate: DateTime.tryParse(SalaryDataNotifier.instance.dateIso) ?? DateTime.now(),
       firstDate: DateTime(2000), lastDate: DateTime(2100),
     );
-    if (picked != null) _dateCtrl.text = picked.toIso8601String().split('T').first;
+    if (picked != null) {
+      final iso = picked.toIso8601String().split('T').first;
+      _dateCtrl.text = _toDisplayDate(iso);
+      SalaryDataNotifier.instance.setDateIso(iso);
+    }
   }
 
   Future<void> _exportPdf() async {
@@ -106,7 +164,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       final sc   = SalaryStateController.instance;
       final n    = SalaryDataNotifier.instance;
       final code = sc.selectedCompanyCode;
-      final title = code == 'All' ? 'Salary Invoice' : 'Salary Invoice - $code';
+      final title = getTitle('Salary Invoice', code == 'All' ? null : code);
 
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),

@@ -5,6 +5,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
+import '../../../shared/utils/title_utils.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_pdf_export_service.dart';
@@ -129,7 +130,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
         final n        = SalaryDataNotifier.instance;
         final filtered = _filteredEmployees;
         final code     = _stateCtrl.selectedCompanyCode;
-        final title    = code == 'All' ? 'Salary Slips' : 'Salary Slips - $code';
+        final title    = getTitle('Salary Slips', code == 'All' ? null : code);
 
         return Padding(
           padding: const EdgeInsets.all(AppSpacing.pagePadding),

@@ -58,6 +58,9 @@ class AttachmentBPreview extends StatelessWidget {
   static const _bSide = BorderSide(color: _black, width: 0.75);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
 
+  static String _multiline(String text) =>
+      text.replaceAll('//', '\n').replaceAll('/n', '\n');
+
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
     EdgeInsets margins = const EdgeInsets.all(24),
@@ -159,9 +162,10 @@ class AttachmentBPreview extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('BILL To,', style: _body),
               const SizedBox(height: 4),
-              Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+              Text(_multiline(customerName),
+                  style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
               const SizedBox(height: 2),
-              Text(customerAddress, style: _body),
+              Text(_multiline(customerAddress), style: _body),
               const SizedBox(height: 10),
               Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
             ]),
@@ -219,7 +223,7 @@ class AttachmentBPreview extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 180),
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _itemCell('1', 5),
-            _itemCell(itemDescription, 65, rightBorder: true, align: Alignment.topLeft),
+            _itemCell(_multiline(itemDescription), 65, rightBorder: true, align: Alignment.topLeft),
             _itemCell(employeeCount > 0 ? employeeCount.toString() : '-', 6),
             _itemCell(_ratePerEmployee.toStringAsFixed(2), 9),
             _itemCell(
