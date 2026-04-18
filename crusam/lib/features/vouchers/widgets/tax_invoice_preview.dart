@@ -27,7 +27,7 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _borderSide = BorderSide(color: _black, width: 0.75);
   static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
 
-  static const _bodyStyle = TextStyle(fontSize: 12, color: _black, height: 1.85);
+  static const _bodyStyle = TextStyle(fontSize: 10, color: _black, height: 1.85);
 
   static const _colSr = 28.0;
   static const _colDateFrom = 65.0;
