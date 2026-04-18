@@ -264,7 +264,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
         _cNum(earned, bold: true, color: AppColors.indigo600),
         _cDeduction(pf),
         if (widget.isMsw) _cDeduction(msw, color: AppColors.amber700),
-        _esicApplicable(e) ? _cDeduction(esic) : _cBadge('N/A', AppColors.slate300),
+        _esicApplicable(e) ? _cDeduction(esic) : _cBadge('N/A', const Color.fromARGB(255, 232, 235, 238)),
         pt == 0 ? _cBadge('—', AppColors.slate300) : _cDeduction(pt),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),

@@ -8,6 +8,28 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dark Slate Color Scheme – Minimal & Eye‑Friendly
+// ─────────────────────────────────────────────────────────────────────────────
+class _ShellColors {
+  static const background = Color(0xFF0B1120);       // deep slate
+  static const surface = Color(0xFF1E293B);          // slate-800
+  static const surfaceGlass = Color(0xE61E293B);     // slate-800 @ 90%
+  static const border = Color(0xFF334155);           // slate-700
+  static const primary = Color(0xFF3B82F6);          // blue-500
+  static const primaryLight = Color(0xFF60A5FA);     // blue-400
+  static const primaryMuted = Color(0x1A3B82F6);     // blue-500 @ 10%
+  static const textPrimary = Color(0xFFF8FAFC);      // slate-50
+  static const textSecondary = Color(0xFF94A3B8);    // slate-400
+  static const textDisabled = Color(0xFF64748B);     // slate-500
+  static const iconDefault = Color(0xFF94A3B8);      // slate-400
+  static const iconActive = Color(0xFFFFFFFF);
+  static const divider = Color(0xFF334155);          // slate-700
+  static const hoverOverlay = Color(0x1AF8FAFC);     // slate-50 @ 10%
+  static const selectedOverlay = Color(0x261E3A8A);  // blue-900 @ 15%
+  static const sectionHeader = Color(0xFF475569);    // slate-600
+}
+
 // ── Nav model ──────────────────────────────────────────────────────────────
 abstract class _NavItem { const _NavItem(); }
 
@@ -87,10 +109,8 @@ class ShellScreen extends StatefulWidget {
 
 class _ShellScreenState extends State<ShellScreen> {
   bool _expanded = true;
-  // Groups open by default (note: 'Salary' label vs 'Salary-Output' in tree)
-  final Set<String> _open = {'Salary-Output'};  // fixed to match actual group label
+  final Set<String> _open = {'Salary-Output'};
 
-  // Memoized values to avoid recomputation on every build
   String _currentLocation = '';
   String _activePath = '/dashboard';
   String _pageTitle = 'Dashboard';
@@ -117,18 +137,18 @@ class _ShellScreenState extends State<ShellScreen> {
 
     return Scaffold(
       body: Stack(children: [
-        // ── Particle layer wrapped with RepaintBoundary to isolate painting ──
+        // ── Background + Particle layer (untouched) ────────────────────────
         Positioned.fill(
           child: RepaintBoundary(
             child: Container(
-              color: const Color.fromARGB(255, 199, 199, 201),
+              color: _ShellColors.background,
               child: const ParticleNetwork(
-                particleColor: Colors.white60, // opacity handled in original
-                lineColor: Color(0x1F4F46E5), // 0.12 opacity ≈ 0x1F
-                particleCount: 100,
-                maxSpeed: 1.0,
-                maxSize: 2.0,
-                lineDistance: 100,
+                particleColor: Color(0x3394A3B8),   // slate-400 @ 20%
+                lineColor: Color(0x1A3B82F6),       // primary @ 10%
+                particleCount: 80,
+                maxSpeed: 0.8,
+                maxSize: 2.2,
+                lineDistance: 120,
                 drawNetwork: true,
                 touchActivation: false,
                 gravityType: GravityType.none,
@@ -138,13 +158,20 @@ class _ShellScreenState extends State<ShellScreen> {
           ),
         ),
         Row(children: [
-          // ── Sidebar ──────────────────────────────────────────────────
+          // ── Sidebar ────────────────────────────────────────────────────
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: w,
             decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 18, 24, 35).withOpacity(0.90),
-              border: const Border(right: BorderSide(color: Colors.white, width: 1)),
+              color: _ShellColors.surfaceGlass,
+              border: Border(right: BorderSide(color: _ShellColors.border)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 12,
+                  offset: const Offset(2, 0),
+                ),
+              ],
             ),
             child: ClipRect(
               child: _expanded
@@ -160,7 +187,7 @@ class _ShellScreenState extends State<ShellScreen> {
                     ),
             ),
           ),
-          // ── Content ──────────────────────────────────────────────────
+          // ── Content ────────────────────────────────────────────────────
           Expanded(
             child: Column(children: [
               _Header(
@@ -178,7 +205,7 @@ class _ShellScreenState extends State<ShellScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Expanded Sidebar (unchanged UI, added const where possible)
+// Expanded Sidebar – Reduced padding and tighter spacing
 // ══════════════════════════════════════════════════════════════════════════
 class _ExpandedSidebar extends StatelessWidget {
   final String active;
@@ -196,18 +223,23 @@ class _ExpandedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: true),
-    const Divider(color: AppColors.slate800, height: 1),
-    const SizedBox(height: 8),
+    const SizedBox(height: 4), // reduced from 8
+    // Main navigation section
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10), // reduced from 12
         children: _buildItems(_kNav, 0),
       ),
     ),
-    const Divider(color: AppColors.slate800, height: 1),
+    // Bottom section with subtle top border
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), // reduced
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
+      ),
+      child: _buildBottomActions(),
+    ),
   ]);
-
-  static void _noop() {} // placeholder for logout action
 
   List<Widget> _buildItems(List<_NavItem> items, int depth) {
     final out = <Widget>[];
@@ -223,6 +255,18 @@ class _ExpandedSidebar extends StatelessWidget {
       } else if (item is _Group) {
         final isOpen = openGroups.contains(item.label);
         final hasActive = _groupContainsActiveStatic(item.children, active);
+        // Add a subtle separator before groups (except first) with minimal padding
+        if (out.isNotEmpty) {
+          out.add(const SizedBox(height: 1));
+          out.add(Divider(
+            color: _ShellColors.divider.withOpacity(0.3),
+            indent: 10,
+            endIndent: 10,
+            height: 1,
+            thickness: 0.5,
+          ));
+          out.add(const SizedBox(height: 1));
+        }
         out.add(_GroupTile(
           icon: item.icon,
           label: item.label,
@@ -236,10 +280,34 @@ class _ExpandedSidebar extends StatelessWidget {
     }
     return out;
   }
+
+  Widget _buildBottomActions() {
+    return Column(
+      children: [
+        _NavTile(
+          icon: Icons.settings_outlined,
+          label: 'Settings',
+          selected: active == '/settings',
+          depth: 0,
+          onTap: () => onNavigate('/settings'),
+        ),
+        const SizedBox(height: 2), // reduced from 4
+        _NavTile(
+          icon: Icons.logout_outlined,
+          label: 'Logout',
+          selected: false,
+          depth: 0,
+          onTap: () {
+            // Add logout logic
+          },
+        ),
+      ],
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// Collapsed Sidebar (unchanged UI, added const)
+// Collapsed Sidebar – tighter spacing
 // ══════════════════════════════════════════════════════════════════════════
 class _CollapsedSidebar extends StatelessWidget {
   final String active;
@@ -250,11 +318,10 @@ class _CollapsedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: false),
-    const Divider(color: AppColors.slate800, height: 1),
-    const SizedBox(height: 8),
+    const SizedBox(height: 4), // reduced from 8
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 6), // reduced from 8
         children: _kNav.map((item) {
           if (item is _Route) {
             return _CollapsedTile(
@@ -274,15 +341,34 @@ class _CollapsedSidebar extends StatelessWidget {
         }).toList(),
       ),
     ),
-    const Divider(color: AppColors.slate800, height: 1),
-   
+    Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // reduced
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
+      ),
+      child: Column(
+        children: [
+          _CollapsedTile(
+            icon: Icons.settings_outlined,
+            label: 'Settings',
+            selected: active == '/settings',
+            onTap: () => onNavigate('/settings'),
+          ),
+          const SizedBox(height: 2), // reduced from 4
+          _CollapsedTile(
+            icon: Icons.logout_outlined,
+            label: 'Logout',
+            selected: false,
+            onTap: () {},
+          ),
+        ],
+      ),
+    ),
   ]);
-
-  static void _noop() {}
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _NavTile (optimized with const constructor where possible)
+// _NavTile – Reduced heights and padding
 // ══════════════════════════════════════════════════════════════════════════
 class _NavTile extends StatelessWidget {
   final IconData icon;
@@ -301,49 +387,72 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0;
+    final indent = depth == 0 ? 0.0 : depth * 14.0; // reduced multiplier
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: depth == 0 ? 40 : 34,
-          padding: EdgeInsets.only(left: 10 + indent, right: 10),
-          decoration: BoxDecoration(
-            color: selected ? AppColors.indigo600 : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(children: [
-            if (depth == 0) ...[
-              Icon(icon,
-                  size: 18,
-                  color: selected ? Colors.white : AppColors.slate400),
-              const SizedBox(width: 10),
-            ] else
-              Container(
-                width: 1.5,
-                height: 16,
-                color: selected
-                    ? Colors.white.withOpacity(0.45)
-                    : AppColors.slate700,
-                margin: const EdgeInsets.only(right: 10),
-              ),
-            Expanded(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: depth == 0 ? 14 : 13,
-                  fontWeight: FontWeight.w500,
-                  color: selected ? Colors.white : AppColors.slate400,
+      padding: const EdgeInsets.symmetric(vertical: 1), // reduced from 2
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8), // smaller radius
+          child: Container(
+            height: depth == 0 ? 40 : 32, // reduced heights: 44→40, 36→32
+            padding: EdgeInsets.only(left: 6 + indent, right: 6), // reduced
+            decoration: BoxDecoration(
+              color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: selected
+                  ? Border.all(color: _ShellColors.primary.withOpacity(0.2), width: 1)
+                  : null,
+            ),
+            child: Row(children: [
+              if (depth == 0) ...[
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? _ShellColors.primary.withOpacity(0.15)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: selected ? _ShellColors.primary : _ShellColors.iconDefault,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Container(
+                    width: 2,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? _ShellColors.primary.withOpacity(0.6)
+                          : _ShellColors.divider,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: depth == 0 ? 13 : 12,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: selected ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+                  ),
                 ),
               ),
-            ),
-            if (selected)
-              Icon(Icons.chevron_right,
-                  size: 15, color: Colors.white.withOpacity(0.7)),
-          ]),
+              if (selected)
+                Icon(Icons.chevron_right,
+                    size: 14, color: _ShellColors.primary.withOpacity(0.8)),
+            ]),
+          ),
         ),
       ),
     );
@@ -351,7 +460,7 @@ class _NavTile extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _GroupTile (optimized with const)
+// _GroupTile – Reduced heights and tighter layout
 // ══════════════════════════════════════════════════════════════════════════
 class _GroupTile extends StatelessWidget {
   final IconData icon;
@@ -372,53 +481,81 @@ class _GroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0;
+    final indent = depth == 0 ? 0.0 : depth * 14.0; // reduced multiplier
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: depth == 0 ? 40 : 34,
-          padding: EdgeInsets.only(left: 10 + indent, right: 10),
-          decoration: BoxDecoration(
-            color: (hasActive && depth == 0)
-                ? AppColors.slate800
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(children: [
-            if (depth == 0) ...[
-              Icon(icon,
-                  size: 18,
-                  color: hasActive ? AppColors.indigo400 : AppColors.slate400),
-              const SizedBox(width: 10),
-            ] else
-              Container(
-                width: 1.5,
-                height: 16,
-                color: AppColors.slate700,
-                margin: const EdgeInsets.only(right: 10),
-              ),
-            Expanded(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: depth == 0 ? 14 : 13,
-                  fontWeight: FontWeight.w500,
-                  color: hasActive ? AppColors.slate200 : AppColors.slate400,
+      padding: const EdgeInsets.symmetric(vertical: 1), // reduced from 2
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: depth == 0 ? 40 : 32, // reduced heights
+            padding: EdgeInsets.only(left: 6 + indent, right: 6),
+            decoration: BoxDecoration(
+              color: hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              if (depth == 0) ...[
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: hasActive
+                        ? _ShellColors.primary.withOpacity(0.1)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 16,
+                    color: hasActive ? _ShellColors.primary : _ShellColors.iconDefault,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Container(
+                    width: 2,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: _ShellColors.divider,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: depth == 0 ? 13 : 12,
+                    fontWeight: FontWeight.w600,
+                    color: hasActive ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+                  ),
                 ),
               ),
-            ),
-            AnimatedRotation(
-              turns: isOpen ? 0.25 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(Icons.chevron_right,
-                  size: 16,
-                  color: isOpen ? AppColors.slate300 : AppColors.slate600),
-            ),
-          ]),
+              AnimatedRotation(
+                turns: isOpen ? 0.25 : 0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: isOpen ? _ShellColors.primary.withOpacity(0.1) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Icon(
+                    Icons.chevron_right,
+                    size: 14,
+                    color: isOpen ? _ShellColors.primary : _ShellColors.textDisabled,
+                  ),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
     );
@@ -426,7 +563,7 @@ class _GroupTile extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _CollapsedTile (const)
+// _CollapsedTile – Reduced icon container size
 // ══════════════════════════════════════════════════════════════════════════
 class _CollapsedTile extends StatelessWidget {
   final IconData icon;
@@ -443,23 +580,41 @@ class _CollapsedTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: 2), // reduced from 3
         child: Tooltip(
           message: label,
           preferBelow: false,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: selected ? AppColors.indigo600 : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Icon(icon,
-                    size: 19,
-                    color: selected ? Colors.white : AppColors.slate400),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                height: 40, // reduced from 44
+                decoration: BoxDecoration(
+                  color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: selected
+                      ? Border.all(color: _ShellColors.primary.withOpacity(0.3), width: 1)
+                      : null,
+                ),
+                child: Center(
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? _ShellColors.primary.withOpacity(0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 18,
+                      color: selected ? _ShellColors.primary : _ShellColors.iconDefault,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -468,7 +623,7 @@ class _CollapsedTile extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _CollapsedGroupTile (improved overlay management)
+// _CollapsedGroupTile (updated popup style)
 // ══════════════════════════════════════════════════════════════════════════
 class _CollapsedGroupTile extends StatefulWidget {
   final _Group group;
@@ -545,21 +700,35 @@ class _CollapsedGroupTileState extends State<_CollapsedGroupTile> {
         onEnter: (_) => _show(),
         onExit: (_) => _scheduleHide(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          child: InkWell(
-            onTap: () {}, // no action on tap; hover shows popup
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              height: 40,
-              decoration: BoxDecoration(
-                color: _hasActive ? AppColors.slate800 : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Center(
-                child: Icon(widget.group.icon,
-                    size: 19,
-                    color:
-                        _hasActive ? AppColors.indigo400 : AppColors.slate400),
+          padding: const EdgeInsets.symmetric(vertical: 2), // reduced from 3
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {},
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                height: 40, // reduced from 44
+                decoration: BoxDecoration(
+                  color: _hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: _hasActive
+                          ? _ShellColors.primary.withOpacity(0.1)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      widget.group.icon,
+                      size: 18,
+                      color: _hasActive ? _ShellColors.primary : _ShellColors.iconDefault,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -568,7 +737,7 @@ class _CollapsedGroupTileState extends State<_CollapsedGroupTile> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _GroupPopup (unchanged UI, added const)
+// _GroupPopup – Slightly more compact
 // ══════════════════════════════════════════════════════════════════════════
 class _GroupPopup extends StatelessWidget {
   final _Group group;
@@ -585,40 +754,47 @@ class _GroupPopup extends StatelessWidget {
   Widget build(BuildContext context) => Material(
         color: Colors.transparent,
         child: Container(
-          width: 208,
-          constraints: const BoxConstraints(maxHeight: 440),
+          width: 210,
+          constraints: const BoxConstraints(maxHeight: 400),
           decoration: BoxDecoration(
-            color: const Color(0xFF111827),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.slate700, width: 0.5),
+            color: _ShellColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _ShellColors.border, width: 0.5),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 18,
-                  offset: const Offset(3, 5))
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(4, 6))
             ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
                 child: Row(children: [
-                  Icon(group.icon, size: 14, color: AppColors.indigo400),
+                  Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: _ShellColors.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Icon(group.icon, size: 13, color: _ShellColors.primary),
+                  ),
                   const SizedBox(width: 8),
                   Text(group.label,
                       style: const TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white)),
+                          color: _ShellColors.textPrimary)),
                 ]),
               ),
-              const Divider(color: AppColors.slate800, height: 1),
-              const SizedBox(height: 4),
+              Divider(color: _ShellColors.divider, height: 1),
+              const SizedBox(height: 2),
               ..._buildItems(group.children, 0),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
             ],
           ),
         ),
@@ -631,29 +807,32 @@ class _GroupPopup extends StatelessWidget {
         final sel = item.path == active;
         out.add(
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 1, 8, 1),
-            child: InkWell(
-              onTap: () => onNavigate(item.path),
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                padding: EdgeInsets.fromLTRB(8 + depth * 10.0, 8, 8, 8),
-                decoration: BoxDecoration(
-                  color: sel ? AppColors.indigo600 : Colors.transparent,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(children: [
-                  Expanded(
-                    child: Text(item.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: sel ? Colors.white : AppColors.slate300,
-                          fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
-                        )),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => onNavigate(item.path),
+                borderRadius: BorderRadius.circular(7),
+                child: Container(
+                  padding: EdgeInsets.fromLTRB(6 + depth * 10.0, 8, 6, 8),
+                  decoration: BoxDecoration(
+                    color: sel ? _ShellColors.selectedOverlay : Colors.transparent,
+                    borderRadius: BorderRadius.circular(7),
                   ),
-                  if (sel)
-                    const Icon(Icons.chevron_right,
-                        size: 14, color: Colors.white),
-                ]),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(item.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: sel ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+                            fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
+                          )),
+                    ),
+                    if (sel)
+                      Icon(Icons.chevron_right,
+                          size: 13, color: _ShellColors.primary),
+                  ]),
+                ),
               ),
             ),
           ),
@@ -661,13 +840,13 @@ class _GroupPopup extends StatelessWidget {
       } else if (item is _Group) {
         out.add(
           Padding(
-            padding: EdgeInsets.fromLTRB(16 + depth * 10.0, 8, 12, 2),
+            padding: EdgeInsets.fromLTRB(14 + depth * 10.0, 8, 14, 3),
             child: Text(item.label,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.slate500,
-                  letterSpacing: 0.5,
+                  color: _ShellColors.sectionHeader,
+                  letterSpacing: 0.4,
                 )),
           ),
         );
@@ -679,7 +858,7 @@ class _GroupPopup extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _SidebarHeader (const)
+// _SidebarHeader – Clean brand area
 // ══════════════════════════════════════════════════════════════════════════
 class _SidebarHeader extends StatelessWidget {
   final bool expanded;
@@ -689,14 +868,28 @@ class _SidebarHeader extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         height: AppSpacing.headerHeight,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(children: [
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                  color: AppColors.indigo600,
-                  borderRadius: BorderRadius.circular(8)),
+                  gradient: LinearGradient(
+                    colors: [
+                      _ShellColors.primary,
+                      _ShellColors.primary.withOpacity(0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _ShellColors.primary.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]),
               alignment: Alignment.center,
               child: const Text('A',
                   style: TextStyle(
@@ -708,7 +901,12 @@ class _SidebarHeader extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text('AARTI ENTERPRISES',
-                    style: AppTextStyles.sidebarBrand,
+                    style: AppTextStyles.sidebarBrand.copyWith(
+                      color: _ShellColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      fontSize: 14,
+                    ),
                     overflow: TextOverflow.ellipsis),
               ),
             ],
@@ -718,7 +916,7 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _Header (top bar) – UPDATED: dynamic user info from AuthNotifier
+// _Header (top bar) – toggle button animation removed
 // ══════════════════════════════════════════════════════════════════════════
 class _Header extends StatelessWidget {
   final bool expanded;
@@ -736,20 +934,20 @@ class _Header extends StatelessWidget {
         height: AppSpacing.headerHeight,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
-          color: const Color.fromARGB(255, 18, 24, 35).withOpacity(0.90),
-          border: const Border(bottom: BorderSide(color: AppColors.slate200)),
+          color: _ShellColors.surfaceGlass,
+          border: Border(bottom: BorderSide(color: _ShellColors.border)),
         ),
         child: Row(children: [
           IconButton(
             onPressed: onToggle,
-            icon: AnimatedRotation(
-              turns: expanded ? 0.5 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(Icons.chevron_right, color: AppColors.slate500),
+            icon: Icon(
+              expanded ? Icons.chevron_left : Icons.chevron_right,
+              color: _ShellColors.iconDefault,
             ),
           ),
           const SizedBox(width: 4),
-          Text(title, style: AppTextStyles.h4.copyWith(color: Colors.white)),
+          Text(title,
+              style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
           const Spacer(),
 
           // ── Dynamic user info section ────────────────────────────────────
@@ -767,12 +965,12 @@ class _Header extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(name,
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: Colors.white70)),
+                          style: AppTextStyles.bodyMedium.copyWith(
+                              color: _ShellColors.textPrimary)),
                       if (email.isNotEmpty)
                         Text(email,
-                            style: AppTextStyles.small
-                                .copyWith(color: Colors.white60)),
+                            style: AppTextStyles.small.copyWith(
+                                color: _ShellColors.textSecondary)),
                     ],
                   ),
                   const SizedBox(width: 12),
@@ -782,7 +980,7 @@ class _Header extends StatelessWidget {
                       onTap: () => context.go('/profile'),
                       child: CircleAvatar(
                         radius: 18,
-                        backgroundColor: AppColors.indigo600,
+                        backgroundColor: _ShellColors.primary,
                         child: Text(initials,
                             style: const TextStyle(
                                 fontSize: 12,

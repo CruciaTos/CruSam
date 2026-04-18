@@ -1063,7 +1063,7 @@ class _RowsTable extends StatelessWidget {
           color : AppColors.slate50,
           border: Border(
             bottom: BorderSide(
-              color: Color.fromARGB(255, 21, 39, 81),
+              color: const Color.fromARGB(255, 21, 39, 81),
               width: 0.5,
             ),
           ),
