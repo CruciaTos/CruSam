@@ -42,6 +42,7 @@ import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
+import '../services/pdf_export_service.dart';               // ← added for PDF export
 import '../widgets/voucher_row_widget.dart' as voucher_row_widget;
 import '../widgets/calculations_card.dart';
 import '../widgets/bank_split_card.dart';
@@ -258,11 +259,12 @@ class _MetadataCardState extends State<_MetadataCard> {
     }
   }
 
-  /// Converts stored ISO `YYYY-MM-DD` → display `DD-MM-YYYY`.
+  /// Converts stored ISO `YYYY-MM-DD` → display `dd/mm/yyyy`.
   static String _fmt(String iso) {
     final p = iso.split('-');
     if (p.length != 3) return iso;
-    return '${p[2]}-${p[1]}-${p[0]}';
+    // Changed: now uses '/' and dd/mm/yyyy order
+    return '${p[2]}/${p[1]}/${p[0]}';
   }
 
   void _sync(VoucherModel c) {
@@ -319,7 +321,7 @@ class _MetadataCardState extends State<_MetadataCard> {
       ),
     );
     if (!mounted || p == null) return;
-    // Store internally as YYYY-MM-DD; _sync/_fmt will display as DD-MM-YYYY.
+    // Store internally as YYYY-MM-DD; _sync/_fmt will display as dd/mm/yyyy.
     widget.notifier.update(
       (c) => c.copyWith(date: p.toIso8601String().split('T').first),
     );
@@ -763,203 +765,163 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     }
   }
 
-  Future<void> _finaliseAndExport() async {
-    if (_exporting) return;
-    if (_notifier.current.title.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Please enter a voucher title before exporting')),
-      );
-      return;
-    }
-    if (_notifier.current.rows.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add at least one row before exporting')),
-      );
-      return;
-    }
-    setState(() => _exporting = true);
-    if (!mounted) return;
-    showDialog(
-      context          : context,
-      barrierDismissible: false,
-      builder          : (_) => const AlertDialog(
-        content: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child  : Row(
-            mainAxisSize: MainAxisSize.min,
-            children    : [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Text('Generating Excel files…'),
-            ],
-          ),
-        ),
-      ),
+// ──────────────────────────────────────────────────────────────────────────
+//  FINALISE & EXPORT  —  PDF (tax invoice) + Excel (bank sheet only)
+// ──────────────────────────────────────────────────────────────────────────
+Future<void> _finaliseAndExport() async {
+  if (_exporting) return;
+
+  if (_notifier.current.title.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+          content: Text('Please enter a voucher title before exporting')),
     );
-    String? invoicePath, bankPath, errorMsg;
-    try {
-      invoicePath = await ExcelExportService.exportTaxInvoice(
-        _notifier.enriched, _notifier.config,
-      );
-      bankPath = await ExcelExportService.exportBankDisbursement(
-        _notifier.enriched, _notifier.config,
-        idbiToOther: _notifier.idbiToOther,
-        idbiToIdbi : _notifier.idbiToIdbi,
-      );
-    } catch (e, st) {
-      errorMsg = '$e\n\n$st';
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-    if (errorMsg != null) {
-      await showDialog(
-        context: context,
-        builder: (dc) => AlertDialog(
-          title: Row(children: const [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Export Failed'),
-          ]),
-          content: SizedBox(
-            width: 560, height: 300,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                errorMsg!,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dc),
-              child    : const Text('Close'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-    if (mounted) {
-      await _showExportSuccessDialog(
-        invoicePath: invoicePath, bankPath: bankPath,
-      );
-    }
+    return;
+  }
+  if (_notifier.current.rows.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Add at least one row before exporting')),
+    );
+    return;
   }
 
-  Future<void> _showExportSuccessDialog({
-    required String? invoicePath,
-    required String? bankPath,
-  }) async {
-    final folder = invoicePath != null
-        ? File(invoicePath).parent.path
-        : bankPath != null
-            ? File(bankPath).parent.path
-            : null;
+  setState(() => _exporting = true);
+
+  if (!mounted) return;
+  showDialog(
+    context          : context,
+    barrierDismissible: false,
+    builder          : (_) => const AlertDialog(
+      content: Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child  : Row(
+          mainAxisSize: MainAxisSize.min,
+          children    : [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('Generating files…'),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  String? errorMsg;
+
+  try {
+    final voucher = _notifier.enriched;
+    final config  = _notifier.config;
+
+    // 1. Save as draft
+    await _notifier.saveVoucher();
+
+    // 2. Export PDF bundle (tax invoice + voucher)
+    await PdfExportService.exportInvoiceBundle(
+      context: context,
+      voucher: voucher,
+      config: config,
+      taxInvoiceMargins: const EdgeInsets.all(24),
+      voucherMargins: const EdgeInsets.all(24),
+    );
+
+    // 3. Export Excel bank disbursement sheet ONLY
+    //    (identical to what "Preview Bank Sheet" produces)
+    await ExcelExportService.exportBankDisbursement(
+      voucher,
+      config,
+      idbiToOther: _notifier.idbiToOther,
+      idbiToIdbi : _notifier.idbiToIdbi,
+    );
+  } catch (e, st) {
+    errorMsg = '$e\n\n$st';
+  } finally {
+    if (mounted) setState(() => _exporting = false);
+  }
+
+  // Dismiss progress dialog
+  if (!mounted) return;
+  Navigator.of(context, rootNavigator: true).pop();
+
+  if (errorMsg != null) {
     await showDialog(
       context: context,
       builder: (dc) => AlertDialog(
         title: Row(children: const [
-          Icon(Icons.check_circle_outline, color: AppColors.emerald600, size: 22),
+          Icon(Icons.error_outline, color: Colors.red),
           SizedBox(width: 8),
-          Text('Export Complete'),
+          Text('Export Failed'),
         ]),
         content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize      : MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children          : [
-              const Text('Both Excel files have been saved:',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 12),
-              if (invoicePath != null) ...[
-                _fileTile(
-                  icon : Icons.description_outlined,
-                  label: 'Tax Invoice',
-                  path : invoicePath,
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (bankPath != null)
-                _fileTile(
-                  icon : Icons.account_balance_outlined,
-                  label: 'Bank Disbursement',
-                  path : bankPath,
-                ),
-              if (folder != null) ...[
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 10),
-                const Text('Saved to folder:',
-                    style: TextStyle(fontSize: 11, color: AppColors.slate500)),
-                const SizedBox(height: 4),
-                SelectableText(folder,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize  : 11,
-                      color     : AppColors.slate700,
-                    )),
-              ],
-            ],
+          width: 560, height: 300,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              errorMsg!,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+            ),
           ),
         ),
         actions: [
-          if (folder != null)
-            TextButton.icon(
-              onPressed: () => _openFolder(folder),
-              icon     : const Icon(Icons.folder_open_outlined, size: 16),
-              label    : const Text('Open Folder'),
-            ),
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(dc),
-            child    : const Text('Done'),
+            child    : const Text('Close'),
           ),
         ],
       ),
     );
+    return;
   }
 
-  static Widget _fileTile({
-    required IconData icon,
-    required String label,
-    required String path,
-  }) =>
-      Container(
-        padding   : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color       : AppColors.slate50,
-          border      : Border.all(color: AppColors.slate200),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(children: [
-          Icon(icon, size: 18, color: AppColors.indigo600),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+  if (mounted) _showInvoiceMadeOverlay();
+}
+  void _showInvoiceMadeOverlay() {
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (_) => Center(
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 22),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.indigo600, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.45),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13,
-                    )),
-                const SizedBox(height: 2),
-                SelectableText(
-                  File(path).uri.pathSegments.last,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize  : 11,
-                    color     : AppColors.slate600,
+                const Icon(
+                  Icons.check_circle_outline,
+                  color: AppColors.emerald600,
+                  size: 30,
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  'Invoice Made',
+                  style: AppTextStyles.h4.copyWith(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.check_circle, size: 16, color: AppColors.emerald600),
-        ]),
-      );
+        ),
+      ),
+    );
+    overlay.insert(entry);
+    Future.delayed(const Duration(seconds: 5), () {
+      entry.remove();
+    });
+  }
 
   static void _openFolder(String folder) {
     try {
@@ -1212,7 +1174,7 @@ class _RowsTable extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  _ActionButtons  (unchanged)
+//  _ActionButtons  (with white text/icons as requested)
 // ════════════════════════════════════════════════════════════════════════════
 
 class _ActionButtons extends StatelessWidget {
@@ -1238,6 +1200,7 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment : WrapAlignment.end,
         children  : [
+          // ── Discard Draft (white text + icon) ──────────────────────────
           OutlinedButton.icon(
             onPressed: () async {
               final confirm = await showDialog<bool>(
@@ -1268,30 +1231,39 @@ class _ActionButtons extends StatelessWidget {
                 );
               }
             },
-            icon : const Icon(Icons.delete_outline, size: 16),
-            label: const Text('Discard Draft'),
+            icon : const Icon(Icons.delete_outline, size: 16, color: Colors.white),
+            label: const Text('Discard Draft', style: TextStyle(color: Colors.white)),
             style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
               side: const BorderSide(color: Color(0xFFFAE3E3)),
             ),
           ),
 
+          // ── Save as Draft (white text + icon) ──────────────────────────
           OutlinedButton.icon(
             onPressed: onSave,
-            icon     : const Icon(Icons.save, size: 16),
-            label    : const Text('Save as Draft'),
+            icon     : const Icon(Icons.save, size: 16, color: Colors.white),
+            label    : const Text('Save as Draft', style: TextStyle(color: Colors.white)),
             style    : OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
               side: const BorderSide(color: AppColors.emerald100),
             ),
           ),
 
+          // ── Preview Invoice (white text + icon) ────────────────────────
           OutlinedButton.icon(
             onPressed: () => InvoicePreviewDialog.show(
               context, notifier, notifier.config, PreviewType.invoice,
             ),
-            icon : const Icon(Icons.description_outlined, size: 16),
-            label: const Text('Preview Invoice'),
+            icon : const Icon(Icons.description_outlined, size: 16, color: Colors.white),
+            label: const Text('Preview Invoice', style: TextStyle(color: Colors.white)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: AppColors.slate600),
+            ),
           ),
 
+          // ── Preview Bank Sheet (white text + icon) ─────────────────────
           OutlinedButton.icon(
             onPressed: exportingBankSheet ? null : onExportBankSheet,
             icon: exportingBankSheet
@@ -1300,12 +1272,18 @@ class _ActionButtons extends StatelessWidget {
                     height: 14,
                     child : CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.account_balance_outlined, size: 16),
+                : const Icon(Icons.account_balance_outlined, size: 16, color: Colors.white),
             label: Text(
               exportingBankSheet ? 'Exporting…' : 'Preview Bank Sheet',
+              style: const TextStyle(color: Colors.white),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: AppColors.slate600),
             ),
           ),
 
+          // ── Finalise & Export (unchanged style, uses new logic) ────────
           ElevatedButton.icon(
             onPressed: exporting ? null : onFinalise,
             icon: exporting

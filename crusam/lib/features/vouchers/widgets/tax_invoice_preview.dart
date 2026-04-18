@@ -27,11 +27,11 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _borderSide = BorderSide(color: _black, width: 0.75);
   static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
 
-  static const _bodyStyle = TextStyle(fontSize: 9, color: _black, height: 1.45);
+  static const _bodyStyle = TextStyle(fontSize: 12, color: _black, height: 1.85);
 
   static const _colSr = 28.0;
-  static const _colDateFrom = 58.0;
-  static const _colDateTo = 58.0;
+  static const _colDateFrom = 65.0;
+  static const _colDateTo = 65.0;
   static const _colQty = 36.0;
   static const _colRate = 50.0;
   static const _colAmount = 90.0;
@@ -219,7 +219,7 @@ class TaxInvoicePreview extends StatelessWidget {
             style: _bodyStyle,
           ),
         ),
-        _ReferenceRow(label: 'Date', value: voucher.date),
+        _ReferenceRow(label: 'Date', value: _formatDate(voucher.date)),
       ],
     );
   }
@@ -300,8 +300,8 @@ class TaxInvoicePreview extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _DataCell('1', _colSr, centered: true),
-            _DataCell(_formatDate(fromDate), _colDateFrom, centered: true),
-            _DataCell(_formatDate(toDate), _colDateTo, centered: true),
+            _DataCell(_formatDate(fromDate), _colDateFrom, centered: true, fontSize: 10),
+            _DataCell(_formatDate(toDate), _colDateTo, centered: true, fontSize: 10),
             _DescriptionCell(
               width: descriptionWidth,
               description: _multiline(voucher.itemDescription),
@@ -488,6 +488,7 @@ class _DataCell extends StatelessWidget {
   final bool rightAligned;
   final bool bold;
   final bool isLast;
+  final double? fontSize;
 
   const _DataCell(
     this.text,
@@ -496,6 +497,7 @@ class _DataCell extends StatelessWidget {
     this.rightAligned = false,
     this.bold = false,
     this.isLast = false,
+    this.fontSize,
   });
 
   @override
@@ -522,6 +524,7 @@ class _DataCell extends StatelessWidget {
         textAlign: alignment,
         style: TaxInvoicePreview._bodyStyle.copyWith(
           fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          fontSize: fontSize,
         ),
       ),
     );
@@ -531,6 +534,9 @@ class _DataCell extends StatelessWidget {
 class _DescriptionCell extends StatelessWidget {
   final double width;
   final String description;
+
+  // ← change this value to increase/decrease the gap
+  static const double _descVoucherSpacing = 80.0;
 
   const _DescriptionCell({required this.width, required this.description});
 
@@ -546,7 +552,7 @@ class _DescriptionCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(description, style: TaxInvoicePreview._bodyStyle),
-          const SizedBox(height: 6),
+          SizedBox(height: _descVoucherSpacing),
           const Text(
             '( Vouchers attached with this original bill )',
             style: TextStyle(
