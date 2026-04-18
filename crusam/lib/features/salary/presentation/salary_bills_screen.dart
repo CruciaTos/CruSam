@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -18,6 +19,8 @@ class SalaryBillsScreen extends StatefulWidget {
 }
 
 class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
+  static final _dateFormat = DateFormat('dd/MM/yyyy');
+
   final _descNotifier = ItemDescriptionNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -31,7 +34,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       text: '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093');
   final _clientGstCtrl  = TextEditingController(text: '27AABCC1597Q1Z2');
   final _dateCtrl       = TextEditingController(
-      text: DateTime.now().toIso8601String().split('T').first);
+      text: DateFormat('dd/MM/yyyy').format(DateTime.now()));
 
   static const List<String> _companyCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
@@ -65,12 +68,18 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   }
 
   Future<void> _pickDate(BuildContext context) async {
+    DateTime initialDate;
+    try {
+      initialDate = _dateFormat.parse(_dateCtrl.text);
+    } catch (_) {
+      initialDate = DateTime.now();
+    }
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.tryParse(_dateCtrl.text) ?? DateTime.now(),
+      initialDate: initialDate,
       firstDate: DateTime(2000), lastDate: DateTime(2100),
     );
-    if (picked != null) _dateCtrl.text = picked.toIso8601String().split('T').first;
+    if (picked != null) _dateCtrl.text = _dateFormat.format(picked);
   }
 
   Future<void> _exportPdf() async {

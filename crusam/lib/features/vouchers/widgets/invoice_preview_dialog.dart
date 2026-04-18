@@ -292,7 +292,6 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     VoucherColumnWidthsSettings settings,
   ) =>
       VoucherColWidths(
-        sr: settings.sr,
         debitAc: settings.debitAc,
         ifsc: settings.ifsc,
         creditAc: settings.creditAc,

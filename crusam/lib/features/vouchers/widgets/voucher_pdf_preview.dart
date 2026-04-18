@@ -6,106 +6,114 @@ import '../../../shared/utils/format_utils.dart';
 
 // ── Column width configuration ─────────────────────────────────────────────────
 class VoucherColWidths {
-  final double sr;
+  final double amount;    // moved to first column
   final double debitAc;
   final double ifsc;
   final double creditAc;
   final double code;
   final double name;
   final double place;
+  final double blank;     // new column (empty)
+  final double aarti;     // new column (filled with 'Aarti')
   final double from;
   final double to;
-  final double amount;
 
   const VoucherColWidths({
-    this.sr       = 24,
+    this.amount   = 58,
     this.debitAc  = 88,
     this.ifsc     = 72,
     this.creditAc = 90,
     this.code     = 34,
     this.name     = 105,
     this.place    = 72,
+    this.blank    = 40,   // reasonable default for empty column
+    this.aarti    = 50,   // reasonable default for 'Aarti' column
     this.from     = 44,
     this.to       = 44,
-    this.amount   = 58,
   });
 
   VoucherColWidths copyWith({
-    double? sr,       double? debitAc, double? ifsc,   double? creditAc,
-    double? code,     double? name,    double? place,
-    double? from,     double? to,      double? amount,
+    double? amount,   double? debitAc, double? ifsc,   double? creditAc,
+    double? code,     double? name,    double? place,  double? blank,
+    double? aarti,    double? from,    double? to,
   }) => VoucherColWidths(
-    sr:       sr       ?? this.sr,
+    amount:   amount   ?? this.amount,
     debitAc:  debitAc  ?? this.debitAc,
     ifsc:     ifsc     ?? this.ifsc,
     creditAc: creditAc ?? this.creditAc,
     code:     code     ?? this.code,
     name:     name     ?? this.name,
     place:    place    ?? this.place,
+    blank:    blank    ?? this.blank,
+    aarti:    aarti    ?? this.aarti,
     from:     from     ?? this.from,
     to:       to       ?? this.to,
-    amount:   amount   ?? this.amount,
   );
 
   List<(String label, double width)> get entries => [
-    ('Sr.',        sr),
+    ('Amount',     amount),
     ('Debit A/c',  debitAc),
     ('IFSC',       ifsc),
     ('Credit A/c', creditAc),
     ('Code',       code),
     ('Name',       name),
     ('Place',      place),
+    ('',           blank),   // blank column header empty
+    ('Aarti',      aarti),
     ('Fr.',        from),
     ('To',         to),
-    ('Amount',     amount),
   ];
 
   VoucherColWidths withIndex(int index, double value) {
     return copyWith(
-      sr:       index == 0 ? value : null,
+      amount:   index == 0 ? value : null,
       debitAc:  index == 1 ? value : null,
       ifsc:     index == 2 ? value : null,
       creditAc: index == 3 ? value : null,
       code:     index == 4 ? value : null,
       name:     index == 5 ? value : null,
       place:    index == 6 ? value : null,
-      from:     index == 7 ? value : null,
-      to:       index == 8 ? value : null,
-      amount:   index == 9 ? value : null,
+      blank:    index == 7 ? value : null,
+      aarti:    index == 8 ? value : null,
+      from:     index == 9 ? value : null,
+      to:       index == 10 ? value : null,
     );
   }
 
   double get totalWidth =>
-      sr + debitAc + ifsc + creditAc + code + name + place + from + to + amount;
+      amount + debitAc + ifsc + creditAc + code + name + place +
+      blank + aarti + from + to;
 
   VoucherColWidths scaleToFit(double targetWidth) {
     if (totalWidth == 0) return this;
     final scale = targetWidth / totalWidth;
     return VoucherColWidths(
-      sr:       sr       * scale,
+      amount:   amount   * scale,
       debitAc:  debitAc  * scale,
       ifsc:     ifsc     * scale,
       creditAc: creditAc * scale,
       code:     code     * scale,
       name:     name     * scale,
       place:    place    * scale,
+      blank:    blank    * scale,
+      aarti:    aarti    * scale,
       from:     from     * scale,
       to:       to       * scale,
-      amount:   amount   * scale,
     );
   }
 
   Map<int, TableColumnWidth> get tableColumnWidths => {
-    0: FixedColumnWidth(sr),
-    1: FixedColumnWidth(debitAc),
-    2: FixedColumnWidth(ifsc),
-    3: FixedColumnWidth(creditAc),
-    4: FixedColumnWidth(code),
-    5: FixedColumnWidth(name),
-    6: FixedColumnWidth(place),
-    7: FixedColumnWidth(from),
-    8: FixedColumnWidth(to),
-    9: FixedColumnWidth(amount),
+    0:  FixedColumnWidth(amount),
+    1:  FixedColumnWidth(debitAc),
+    2:  FixedColumnWidth(ifsc),
+    3:  FixedColumnWidth(creditAc),
+    4:  FixedColumnWidth(code),
+    5:  FixedColumnWidth(name),
+    6:  FixedColumnWidth(place),
+    7:  FixedColumnWidth(blank),
+    8:  FixedColumnWidth(aarti),
+    9:  FixedColumnWidth(from),
+    10: FixedColumnWidth(to),
   };
 }
 
@@ -280,9 +288,19 @@ class VoucherPdfPreview extends StatelessWidget {
     int startIndex,
     VoucherColWidths colWidths,
   ) {
+    // Header order: Amount, Debit A/c, IFSC, Credit A/c, Code, Name, Place, (blank), Aarti, Fr., To
     const headers = [
-      'Sr.', 'Debit A/c', 'IFSC', 'Credit A/c',
-      'Code', 'Name', 'Place', 'Fr.', 'To', 'Amount',
+      'Amount',
+      'Debit A/c',
+      'IFSC',
+      'Credit A/c',
+      'Code',
+      'Name',
+      'Place',
+      '',      // blank column header
+      'Aarti',
+      'Fr.',
+      'To',
     ];
 
     return Table(
@@ -292,22 +310,23 @@ class VoucherPdfPreview extends StatelessWidget {
       children: [
         TableRow(
           decoration: const BoxDecoration(color: _hdrBg),
-          children: headers.map(_hCell).toList(),
+          children: headers
+              .map((header) => _hCell(header, center: header == 'Aarti'))
+              .toList(),
         ),
-        ...rows.asMap().entries.map((e) {
-          final i = e.key;
-          final r = e.value;
+        ...rows.map((r) {
           return TableRow(children: [
-            _c('${startIndex + i + 1}'),
-            _c(config.accountNo,  mono: true),
-            _c(r.ifscCode,        mono: true),
-            _c(r.accountNumber,   mono: true),
-            _c(r.sbCode),
-            _c(r.employeeName),
-            _c(r.branch),
-            _c(_fmtDate(r.fromDate)),
-            _c(_fmtDate(r.toDate)),
-            _c(r.amount.toStringAsFixed(2), right: true),
+            _c(r.amount.toStringAsFixed(2), right: true),          // Amount (first)
+            _c(config.accountNo,                mono: true),       // Debit A/c
+            _c(r.ifscCode,                      mono: true),       // IFSC
+            _c(r.accountNumber,                 mono: true),       // Credit A/c
+            _c(r.sbCode),                                           // Code
+            _c(r.employeeName),                                     // Name
+            _c(r.branch),                                           // Place
+            _c(''),                                                 // Blank column
+            _c('Aarti', center: true),                              // Aarti column
+            _c(_fmtDate(r.fromDate)),                              // Fr.
+            _c(_fmtDate(r.toDate)),                                // To.
           ]);
         }),
       ],
@@ -358,7 +377,7 @@ class VoucherPdfPreview extends StatelessWidget {
               child: Image.asset(
                 'assets/images/aarti_signature.png',
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox(),
+                errorBuilder: (_, _, _) => const SizedBox(),
               ),
             ),
           ],
@@ -366,22 +385,47 @@ class VoucherPdfPreview extends StatelessWidget {
       ],
     );
   }
+
   // ── Cell helpers ──────────────────────────────────────────────────────────
-  static Widget _hCell(String t) => Padding(
+  static Widget _hCell(String t, {bool center = false}) => Padding(
         padding: const EdgeInsets.all(3),
-        child: Text(t,
+        child: Align(
+          alignment: center ? Alignment.center : Alignment.centerLeft,
+          child: Text(
+            t,
+            textAlign: center ? TextAlign.center : TextAlign.left,
             style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 8),
             overflow: TextOverflow.ellipsis,
-            maxLines: 1),
+            maxLines: 1,
+          ),
+        ),
       );
 
-  static Widget _c(String t, {bool mono = false, bool right = false}) => Padding(
+  static Widget _c(
+    String t, {
+    bool mono = false,
+    bool right = false,
+    bool center = false,
+  }) => Padding(
         padding: const EdgeInsets.all(2),
-        child: Text(t,
-            textAlign: right ? TextAlign.right : TextAlign.left,
+        child: Align(
+          alignment: center
+              ? Alignment.center
+              : right
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+          child: Text(
+            t,
+            textAlign: center
+                ? TextAlign.center
+                : right
+                    ? TextAlign.right
+                    : TextAlign.left,
             style: TextStyle(fontSize: 8, fontFamily: mono ? 'monospace' : null),
             overflow: TextOverflow.ellipsis,
-            maxLines: 1),
+            maxLines: 1,
+          ),
+        ),
       );
 
   static String _fmtDate(String iso) {
