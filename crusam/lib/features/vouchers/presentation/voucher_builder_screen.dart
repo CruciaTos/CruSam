@@ -765,7 +765,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     }
   }
 
-// ──────────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
 //  FINALISE & EXPORT  —  PDF (tax invoice) + Excel (bank sheet only)
 // ──────────────────────────────────────────────────────────────────────────
 Future<void> _finaliseAndExport() async {

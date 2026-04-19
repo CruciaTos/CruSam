@@ -2,31 +2,30 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persists user-chosen export directories for PDF and Excel files.
-/// Both export services read from this singleton before falling back
-/// to the platform default (Downloads / app documents).
 class ExportPreferencesNotifier extends ChangeNotifier {
   ExportPreferencesNotifier._();
   static final ExportPreferencesNotifier instance = ExportPreferencesNotifier._();
 
-  static const _kPdfPath   = 'export_pdf_path';
-  static const _kExcelPath = 'export_excel_path';
+  static const _kPdfPath       = 'export_pdf_path';
+  static const _kExcelPath     = 'export_excel_path';
+  static const _kUseWidgetPdf  = 'use_widget_pdf_invoice_voucher'; // ← new
 
   String _pdfPath   = '';
   String _excelPath = '';
+  bool   _useWidgetPdf = false; // ← new
   bool   _loaded    = false;
 
-  String get pdfPath   => _pdfPath;
-  String get excelPath => _excelPath;
+  String get pdfPath             => _pdfPath;
+  String get excelPath           => _excelPath;
+  bool   get useWidgetPdfForInvoiceVoucher => _useWidgetPdf; // ← new
 
-  /// Call once at app start (e.g. in main() or a top-level FutureBuilder).
-  /// Safe to call multiple times — subsequent calls are no-ops.
   Future<void> load() async {
     if (_loaded) return;
     final prefs = await SharedPreferences.getInstance();
-    _pdfPath   = prefs.getString(_kPdfPath)   ?? '';
-    _excelPath = prefs.getString(_kExcelPath) ?? '';
-    _loaded    = true;
+    _pdfPath        = prefs.getString(_kPdfPath)   ?? '';
+    _excelPath      = prefs.getString(_kExcelPath) ?? '';
+    _useWidgetPdf   = prefs.getBool(_kUseWidgetPdf) ?? false; // ← new
+    _loaded         = true;
     notifyListeners();
   }
 
@@ -45,6 +44,16 @@ class ExportPreferencesNotifier extends ChangeNotifier {
     await prefs.setString(_kExcelPath, path);
     notifyListeners();
   }
+
+  // ── NEW ────────────────────────────────────────────────────────────────────
+  Future<void> setUseWidgetPdf(bool value) async {
+    if (_useWidgetPdf == value) return;
+    _useWidgetPdf = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kUseWidgetPdf, value);
+    notifyListeners();
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   Future<void> clearPdfPath() async {
     if (_pdfPath.isEmpty) return;
