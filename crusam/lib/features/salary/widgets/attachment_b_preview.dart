@@ -6,6 +6,12 @@ class AttachmentBPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
+  // ---------- Configurable Header Height ----------
+  // Change this value to adjust both logo and letterhead image heights.
+  // The divider and all content below will automatically shift.
+  static const double headerHeight = 140.0;
+  // ------------------------------------------------
+
   final CompanyConfigModel config;
   final EdgeInsets margins;
   final String customerName;
@@ -110,9 +116,8 @@ class AttachmentBPreview extends StatelessWidget {
                 _billingInfo(),
                 const SizedBox(height: 12),
                 _mainTable(),
-                const SizedBox(height: 16), // spacing before footer
+                const SizedBox(height: 16),
                 _footer(),
-                // No Spacer — footer sits directly under table
               ],
             ),
           ),
@@ -121,26 +126,31 @@ class AttachmentBPreview extends StatelessWidget {
 
   Widget _header() => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [_logo(), const SizedBox(width: 20), Expanded(child: _companyInfo())],
+    children: [
+      _logo(),                          // Left: aarti_logo.png
+      const SizedBox(width: 20),
+      Expanded(child: _letterheadImage()), // Right: letterhead.png
+    ],
   );
 
   Widget _logo() => SizedBox(
-    width: 110, height: 75,
-    child: Image.asset('assets/images/aarti_logo.png', fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const _FallbackLogo()),
+    width: 140,
+    height: headerHeight,
+    child: Image.asset(
+      'assets/images/aarti_logo.png',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const _FallbackLogo(),
+    ),
   );
 
-  Widget _companyInfo() => Column(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Text(config.companyName.toUpperCase(), textAlign: TextAlign.right,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _green, letterSpacing: 0.6)),
-      const SizedBox(height: 4),
-      Text(config.address, textAlign: TextAlign.right, style: _body.copyWith(fontSize: 10)),
-      const SizedBox(height: 2),
-      Text('Tel.  Office  :  ${config.phone}', textAlign: TextAlign.right,
-          style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
-    ],
+  Widget _letterheadImage() => SizedBox(
+    height: headerHeight,
+    child: Image.asset(
+      'assets/images/letterhead.png',
+      fit: BoxFit.contain,
+      alignment: Alignment.centerRight,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    ),
   );
 
   Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);
@@ -193,7 +203,6 @@ class AttachmentBPreview extends StatelessWidget {
     ),
   );
 
-  // Font size increased to 10 for Bill No., Date, PO No.
   Widget _kvRight(String k, String v) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
     children: [
@@ -205,7 +214,6 @@ class AttachmentBPreview extends StatelessWidget {
   Widget _mainTable() => Container(
     decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
     child: Column(children: [
-      // Header
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _headerCell('Sr.\nNo', 5),
@@ -217,7 +225,6 @@ class AttachmentBPreview extends StatelessWidget {
       ),
       _divider(0.75),
 
-      // Item Row
       IntrinsicHeight(
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 180),
@@ -236,7 +243,6 @@ class AttachmentBPreview extends StatelessWidget {
 
       _divider(0.50),
 
-      // Totals Area
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
@@ -319,7 +325,6 @@ class AttachmentBPreview extends StatelessWidget {
     ),
   );
 
-  // Font size increased to 10 for item description, QTY, rate, amount data
   Widget _itemCell(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) =>
       Expanded(
@@ -344,7 +349,6 @@ class AttachmentBPreview extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
       const Divider(color: _black, thickness: 0.5),
-
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('',
@@ -356,7 +360,6 @@ class AttachmentBPreview extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Signature image replaces text
           Image.asset(
             'assets/images/aarti_signature.png',
             height: 60,
@@ -383,7 +386,8 @@ class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
   @override
   Widget build(BuildContext context) => Container(
-    width: 110, height: 75,
+    width: 110,
+    height: AttachmentBPreview.headerHeight,  // consistent with headerHeight
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(52),
       border: Border.all(color: const Color(0xFF1A237E), width: 3),

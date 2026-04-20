@@ -161,7 +161,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         ],
                         rows: _vouchers.map((v) => DataRow(cells: [
                           DataCell(Text(
-                            'AE-${v.id?.toString().padLeft(4, '0') ?? '----'}',
+                             v.billNo.isNotEmpty ? v.billNo : '—',
                             style: AppTextStyles.bodySemi.copyWith(color: AppColors.indigo600, fontSize: 13),
                           )),
                           DataCell(Text(v.date)),

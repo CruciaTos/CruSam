@@ -237,7 +237,7 @@ class _ExpandedSidebar extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
       ),
-      child: _buildBottomActions(),
+      child: _buildBottomActions(context),
     ),
   ]);
 
@@ -281,24 +281,28 @@ class _ExpandedSidebar extends StatelessWidget {
     return out;
   }
 
-  Widget _buildBottomActions() {
+  Widget _buildBottomActions(BuildContext context) {
     return Column(
       children: [
         _NavTile(
           icon: Icons.settings_outlined,
           label: 'Settings',
-          selected: active == '/settings',
+          selected: active == '/profile', // Update selection highlight for profile
           depth: 0,
-          onTap: () => onNavigate('/settings'),
+          onTap: () => onNavigate('/profile'), // Changed from '/settings' to '/profile'
         ),
-        const SizedBox(height: 2), // reduced from 4
+        const SizedBox(height: 2),
         _NavTile(
           icon: Icons.logout_outlined,
           label: 'Logout',
           selected: false,
           depth: 0,
-          onTap: () {
-            // Add logout logic
+          onTap: () async {
+            // Perform logout and redirect to login
+            await AuthNotifier.instance.logout();
+            if (context.mounted) {
+              context.go('/login');
+            }
           },
         ),
       ],
@@ -351,15 +355,21 @@ class _CollapsedSidebar extends StatelessWidget {
           _CollapsedTile(
             icon: Icons.settings_outlined,
             label: 'Settings',
-            selected: active == '/settings',
-            onTap: () => onNavigate('/settings'),
+            selected: active == '/profile', // Update selection highlight for profile
+            onTap: () => onNavigate('/profile'), // Changed from '/settings' to '/profile'
           ),
           const SizedBox(height: 2), // reduced from 4
           _CollapsedTile(
             icon: Icons.logout_outlined,
             label: 'Logout',
             selected: false,
-            onTap: () {},
+            onTap: () async {
+              // Perform logout and redirect to login
+              await AuthNotifier.instance.logout();
+              if (context.mounted) {
+                context.go('/login');
+              }
+            },
           ),
         ],
       ),
