@@ -1,4 +1,5 @@
 import 'package:crusam/data/models/margin_settings_model.dart';
+import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/app_colors.dart';
@@ -16,6 +17,8 @@ import 'voucher_pdf_preview.dart';
 import 'bank_disbursement_preview.dart';
 import 'package:crusam/data/models/bank_column_widths_model.dart'; 
 import 'package:crusam/data/models/voucher_column_widths_model.dart';
+import 'package:pdf/widgets.dart' as pw;
+import '../../../../core/preferences/export_preferences_notifier.dart';
 
 export 'voucher_pdf_preview.dart'     show VoucherColWidths;
 export 'bank_disbursement_preview.dart' show BankColWidths;
@@ -105,7 +108,12 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
       final voucher = widget.notifier.enriched;
       final path = widget.type == PreviewType.invoice
           ? await ExcelExportService.exportTaxInvoice(voucher, widget.config)
-          : await ExcelExportService.exportBankDisbursement(voucher, widget.config);
+          : await ExcelExportService.exportBankDisbursement(
+              voucher,
+              widget.config,
+              idbiToOther: widget.notifier.idbiToOther,
+              idbiToIdbi: widget.notifier.idbiToIdbi,
+            );
       if (!mounted) return;
       await Share.shareXFiles(
         [XFile(path)],
@@ -121,37 +129,62 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     }
   }
 
-  Future<void> _exportPdf() async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
-    try {
-      final voucher = widget.notifier.enriched;
-      if (widget.type == PreviewType.invoice) {
+ Future<void> _exportPdf() async {
+  if (_exporting) return;
+  setState(() => _exporting = true);
+  try {
+    final voucher = widget.notifier.enriched;
+    if (widget.type == PreviewType.invoice) {
+      // ── Conditional: widget-based vs screenshot-based ─────────────────────
+      final useWidget =
+          ExportPreferencesNotifier.instance.useWidgetPdfForInvoiceVoucher;
+      if (useWidget) {
+        await WidgetPdfExportService.exportTaxInvoiceAndVoucher(
+          voucher: voucher,
+          config:  widget.config,
+          taxMargins: pw.EdgeInsets.fromLTRB(
+            _marginNotifier1.settings.left,
+            _marginNotifier1.settings.top,
+            _marginNotifier1.settings.right,
+            _marginNotifier1.settings.bottom,
+          ),
+          voucherMargins: pw.EdgeInsets.fromLTRB(
+            _marginNotifier2.settings.left,
+            _marginNotifier2.settings.top,
+            _marginNotifier2.settings.right,
+            _marginNotifier2.settings.bottom,
+          ),
+        );
+      } else {
+        // Existing screenshot method — untouched
         await PdfExportService.exportInvoiceBundle(
           context: context,
           voucher: voucher,
-          config: widget.config,
+          config:  widget.config,
           taxInvoiceMargins: _marginsFrom(_marginNotifier1),
           voucherMargins:    _marginsFrom(_marginNotifier2),
         );
-      } else {
-        await PdfExportService.exportBankDisbursement(
-          context: context,
-          voucher: voucher,
-          config: widget.config,
-          margins: _marginsFrom(_marginNotifier1),
-        );
       }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF export failed: $e'),
-            backgroundColor: Colors.red.shade700),
+    } else {
+      // Bank disbursement — always screenshot, no change
+      await PdfExportService.exportBankDisbursement(
+        context: context,
+        voucher: voucher,
+        config:  widget.config,
+        margins: _marginsFrom(_marginNotifier1),
       );
-    } finally {
-      if (mounted) setState(() => _exporting = false);
     }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('PDF export failed: $e'),
+          backgroundColor: Colors.red.shade700),
+    );
+  } finally {
+    if (mounted) setState(() => _exporting = false);
   }
+}
 
   static EdgeInsets _marginsFrom(MarginSettingsNotifier n) => EdgeInsets.fromLTRB(
         n.settings.left, n.settings.top, n.settings.right, n.settings.bottom,
@@ -287,7 +320,6 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     VoucherColumnWidthsSettings settings,
   ) =>
       VoucherColWidths(
-        sr: settings.sr,
         debitAc: settings.debitAc,
         ifsc: settings.ifsc,
         creditAc: settings.creditAc,
@@ -423,16 +455,6 @@ class _HeaderBar extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: Colors.red.shade700,
                   side: BorderSide(color: Colors.red.shade400),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: onExportExcel,
-                icon:  const Icon(Icons.table_chart_outlined, size: 16),
-                label: const Text('Export Excel'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.green.shade700,
-                  side: BorderSide(color: Colors.green.shade400),
                 ),
               ),
             ],

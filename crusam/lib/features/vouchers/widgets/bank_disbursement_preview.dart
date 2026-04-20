@@ -122,6 +122,25 @@ class BankDisbursementPreview extends StatelessWidget {
     this.colWidths = const BankColWidths(),
   });
 
+  static String _companyBankIfscPrefix(CompanyConfigModel config) {
+    final ifsc = config.ifscCode.trim().toUpperCase();
+    if (ifsc.length >= 4) return ifsc.substring(0, 4);
+    if (config.bankName.toLowerCase().contains('idbi')) return 'IBKL';
+    return ifsc;
+  }
+
+  static bool _isCompanyBankTransfer(
+    VoucherRowModel row,
+    CompanyConfigModel config,
+  ) {
+    final rowIfsc = row.ifscCode.trim().toUpperCase();
+    final bankName = row.bankDetails.trim().toLowerCase();
+    final prefix = _companyBankIfscPrefix(config);
+
+    return (prefix.isNotEmpty && rowIfsc.startsWith(prefix)) ||
+        bankName.contains('idbi');
+  }
+
   static List<Widget> buildPdfPages({
     required VoucherModel       voucher,
     required CompanyConfigModel config,
@@ -135,10 +154,10 @@ class BankDisbursementPreview extends StatelessWidget {
     final rowPages   = _chunkRows(sortedRows);
 
     final idbiOther = sortedRows
-        .where((r) => !r.ifscCode.startsWith('IDIB'))
+        .where((r) => !_isCompanyBankTransfer(r, config))
         .fold(0.0, (a, r) => a + r.amount);
     final idbiIdbi = sortedRows
-        .where((r) => r.ifscCode.startsWith('IDIB'))
+        .where((r) => _isCompanyBankTransfer(r, config))
         .fold(0.0, (a, r) => a + r.amount);
 
     return List<Widget>.generate(

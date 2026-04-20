@@ -8,14 +8,16 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 
 class VoucherNotifier extends ChangeNotifier {
+  // ── Singleton ──────────────────────────────────────────────────────────────
   static final VoucherNotifier instance = VoucherNotifier._();
   VoucherNotifier._();
-  VoucherNotifier();
+  VoucherNotifier();          // keep public ctor for tests
 
-  List<EmployeeModel>    employees    = [];
-  List<VoucherModel>     savedVouchers= [];
-  CompanyConfigModel     config       = const CompanyConfigModel();
-  bool                   isLoading    = false;
+  // ── State ──────────────────────────────────────────────────────────────────
+  List<EmployeeModel>  employees     = [];
+  List<VoucherModel>   savedVouchers = [];
+  CompanyConfigModel   config        = const CompanyConfigModel();
+  bool                 isLoading     = false;
 
   VoucherModel current = VoucherModel(
     date:            DateTime.now().toIso8601String().split('T').first,
@@ -26,23 +28,56 @@ class VoucherNotifier extends ChangeNotifier {
     clientGstin:     AppConstants.defaultClientGstin,
   );
 
-  // --- Computed ---
-  double get baseTotal  => current.rows.fold(0, (acc, r) => acc + r.amount);
-  double get cgst       => baseTotal * AppConstants.cgstRate;
-  double get sgst       => baseTotal * AppConstants.sgstRate;
-  double get totalTax   => cgst + sgst;
-  double get rawTotal   => baseTotal + totalTax;
-  double get finalTotal => rawTotal.roundToDouble();
-  double get roundOff   => finalTotal - rawTotal;
-  double get idbiToOther=> current.rows.where((r) => !r.ifscCode.startsWith('IDIB')).fold(0, (acc, r) => acc + r.amount);
-  double get idbiToIdbi => current.rows.where((r) =>  r.ifscCode.startsWith('IDIB')).fold(0, (acc, r) => acc + r.amount);
+  // ── Computed ───────────────────────────────────────────────────────────────
+  double get baseTotal   => current.rows.fold(0, (a, r) => a + r.amount);
+  double get cgst        => baseTotal * AppConstants.cgstRate;
+  double get sgst        => baseTotal * AppConstants.sgstRate;
+  double get totalTax    => cgst + sgst;
+  double get rawTotal    => baseTotal + totalTax;
+  double get finalTotal  => rawTotal.roundToDouble();
+  double get roundOff    => finalTotal - rawTotal;
+
+  String get _companyBankIfscPrefix {
+    final ifsc = config.ifscCode.trim().toUpperCase();
+    if (ifsc.length >= 4) return ifsc.substring(0, 4);
+    if (config.bankName.toLowerCase().contains('idbi')) return 'IBKL';
+    return ifsc;
+  }
+
+  bool _isCompanyBankTransfer(VoucherRowModel row) {
+    final rowIfsc = row.ifscCode.trim().toUpperCase();
+    final bankName = row.bankDetails.trim().toLowerCase();
+    final prefix = _companyBankIfscPrefix;
+
+    return (prefix.isNotEmpty && rowIfsc.startsWith(prefix)) ||
+        bankName.contains('idbi');
+  }
+
+  double get idbiToOther => current.rows
+      .where((r) => !_isCompanyBankTransfer(r))
+      .fold(0, (a, r) => a + r.amount);
+
+  double get idbiToIdbi  => current.rows
+      .where(_isCompanyBankTransfer)
+      .fold(0, (a, r) => a + r.amount);
 
   VoucherModel get enriched => current.copyWith(
     baseTotal: baseTotal, cgst: cgst, sgst: sgst,
-    totalTax: totalTax, roundOff: roundOff, finalTotal: finalTotal,
+    totalTax:  totalTax,  roundOff: roundOff, finalTotal: finalTotal,
   );
 
+  // ── Load ───────────────────────────────────────────────────────────────────
+  /// Call once per screen mount.
+  ///
+  /// SINGLETON SAFETY: Because this notifier lives for the app's lifetime,
+  /// stale [VoidCallback] listener references can accumulate across Flutter
+  /// hot-reloads (the widget disposes but the singleton keeps the old
+  /// closure). We cannot clear *all* listeners here (that would break
+  /// widgets that haven't re-registered yet), so instead we rely on each
+  /// widget calling [removeListener] before [addListener] in its own
+  /// [initState]. See _MetadataCardState for the pattern.
   Future<void> loadDependencies() async {
+    if (isLoading) return;           // prevent concurrent double-load
     isLoading = true;
     notifyListeners();
     try {
@@ -55,8 +90,12 @@ class VoucherNotifier extends ChangeNotifier {
       final vMaps = await DatabaseHelper.instance.getAllVouchers();
       final loaded = <VoucherModel>[];
       for (final v in vMaps) {
-        final rowMaps = await DatabaseHelper.instance.getRowsByVoucherId(v['id'] as int);
-        loaded.add(VoucherModel.fromDbMap(v, rowMaps.map(VoucherRowModel.fromDbMap).toList()));
+        final rowMaps = await DatabaseHelper.instance
+            .getRowsByVoucherId(v['id'] as int);
+        loaded.add(VoucherModel.fromDbMap(
+          v,
+          rowMaps.map(VoucherRowModel.fromDbMap).toList(),
+        ));
       }
       savedVouchers = loaded;
     } finally {
@@ -65,16 +104,20 @@ class VoucherNotifier extends ChangeNotifier {
     }
   }
 
+  // ── Mutations ──────────────────────────────────────────────────────────────
   void update(VoucherModel Function(VoucherModel) fn) {
     current = fn(current);
     notifyListeners();
   }
 
   void addRow() {
-    final id = '${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(9999)}';
+    final id = '${DateTime.now().millisecondsSinceEpoch}'
+               '${Random().nextInt(9999)}';
     final row = VoucherRowModel(
-      id: id, deptCode: current.deptCode,
-      debitAccountNumber: config.accountNo, debitAccountName: config.companyName,
+      id:                id,
+      deptCode:          current.deptCode,
+      debitAccountNumber:config.accountNo,
+      debitAccountName:  config.companyName,
     );
     current = current.copyWith(rows: [...current.rows, row]);
     notifyListeners();
@@ -88,20 +131,28 @@ class VoucherNotifier extends ChangeNotifier {
   }
 
   void selectEmployee(String rowId, String empId) {
-    final emp = employees.firstWhere((e) => e.id.toString() == empId, orElse: () => const EmployeeModel(name: ''));
-    updateRow(rowId, (r) => r.copyWith(
-      employeeId:    empId,
-      employeeName:  emp.name,
-      ifscCode:      emp.ifscCode,
-      accountNumber: emp.accountNumber,
-      bankDetails:   emp.bankDetails,
-      branch:        emp.branch,
-      sbCode:        emp.sbCode,
-    ));
+    final emp = employees.firstWhere(
+      (e) => e.id.toString() == empId,
+      orElse: () => const EmployeeModel(name: ''),
+    );
+    updateRow(
+      rowId,
+      (r) => r.copyWith(
+        employeeId:    empId,
+        employeeName:  emp.name,
+        ifscCode:      emp.ifscCode,
+        accountNumber: emp.accountNumber,
+        bankDetails:   emp.bankDetails,
+        branch:        emp.branch,
+        sbCode:        emp.sbCode,
+      ),
+    );
   }
 
   void removeRow(String id) {
-    current = current.copyWith(rows: current.rows.where((r) => r.id != id).toList());
+    current = current.copyWith(
+      rows: current.rows.where((r) => r.id != id).toList(),
+    );
     notifyListeners();
   }
 
@@ -114,12 +165,14 @@ class VoucherNotifier extends ChangeNotifier {
   Future<bool> saveVoucher() async {
     if (current.title.trim().isEmpty) return false;
     try {
-      final dbMap = enriched.toDbMap();
-      final vid = await DatabaseHelper.instance.insertVoucher(dbMap);
+      final vid = await DatabaseHelper.instance.insertVoucher(enriched.toDbMap());
       for (final row in current.rows) {
         await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(vid));
       }
-      savedVouchers = [enriched.copyWith(id: vid, status: VoucherStatus.saved), ...savedVouchers];
+      savedVouchers = [
+        enriched.copyWith(id: vid, status: VoucherStatus.saved),
+        ...savedVouchers,
+      ];
       _resetCurrent();
       notifyListeners();
       return true;

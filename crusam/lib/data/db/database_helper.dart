@@ -53,6 +53,52 @@ class DatabaseHelper {
     await _backfillEmployeeCharges(db);
   }
 
+  String _employeeSeedKey(Map<String, dynamic> employee) {
+    String normalized(dynamic value) => (value?.toString() ?? '').trim().toLowerCase();
+
+    final pfNo = normalized(employee['pf_no']);
+    if (pfNo.isNotEmpty && pfNo != '-' && !pfNo.endsWith('/')) {
+      return 'pf:$pfNo';
+    }
+
+    final uanNo = normalized(employee['uan_no']);
+    if (uanNo.isNotEmpty && uanNo != '-') {
+      return 'uan:$uanNo';
+    }
+
+    final name = normalized(employee['name']);
+    final accountNumber = normalized(employee['account_number']);
+    return 'na:$name|$accountNumber';
+  }
+
+  Future<void> _ensureSeedEmployees(Database db) async {
+    final existingEmployees = await db.query(
+      'employees',
+      columns: ['pf_no', 'uan_no', 'name', 'account_number'],
+    );
+
+    final existingKeys = existingEmployees.map(_employeeSeedKey).toSet();
+    final batch = db.batch();
+    var hasInserts = false;
+
+    for (final employee in kEmployeeSeedData) {
+      final key = _employeeSeedKey(employee);
+      if (existingKeys.contains(key)) continue;
+
+      existingKeys.add(key);
+      hasInserts = true;
+      batch.insert(
+        'employees',
+        employee,
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
+    if (hasInserts) {
+      await batch.commit(noResult: true);
+    }
+  }
+
   /// Updates basic_charges and other_charges for existing employees that have
   /// 0 values, by matching against the seed data via PF number or UAN number.
   /// This fixes DBs created before charges were stored in the seed.
@@ -235,18 +281,7 @@ class DatabaseHelper {
       }
     }
 
-    final empRows = await db.query('employees', columns: ['id'], limit: 1);
-    if (empRows.isEmpty) {
-      final batch = db.batch();
-      for (final e in kEmployeeSeedData) {
-        batch.insert(
-          'employees',
-          e,
-          conflictAlgorithm: ConflictAlgorithm.ignore,
-        );
-      }
-      await batch.commit(noResult: true);
-    }
+    await _ensureSeedEmployees(db);
   }
 
   // --- Employees ---

@@ -1,5 +1,5 @@
-import 'package:crusam/features/salary/services/Salary_pdf_export_service.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -8,6 +8,7 @@ import '../../../data/models/company_config_model.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
+import '../../vouchers/services/pdf_export_service.dart';
 import '../../vouchers/widgets/item_description_field.dart';
 import '../widgets/salary_bill_preview.dart';
 
@@ -18,6 +19,8 @@ class SalaryBillsScreen extends StatefulWidget {
 }
 
 class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
+  static final _dateFormat = DateFormat('dd/MM/yyyy');
+
   final _descNotifier = ItemDescriptionNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -31,9 +34,8 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       text: '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093');
   final _clientGstCtrl  = TextEditingController(text: '27AABCC1597Q1Z2');
   final _dateCtrl       = TextEditingController(
-      text: DateTime.now().toIso8601String().split('T').first);
+      text: DateFormat('dd/MM/yyyy').format(DateTime.now()));
 
-  // Hardcoded company codes – same as in SalaryEmployeesScreen
   static const List<String> _companyCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
   late final Listenable _fieldListenable = Listenable.merge([
@@ -66,12 +68,18 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   }
 
   Future<void> _pickDate(BuildContext context) async {
+    DateTime initialDate;
+    try {
+      initialDate = _dateFormat.parse(_dateCtrl.text);
+    } catch (_) {
+      initialDate = DateTime.now();
+    }
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.tryParse(_dateCtrl.text) ?? DateTime.now(),
+      initialDate: initialDate,
       firstDate: DateTime(2000), lastDate: DateTime(2100),
     );
-    if (picked != null) _dateCtrl.text = picked.toIso8601String().split('T').first;
+    if (picked != null) _dateCtrl.text = _dateFormat.format(picked);
   }
 
   Future<void> _exportPdf() async {
@@ -79,21 +87,35 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     setState(() => _exporting = true);
     try {
       final sc = SalaryStateController.instance;
-      await SalaryPdfExportService.exportSalaryInvoice(
-        config:            _config,
-        billNo:            _billNoCtrl.text,
-        date:              _dateCtrl.text,
-        poNo:              _poNoCtrl.text,
-        itemDescription:   _itemDescription,
-        customerName:      _clientNameCtrl.text,
-        customerAddress:   _clientAddrCtrl.text,
-        customerGst:       _clientGstCtrl.text,
-        invoiceBaseAmount: sc.invoiceTotal,
+      await PdfExportService.exportWidgets(
+        context: context,
+        pages: SalaryBillPreview.buildPdfPages(
+          config:            _config,
+          billNo:            _billNoCtrl.text,
+          date:              _dateCtrl.text,
+          poNo:              _poNoCtrl.text,
+          itemDescription:   _itemDescription,
+          customerName:      _clientNameCtrl.text,
+          customerAddress:   _clientAddrCtrl.text,
+          customerGst:       _clientGstCtrl.text,
+          invoiceBaseAmount: sc.invoiceTotal,
+        ),
+        fileNameSlug: 'salary_invoice_${_billNoCtrl.text.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_')}',
+        filePrefix:   'salary_invoice',
+        shareSubject: 'Salary Invoice',
+        assetPathsToPrecache: [
+          'assets/images/aarti_logo.png',
+          'assets/images/aarti_signature.png',
+        ],
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700));
+        SnackBar(
+          content: Text('Export failed: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -111,18 +133,15 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
         child: Column(children: [
-          // ── Toolbar (Column version) ──────────────────────────────────────
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // First row: Title, Month badge, and Download button
               Row(
                 children: [
                   Text(title, style: AppTextStyles.h3),
                   const SizedBox(width: AppSpacing.md),
                   _MonthBadge(monthName: n.monthName, year: n.year),
                   const Spacer(),
-                  // Download button
                   if (_exporting)
                     const SizedBox(width: 24, height: 24,
                         child: CircularProgressIndicator(strokeWidth: 2))
@@ -138,7 +157,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                     ),
                 ],
               ),
-              // Second row: Company code filter chips (hardcoded, same as employee screen)
               const SizedBox(height: AppSpacing.sm),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -154,7 +172,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           const SizedBox(height: AppSpacing.lg),
           Expanded(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Left pane
               Container(
                 width: 272,
                 color: Colors.grey[200],
@@ -229,7 +246,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   );
 }
 
-// ── Month Badge Widget ─────────────────────────────────────────────────────────
 class _MonthBadge extends StatelessWidget {
   final String monthName;
   final int year;

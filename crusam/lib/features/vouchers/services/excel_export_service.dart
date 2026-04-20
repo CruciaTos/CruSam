@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui; // Added for image aspect ratio decoding
+import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
@@ -28,6 +28,7 @@ class ExcelExportService {
   static const double _colWidthCode        = 10.0;
   static const double _colWidthBeneficiary = 22.0;
   static const double _colWidthPlace       = 29.0;
+  static const double _colWidthExpenses    = 20.0; // ← was blank column
   static const double _colWidthBankDetails = 25.0;
   static const double _colWidthDebitName   = 18.0;
   static const double _colWidthFrom        = 10.0;
@@ -35,13 +36,10 @@ class ExcelExportService {
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🖼️ SIGNATURE IMAGE CONFIGURATION
-  // _signatureColOffset: 0 = Amount, 1 = Debit A/C, ... 9 = Fr, 10 = To
-  // _signatureRowOffset: rows below the last data row (Fr./To. column end)
-  // _signatureSize: square size in pixels (0 = auto‑calculate from spanned columns)
   // ─────────────────────────────────────────────────────────────────────────────
-  static const int _signatureColOffset = 8;   // Start at Debit A/C column
-  static const int _signatureRowOffset = 12;  // rows below last data row
-  static const int _signatureSize      = 0;   // 0 = auto‑size to span Debit A/C + Fr + To
+  static const int _signatureColOffset = 8;
+  static const int _signatureRowOffset = 12;
+  static const int _signatureSize      = 0;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🖨️ PRINT AREA & PAGE SETUP
@@ -62,6 +60,8 @@ class ExcelExportService {
   static const String _splitTextColor    = '#FFFFFFFF';
   static const String _splitLabelColor   = '#FF94A3B8';
   static const String _splitValueColor   = '#FFCBD5E1';
+  // 👇 Number of columns between the label and the value in the bank split box
+  static const int _bankSplitColumnOffset = 3;   // <-- CHANGE THIS TO ADJUST BLANK COLUMNS
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔲 DATA TABLE OUTER BORDER
@@ -71,9 +71,8 @@ class ExcelExportService {
   // ─────────────────────────────────────────────────────────────────────────────
   // 📏 TOTAL IN WORDS CELL MERGING
   // ─────────────────────────────────────────────────────────────────────────────
-  static const int _wordsCellMergeCount = 3;
+  static const int _wordsCellMergeCount = 2;
 
-  // ── Helper to get the actual starting column index for data ─────────────────
   static int get _dataStartCol => _includeLeftBlankColumn ? 2 : 1;
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -101,7 +100,7 @@ class ExcelExportService {
     CompanyConfigModel config,
   ) => _runGenerator(voucher, config);
 
-  // ── Bank Sheet – exact reference format using Syncfusion ──────────────────
+  // ── Bank Sheet ──────────────────────────────────────────────────────────────
 
   static Future<String> _exportBankSheet(
     VoucherModel voucher,
@@ -114,6 +113,9 @@ class ExcelExportService {
     final sheetName =
         'Bill-Data-${voucher.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
     final Worksheet sheet = workbook.worksheets.addWithName(sheetName);
+
+    // Derive month name once from the voucher date
+    final String monthName = _monthFromDate(voucher.date);
 
     _setColumnWidths(sheet);
     _writeTitleRow(sheet, voucher, config);
@@ -128,7 +130,7 @@ class ExcelExportService {
 
     int rowIndex = 4;
     for (final r in sortedRows) {
-      _writeDataRow(sheet, rowIndex, r, config);
+      _writeDataRow(sheet, rowIndex, r, config, monthName);
       rowIndex++;
     }
     final int lastDataRow = rowIndex;
@@ -136,12 +138,12 @@ class ExcelExportService {
     if (_dataTableOuterBorder) {
       final int headerRow = 4;
       final int startCol = _dataStartCol;
-      final int endCol = startCol + 10;
+      final int endCol = startCol + 11; // 12 columns (indices 0..11)
       final Range tableRange = sheet.getRangeByIndex(headerRow, startCol, lastDataRow, endCol);
       _applyBorder(tableRange);
     }
 
-    rowIndex++; // blank row
+    rowIndex++;
     final int totalRowIndex = rowIndex;
     _writeTotalRow(sheet, totalRowIndex, sortedRows.isNotEmpty, voucher.baseTotal, lastDataRow);
     final int totalRowExcel = totalRowIndex + 1;
@@ -167,7 +169,7 @@ class ExcelExportService {
     return await _saveExcelFileWithIncrement(bytes, voucher, 'bank_disbursement');
   }
 
-  // ── Column widths ─────────────────────────────────────────────────────────
+  // ── Column widths ──────────────────────────────────────────────────────────
 
   static void _setColumnWidths(Worksheet sheet) {
     int col = 1;
@@ -182,6 +184,7 @@ class ExcelExportService {
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;        col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary; col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;       col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthExpenses;    col++; // ← Expenses
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails; col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitName;   col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthFrom;        col++;
@@ -205,7 +208,7 @@ class ExcelExportService {
   static void _writeHeaderRow(Worksheet sheet) {
     const headers = [
       'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
-      'Beneficiary', 'Place', 'Bank Details', 'Debit Name', 'Fr.', 'To',
+      'Beneficiary', 'Place', 'Expenses', 'Bank Details', 'Debit Name', 'Fr.', 'To',
     ];
     final int row = 4;
     int col = _dataStartCol;
@@ -217,8 +220,13 @@ class ExcelExportService {
     }
   }
 
-  static void _writeDataRow(Worksheet sheet, int rowIndex, dynamic r,
-      CompanyConfigModel config) {
+  static void _writeDataRow(
+    Worksheet sheet,
+    int rowIndex,
+    dynamic r,
+    CompanyConfigModel config,
+    String monthName,
+  ) {
     int col = _dataStartCol;
 
     _setCellValue(sheet, rowIndex, col, r.amount, isNumber: true, hAlign: HAlignType.center); col++;
@@ -228,6 +236,12 @@ class ExcelExportService {
     _setCellValue(sheet, rowIndex, col, r.sbCode, hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, r.employeeName, hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, r.branch, hAlign: HAlignType.center); col++;
+    // Expenses column — dynamically populated from voucher date month
+    _setCellValue(
+      sheet, rowIndex, col,
+      monthName.isNotEmpty ? 'Exp. for - $monthName' : '',
+      hAlign: HAlignType.center,
+    ); col++;
     _setCellValue(sheet, rowIndex, col, r.bankDetails, hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, config.companyName.toLowerCase(),
         hAlign: HAlignType.center); col++;
@@ -295,7 +309,7 @@ class ExcelExportService {
   }) {
     int row = startRow;
     final int labelCol = _dataStartCol;
-    final int valueCol = labelCol + 4;
+    final int valueCol = labelCol + _bankSplitColumnOffset;   // ← NOW CONFIGURABLE
 
     final Range titleRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
     titleRange.merge();
@@ -311,7 +325,7 @@ class ExcelExportService {
     row++;
     _writeSplitRow(sheet, row, labelCol, valueCol, 'From IDBI to IDBI Bank', idbiToIdbi);
     row++;
-    row++; // spacer
+    row++;
     final Range dividerRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
     dividerRange.merge();
     dividerRange.cellStyle.borders.bottom.lineStyle = LineStyle.thin;
@@ -360,13 +374,11 @@ class ExcelExportService {
     }
   }
 
-  // Updated to preserve original aspect ratio
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
       final ByteData data = await rootBundle.load('');
       final Uint8List bytes = data.buffer.asUint8List();
 
-      // Decode image to get natural dimensions
       final ui.Codec codec = await ui.instantiateImageCodec(bytes);
       final ui.FrameInfo frameInfo = await codec.getNextFrame();
       final int naturalWidth = frameInfo.image.width;
@@ -377,29 +389,26 @@ class ExcelExportService {
       final int startCol = _dataStartCol + _signatureColOffset;
       final int imageRow = lastDataRow + _signatureRowOffset;
 
-      // Determine target width
       double targetWidthPx;
       if (_signatureSize == 0) {
-        // Auto-calculate width from spanned columns (Debit A/C + Fr + To)
         final List<double> widths = [
           _colWidthAmount, _colWidthDebitAc, _colWidthIFSC, _colWidthCreditAc,
-          _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthBankDetails,
-          _colWidthDebitName, _colWidthFrom, _colWidthTo
+          _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthExpenses,
+          _colWidthBankDetails, _colWidthDebitName, _colWidthFrom, _colWidthTo,
         ];
-        double totalWidthUnits = widths[1] + widths[9] + widths[10];
-        const double pxPerUnit = 7.0; // approximate conversion
+        double totalWidthUnits = widths[1] + widths[10] + widths[11];
+        const double pxPerUnit = 7.0;
         targetWidthPx = totalWidthUnits * pxPerUnit;
       } else {
         targetWidthPx = _signatureSize.toDouble();
       }
 
-      // Compute height preserving aspect ratio
       final double aspectRatio = naturalHeight / naturalWidth;
       final int targetHeightPx = (targetWidthPx * aspectRatio).round();
 
       final Picture picture = sheet.pictures.addBase64(
-        imageRow,   // ← row first
-        startCol,   // ← column second
+        imageRow,
+        startCol,
         base64.encode(bytes),
       );
       picture.height = targetHeightPx;
@@ -410,7 +419,7 @@ class ExcelExportService {
   }
 
   static void _configurePrintSetup(Worksheet sheet, int lastRow) {
-    final int toColumnIndex = _dataStartCol + 10;
+    final int toColumnIndex = _dataStartCol + 11; // 12 columns (0..11)
     final String endColLetter = _colIndexToLetter(toColumnIndex);
     final String printArea = '$_printStartColumn$_printStartRow:$endColLetter$lastRow';
     sheet.pageSetup.printArea = printArea;
@@ -420,7 +429,7 @@ class ExcelExportService {
     }
   }
 
-  // ── Style helpers ─────────────────────────────────────────────────────────
+  // ── Style helpers ──────────────────────────────────────────────────────────
   static void _applyCellStyle(Range range,
       {bool bold = false,
       double fontSize = 11,
@@ -436,7 +445,22 @@ class ExcelExportService {
     range.cellStyle.borders.all.lineStyle = LineStyle.thin;
   }
 
-  // ── File saving with auto‑increment ──────────────────────────────────────
+  // ── Month name from voucher date (YYYY-MM-DD) ──────────────────────────────
+  static String _monthFromDate(String date) {
+    if (date.isEmpty) return '';
+    try {
+      final dt = DateTime.parse(date);
+      const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
+      return months[dt.month - 1];
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // ── File saving with auto‑increment ───────────────────────────────────────
   static Future<String> _saveExcelFileWithIncrement(
       List<int> bytes, VoucherModel voucher, String prefix) async {
     final outDir = await _outputDir();
@@ -462,7 +486,7 @@ class ExcelExportService {
     return file.path;
   }
 
-  // ── Python‑based invoice export (unchanged) ───────────────────────────────
+  // ── Python‑based invoice export (unchanged) ────────────────────────────────
   static Future<_ExportPaths> _runGenerator(
     VoucherModel voucher,
     CompanyConfigModel config,

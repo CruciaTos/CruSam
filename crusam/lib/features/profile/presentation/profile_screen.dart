@@ -17,6 +17,102 @@ import '../../auth/data/models/user_model.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/update_card.dart';
 
+
+
+
+
+class _PdfMethodCard extends StatelessWidget {
+  const _PdfMethodCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = ExportPreferencesNotifier.instance;
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (ctx, _) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: AppColors.slate200),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.picture_as_pdf_outlined,
+                  size: 18, color: AppColors.slate500),
+              const SizedBox(width: 8),
+              Text('PDF Generation', style: AppTextStyles.h4),
+            ]),
+            const SizedBox(height: 4),
+            Text(
+              'Applies to Tax Invoice & Voucher PDFs only.',
+              style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        prefs.useWidgetPdfForInvoiceVoucher
+                            ? 'Widget-based (Better Quality)'
+                            : 'Screenshot-based (Default)',
+                        style: AppTextStyles.bodyMedium,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        prefs.useWidgetPdfForInvoiceVoucher
+                            ? 'Generates PDF using structured pw widgets — crisp text, no rasterization.'
+                            : 'Captures a screenshot of the preview — matches on-screen appearance exactly.',
+                        style: AppTextStyles.small
+                            .copyWith(color: AppColors.slate500),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Switch(
+                  value: prefs.useWidgetPdfForInvoiceVoucher,
+                  activeColor: AppColors.indigo600,
+                  onChanged: (v) => prefs.setUseWidgetPdf(v),
+                ),
+              ],
+            ),
+            if (prefs.useWidgetPdfForInvoiceVoucher) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.indigo50,
+                  border: Border.all(color: AppColors.indigo500.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(AppSpacing.radius),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.info_outline,
+                      size: 14, color: AppColors.indigo600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Widget PDF is active for Tax Invoice & Voucher exports.',
+                      style: AppTextStyles.small.copyWith(
+                          color: AppColors.indigo600,
+                          fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
   @override
@@ -196,6 +292,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             const SizedBox(height: 20),
                             const _ExportPathsCard(),
+                            const SizedBox(height: 20),
+                            const _PdfMethodCard(),   // ← insert here
                             const SizedBox(height: 20),
                             const UpdateCard(),
                           ],

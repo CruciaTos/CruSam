@@ -17,12 +17,42 @@ class EmployeeFormScreen extends StatefulWidget {
 
 class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  bool _saving = false;
+  bool _saving   = false;
   bool _deleting = false;
   String _gender = 'M';
 
   List<String> _codeList = [];
   String? _selectedCode;
+
+  // ── Bank dropdown ──────────────────────────────────────────────────────────
+  String? _selectedBank;
+  static const _bankOptions = [
+    'IDBI Bank Ltd.',
+    'State Bank Of India',
+    'HDFC Bank Ltd',
+    'Punjab National Bank',
+    'Canara Bank',
+    'Bank Of India',
+    'Bank Of Maharashtra',
+    'Union Bank Of India',
+    'Indian Overseas Bank',
+    'Indian Bank',
+    'Bank Of Baroda',
+    'Central Bank Of India',
+    'Karur Vysya Bank',
+    'Kotak Mahindra Bank',
+    'ICICI Bank Ltd.',
+    'The Kalyan Janata Sahakari Bank Ltd.',
+    'Dombivali Nagari Bank Ltd.',
+    'The Thane District Central Co-Op Bank Ltd',
+    'Karnataka Vikas Grameena Bank',
+    'Pragathi Krishna Gramin Bank',
+    'Other',
+  ];
+
+  // ── Zone dropdown ──────────────────────────────────────────────────────────
+  String? _selectedZone;
+  static const _zoneOptions = ['North', 'South', 'East', 'West'];
 
   late final _ctrl = <String, TextEditingController>{
     'srNo': TextEditingController(),
@@ -69,6 +99,12 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       _ctrl['otherCharges']!.text =
           m.otherCharges == 0 ? '' : m.otherCharges.toStringAsFixed(2);
       _gender = m.gender;
+
+      // Initialise dropdowns from saved values
+      _selectedBank = _bankOptions.contains(m.bankDetails)
+          ? m.bankDetails
+          : null;
+      _selectedZone = _zoneOptions.contains(m.zone) ? m.zone : null;
     }
   }
 
@@ -116,6 +152,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         accountNumber: _ctrl['accountNumber']!.text.trim(),
         aartiAcNo: _ctrl['aartiAcNo']!.text.trim(),
         sbCode: _ctrl['sbCode']!.text.trim(),
+        // Use dropdown value if selected, otherwise fall back to controller text
         bankDetails: _ctrl['bankDetails']!.text.trim(),
         branch: _ctrl['branch']!.text.trim(),
         zone: _ctrl['zone']!.text.trim(),
@@ -207,26 +244,54 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
           value: _selectedCode,
-          decoration: const InputDecoration(
-            labelText: 'Code',
-            border: OutlineInputBorder(),
-          ),
-          items: _codeList.map((code) {
-            return DropdownMenuItem<String>(
-              value: code,
-              child: Text(code),
-            );
-          }).toList(),
+          decoration: const InputDecoration(labelText: 'Code'),
+          items: _codeList
+              .map((c) =>
+                  DropdownMenuItem<String>(value: c, child: Text(c)))
+              .toList(),
           onChanged: _codeList.isEmpty
               ? null
-              : (value) {
-                  setState(() {
-                    _selectedCode = value;
-                    _ctrl['code']!.text = value ?? '';
-                  });
-                },
-          validator: (value) =>
-              value == null || value.isEmpty ? 'Please select a code' : null,
+              : (v) => setState(() {
+                    _selectedCode = v;
+                    _ctrl['code']!.text = v ?? '';
+                  }),
+          validator: (v) =>
+              v == null || v.isEmpty ? 'Please select a code' : null,
+        ),
+      );
+
+  // ── Bank dropdown ──────────────────────────────────────────────────────────
+  Widget _bankDropdown() => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.md),
+        child: DropdownButtonFormField<String>(
+          value: _selectedBank,
+          decoration: const InputDecoration(labelText: 'Bank Details'),
+          isExpanded: true,
+          items: _bankOptions
+              .map((b) =>
+                  DropdownMenuItem<String>(value: b, child: Text(b)))
+              .toList(),
+          onChanged: (v) => setState(() {
+            _selectedBank = v;
+            _ctrl['bankDetails']!.text = v ?? '';
+          }),
+        ),
+      );
+
+  // ── Zone dropdown ──────────────────────────────────────────────────────────
+  Widget _zoneDropdown() => Padding(
+        padding: const EdgeInsets.only(bottom: AppSpacing.md),
+        child: DropdownButtonFormField<String>(
+          value: _selectedZone,
+          decoration: const InputDecoration(labelText: 'Zone'),
+          items: _zoneOptions
+              .map((z) =>
+                  DropdownMenuItem<String>(value: z, child: Text(z)))
+              .toList(),
+          onChanged: (v) => setState(() {
+            _selectedZone = v;
+            _ctrl['zone']!.text = v ?? '';
+          }),
         ),
       );
 
@@ -326,11 +391,12 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                           type: TextInputType.number),
                       _field('sbCode', 'S/b Code',
                           type: TextInputType.number),
-                      _field('bankDetails', 'Bank Details',
-                          cap: TextCapitalization.words),
+                      // ── Bank dropdown replaces plain text field ──────────
+                      _bankDropdown(),
                       _field('branch', 'Branch',
                           cap: TextCapitalization.words),
-                      _field('zone', 'Zone', cap: TextCapitalization.words),
+                      // ── Zone dropdown replaces plain text field ──────────
+                      _zoneDropdown(),
                       _field('dateOfJoining', 'Date of Joining',
                           readOnly: true, onTap: _pickDate),
                       Row(children: [

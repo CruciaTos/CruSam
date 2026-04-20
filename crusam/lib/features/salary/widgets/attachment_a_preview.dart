@@ -5,6 +5,12 @@ class AttachmentAPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
+  // ---------- Configurable Header Height ----------
+  // Change this value to adjust both logo and letterhead image heights.
+  // The divider and all content below will automatically shift.
+  static const double headerHeight = 140.0;
+  // ------------------------------------------------
+
   final CompanyConfigModel config;
   final EdgeInsets margins;
 
@@ -67,6 +73,9 @@ class AttachmentAPreview extends StatelessWidget {
   static const _grandBg = Color(0xFFD6DCF5);
   static const _bSide   = BorderSide(color: _black, width: 0.75);
   static const _body    = TextStyle(fontSize: 9, color: _black, height: 1.45);
+
+  static String _multiline(String text) =>
+      text.replaceAll('//', '\n').replaceAll('/n', '\n');
 
   /// Static method to generate PDF pages with all invoice details.
   static List<Widget> buildPdfPages({
@@ -144,15 +153,15 @@ class AttachmentAPreview extends StatelessWidget {
   Widget _header() => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      _logo(),
+      _logo(),                          // Left: aarti_logo.png
       const SizedBox(width: 20),
-      Expanded(child: _companyInfo()),
+      Expanded(child: _letterheadImage()), // Right: letterhead.png
     ],
   );
 
   Widget _logo() => SizedBox(
-    width: 110,
-    height: 75,
+    width: 140,                         // width can remain fixed or also be made configurable
+    height: headerHeight,
     child: Image.asset(
       'assets/images/aarti_logo.png',
       fit: BoxFit.contain,
@@ -160,28 +169,14 @@ class AttachmentAPreview extends StatelessWidget {
     ),
   );
 
-  Widget _companyInfo() => Column(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Text(
-        config.companyName.toUpperCase(),
-        textAlign: TextAlign.right,
-        style: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w900,
-          color: _green,
-          letterSpacing: 0.6,
-        ),
-      ),
-      const SizedBox(height: 4),
-      Text(config.address, textAlign: TextAlign.right, style: _body.copyWith(fontSize: 10)),
-      const SizedBox(height: 2),
-      Text(
-        'Tel.  Office  :  ${config.phone}',
-        textAlign: TextAlign.right,
-        style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-      ),
-    ],
+  Widget _letterheadImage() => SizedBox(
+    height: headerHeight,
+    child: Image.asset(
+      'assets/images/letterhead.png',
+      fit: BoxFit.contain,
+      alignment: Alignment.centerRight,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    ),
   );
 
   Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);
@@ -213,9 +208,10 @@ class AttachmentAPreview extends StatelessWidget {
                 children: [
                   Text('BILL To,', style: _body),
                   const SizedBox(height: 4),
-                  Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+                  Text(_multiline(customerName),
+                      style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
                   const SizedBox(height: 2),
-                  Text(customerAddress, style: _body),
+                  Text(_multiline(customerAddress), style: _body),
                   const SizedBox(height: 10),
                   Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
                 ],
@@ -397,7 +393,8 @@ class AttachmentAPreview extends StatelessWidget {
 
   Widget _itemCellDesc(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
-    final parts = text.split('(Vouchers');
+    final normalized = _multiline(text);
+    final parts = normalized.split('(Vouchers');
     return Expanded(
       flex: flex,
       child: Container(
@@ -417,7 +414,7 @@ class AttachmentAPreview extends StatelessWidget {
                   ],
                 ),
               )
-            : Text(text, style: _body.copyWith(fontSize: 10)),
+            : Text(normalized, style: _body.copyWith(fontSize: 10)),
       ),
     );
   }
@@ -545,6 +542,7 @@ class AttachmentAPreview extends StatelessWidget {
   Widget _footer() => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      const Divider(color: _black, thickness: 0.5),
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -561,7 +559,7 @@ class AttachmentAPreview extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Signature image replaces text
+          // Signature image
           Image.asset(
             'assets/images/aarti_signature.png',
             height: 60,
@@ -589,7 +587,7 @@ class _FallbackLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     width: 110,
-    height: 75,
+    height: AttachmentAPreview.headerHeight,  // use same height for fallback
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(52),
       border: Border.all(color: const Color(0xFF1A237E), width: 3),

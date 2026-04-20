@@ -6,6 +6,12 @@ class SalaryBillPreview extends StatelessWidget {
   static const double a4Width  = 793.7;
   static const double a4Height = 1122.5;
 
+  // ---------- Configurable Header Height ----------
+  // Change this value to adjust both logo and letterhead image heights.
+  // The divider and all content below will automatically shift.
+  static const double headerHeight = 140.0;
+  // ------------------------------------------------
+
   final CompanyConfigModel config;
   final EdgeInsets margins;
 
@@ -31,8 +37,8 @@ class SalaryBillPreview extends StatelessWidget {
     super.key,
     required this.config,
     this.margins              = const EdgeInsets.all(24),
-    this.customerName         = 'M/s Diversey India Hygiene Private Ltd.',
-    this.customerAddress      = '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093',
+    this.customerName         = 'M/s Diversey India Hygiene Pvt Ltd.',
+    this.customerAddress      = '501, 5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093',
     this.customerGst          = '27AABCC1597Q1Z2',
     this.billNo               = 'AE/-/25-26',
     this.date                 = '2026-04-11',
@@ -63,6 +69,9 @@ class SalaryBillPreview extends StatelessWidget {
 
   static const _bSide = BorderSide(color: _black, width: 0.75);
   static const _body  = TextStyle(fontSize: 9, color: _black, height: 1.45);
+
+  static String _multiline(String text) =>
+      text.replaceAll('//', '\n').replaceAll('/n', '\n');
 
   static List<Widget> buildPdfPages({
     required CompanyConfigModel config,
@@ -112,7 +121,7 @@ class SalaryBillPreview extends StatelessWidget {
                 _billingInfo(),
                 const SizedBox(height: 12),
                 _mainTable(),
-                const SizedBox(height: 12),   // ✅ replaces Spacer()
+                const SizedBox(height: 12),
                 _footer(),
               ],
             ),
@@ -122,26 +131,31 @@ class SalaryBillPreview extends StatelessWidget {
 
   Widget _header() => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [_logo(), const SizedBox(width: 20), Expanded(child: _companyInfo())],
+    children: [
+      _logo(),                          // Left: aarti_logo.png
+      const SizedBox(width: 20),
+      Expanded(child: _letterheadImage()), // Right: letterhead.png
+    ],
   );
 
   Widget _logo() => SizedBox(
-    width: 110, height: 75,
-    child: Image.asset('assets/images/aarti_logo.png', fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => const _FallbackLogo()),
+    width: 140,
+    height: headerHeight,
+    child: Image.asset(
+      'assets/images/aarti_logo.png',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const _FallbackLogo(),
+    ),
   );
 
-  Widget _companyInfo() => Column(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Text(config.companyName.toUpperCase(), textAlign: TextAlign.right,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _green, letterSpacing: 0.6)),
-      const SizedBox(height: 4),
-      Text(config.address, textAlign: TextAlign.right, style: _body.copyWith(fontSize: 10)),
-      const SizedBox(height: 2),
-      Text('Tel.  Office  :  ${config.phone}', textAlign: TextAlign.right,
-          style: _body.copyWith(fontSize: 10, fontWeight: FontWeight.w700)),
-    ],
+  Widget _letterheadImage() => SizedBox(
+    height: headerHeight,
+    child: Image.asset(
+      'assets/images/letterhead.png',
+      fit: BoxFit.contain,
+      alignment: Alignment.centerRight,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    ),
   );
 
   Widget _divider(double t) => Divider(color: _black, thickness: t, height: 4);
@@ -163,9 +177,10 @@ class SalaryBillPreview extends StatelessWidget {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('BILL To,', style: _body),
               const SizedBox(height: 4),
-              Text(customerName, style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
+              Text(_multiline(customerName),
+                  style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 9.5)),
               const SizedBox(height: 2),
-              Text(customerAddress, style: _body),
+              Text(_multiline(customerAddress), style: _body),
               const SizedBox(height: 10),
               Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
             ]),
@@ -204,7 +219,6 @@ class SalaryBillPreview extends StatelessWidget {
   Widget _mainTable() => Container(
     decoration: BoxDecoration(border: Border.all(color: _black, width: 0.75)),
     child: Column(children: [
-      // Header
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _headerCell('Sr.\nNo', 5),
@@ -216,7 +230,6 @@ class SalaryBillPreview extends StatelessWidget {
       ),
       _divider(0.75),
 
-      // Item Row
       IntrinsicHeight(
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 180),
@@ -234,7 +247,6 @@ class SalaryBillPreview extends StatelessWidget {
       ),
       _divider(0.75),
 
-      // Totals Area
       IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(
@@ -324,7 +336,8 @@ class SalaryBillPreview extends StatelessWidget {
 
   Widget _itemCellDesc(String text, int flex,
       {bool rightBorder = true, Alignment align = Alignment.topCenter}) {
-    final parts = text.split('(Vouchers');
+    final normalized = _multiline(text);
+    final parts = normalized.split('(Vouchers');
     return Expanded(
       flex: flex,
       child: Container(
@@ -337,7 +350,7 @@ class SalaryBillPreview extends StatelessWidget {
                 TextSpan(text: '(Vouchers${parts[1]}',
                     style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 9)),
               ]))
-            : Text(text, style: _body.copyWith(fontSize: 10)),
+            : Text(normalized, style: _body.copyWith(fontSize: 10)),
       ),
     );
   }
@@ -385,6 +398,7 @@ class SalaryBillPreview extends StatelessWidget {
   Widget _footer() => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
+      const Divider(color: _black, thickness: 0.5),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('',
@@ -396,7 +410,6 @@ class SalaryBillPreview extends StatelessWidget {
       Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Signature image with fallback text
           Image.asset(
             'assets/images/aarti_signature.png',
             height: 60,
@@ -423,7 +436,8 @@ class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
   @override
   Widget build(BuildContext context) => Container(
-    width: 110, height: 75,
+    width: 110,
+    height: SalaryBillPreview.headerHeight,  // consistent with headerHeight
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(52),
       border: Border.all(color: const Color(0xFF1A237E), width: 3),

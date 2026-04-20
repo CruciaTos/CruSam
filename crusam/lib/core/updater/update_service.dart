@@ -12,44 +12,47 @@ import 'version_constants.dart';
 class UpdateService {
   UpdateService._();
 
-  static Future<UpdateInfo?> checkForUpdate() async {
-    try {
-      final response = await http
-          .get(Uri.parse(kLatestJsonUrl))
-          .timeout(const Duration(seconds: 15));
+  /// Throws on any network / parse error so the notifier's catch block fires.
+  static Future<UpdateInfo> checkForUpdate() async {
+    final response = await http
+        .get(Uri.parse(kLatestJsonUrl))
+        .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode != 200) return null;
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final latestVersion = (data['version'] as String).trim();
-      final message = (data['message'] as String?) ?? 'A new version is available.';
-      final force = (data['force'] as bool?) ?? false;
-      final downloadUrl = data['download_url'] as String;
-
-      return UpdateInfo(
-        currentVersion: kAppVersion,
-        latestVersion: latestVersion,
-        updateAvailable: _isNewer(latestVersion, kAppVersion),
-        message: message,
-        force: force,
-        downloadUrl: downloadUrl,
-      );
-    } catch (_) {
-      return null;
+    if (response.statusCode != 200) {
+      throw Exception('Server returned ${response.statusCode}');
     }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    final latestVersion = (data['version'] as String).trim();
+    final message =
+        (data['message'] as String?) ?? 'A new version is available.';
+    final force = (data['force'] as bool?) ?? false;
+    final downloadUrl = data['download_url'] as String;
+
+    return UpdateInfo(
+      currentVersion: kAppVersion,
+      latestVersion: latestVersion,
+      updateAvailable: _isNewer(latestVersion, kAppVersion),
+      message: message,
+      force: force,
+      downloadUrl: downloadUrl,
+    );
   }
 
+  /// Returns the local zip path on success, null on failure.
+  /// Always closes the http client.
   static Future<String?> downloadUpdate(
     String downloadUrl,
     void Function(double progress) onProgress,
   ) async {
+    final client = http.Client();
     try {
       final tmpDir = await getTemporaryDirectory();
       final zipPath =
           '${tmpDir.path}${Platform.pathSeparator}crusam_update.zip';
 
-      final streamedResponse = await http.Client()
-          .send(http.Request('GET', Uri.parse(downloadUrl)));
+      final request = http.Request('GET', Uri.parse(downloadUrl));
+      final streamedResponse = await client.send(request);
 
       if (streamedResponse.statusCode != 200) return null;
 
@@ -74,11 +77,17 @@ class UpdateService {
       return zipPath;
     } catch (_) {
       return null;
+    } finally {
+      client.close();
     }
   }
 
   static Future<bool> launchUpdaterAndExit(String zipPath) async {
     try {
+      if (!Platform.isWindows) {
+        throw Exception('Auto-update is only supported on Windows.');
+      }
+
       final appDir = File(Platform.resolvedExecutable).parent.path;
       final updaterPath = '$appDir${Platform.pathSeparator}updater.exe';
 
@@ -99,14 +108,12 @@ class UpdateService {
   }
 
   static bool _isNewer(String candidate, String current) {
-    final candidateParts = _parse(candidate);
-    final currentParts = _parse(current);
-
+    final c = _parse(candidate);
+    final cur = _parse(current);
     for (var i = 0; i < 3; i++) {
-      if (candidateParts[i] > currentParts[i]) return true;
-      if (candidateParts[i] < currentParts[i]) return false;
+      if (c[i] > cur[i]) return true;
+      if (c[i] < cur[i]) return false;
     }
-
     return false;
   }
 
@@ -114,8 +121,7 @@ class UpdateService {
     final parts = version.split('.');
     return List<int>.generate(
       3,
-      (index) =>
-          index < parts.length ? int.tryParse(parts[index]) ?? 0 : 0,
+      (i) => i < parts.length ? int.tryParse(parts[i]) ?? 0 : 0,
     );
   }
 }
