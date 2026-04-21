@@ -24,11 +24,8 @@ class ExcelExportService {
   static const double _colWidthOther = 12.0;
   static const double _colWidthArrears = 10.0;
   static const double _colWidthGross = 12.0;
-  static const double _colWidthTotalDays = 10.0;
-  static const double _colWidthDaysPresent = 10.0;
   static const double _colWidthPf = 10.0;
   static const double _colWidthMsw = 8.0;
-  static const double _colWidthEsic1 = 10.0;
   static const double _colWidthEsicP = 8.0;
   static const double _colWidthPTax = 8.0;
   static const double _colWidthTotalDed = 12.0;
@@ -47,11 +44,8 @@ class ExcelExportService {
     _colWidthOther,
     _colWidthArrears,
     _colWidthGross,
-    _colWidthTotalDays,
-    _colWidthDaysPresent,
     _colWidthPf,
     _colWidthMsw,
-    _colWidthEsic1,
     _colWidthEsicP,
     _colWidthPTax,
     _colWidthTotalDed,
@@ -71,11 +65,8 @@ class ExcelExportService {
     'Other',
     'Arrears',
     'Gross',
-    'Total Days',
-    'Days Present',
     'PF',
     'MSW',
-    'ESIC1',
     'ESIC P',
     'P Tax',
     'Total Ded.',
@@ -98,7 +89,7 @@ class ExcelExportService {
   }) async {
     if (employees.isEmpty) return null;
 
-    final _ = columnWidths;
+    final _ = columnWidths; // Unused for now
 
     final Workbook workbook = Workbook();
     workbook.worksheets.clear();
@@ -118,28 +109,23 @@ class ExcelExportService {
     double sumBasic = 0;
     double sumOther = 0;
     double sumGross = 0;
-    double sumEsic1 = 0;
     double sumNet = 0;
     int sumPf = 0;
     int sumMsw = 0;
     int sumEsicP = 0;
     int sumPt = 0;
     int sumTd = 0;
-    int sumDaysPresent = 0;
 
     for (int idx = 0; idx < employees.length; idx++) {
       final e = employees[idx];
       final days = daysMap[e.id] ?? 0;
       final hasDays = days > 0;
-      final totalDays = daysInMonth;
 
       final earnedBasic =
-          hasDays && totalDays > 0 ? e.basicCharges * days / totalDays : 0.0;
+          hasDays && daysInMonth > 0 ? e.basicCharges * days / daysInMonth : 0.0;
       final earnedGross =
-          hasDays && totalDays > 0 ? e.grossSalary * days / totalDays : 0.0;
+          hasDays && daysInMonth > 0 ? e.grossSalary * days / daysInMonth : 0.0;
       final pf = hasDays ? (earnedBasic * 0.12).round() : 0;
-      final esicDecimal =
-          e.grossSalary >= 21000 ? 0.0 : (hasDays ? earnedGross * 0.0075 : 0.0);
       final esicInt =
           e.grossSalary >= 21000 ? 0 : (hasDays ? (earnedGross * 0.0075).ceil() : 0);
       final msw = isMsw ? 6 : 0;
@@ -154,12 +140,10 @@ class ExcelExportService {
       sumGross += e.grossSalary;
       sumPf += pf;
       sumMsw += msw;
-      sumEsic1 += esicDecimal;
       sumEsicP += esicInt;
       sumPt += pt;
       sumTd += totalDed;
       sumNet += net;
-      sumDaysPresent += days;
 
       int col = 1;
       _setCellValue(sheet, currentRow, col++, '${idx + 1}', hAlign: HAlignType.center);
@@ -174,33 +158,16 @@ class ExcelExportService {
       _setCellValue(sheet, currentRow, col++, e.otherCharges, isNumber: true);
       _setCellValue(sheet, currentRow, col++, 0, isNumber: true, hAlign: HAlignType.center);
       _setCellValue(sheet, currentRow, col++, e.grossSalary, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, totalDays, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(
-        sheet,
-        currentRow,
-        col++,
-        days > 0 ? days : null,
-        isNumber: true,
-        hAlign: HAlignType.center,
-        zeroAsEmpty: true,
-      );
       _setCellValue(sheet, currentRow, col++, hasDays ? pf : 0, isNumber: true);
       _setCellValue(sheet, currentRow, col++, displayedMsw, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(
-        sheet,
-        currentRow,
-        col++,
-        hasDays ? esicDecimal : 0.0,
-        isNumber: true,
-        decimalPlaces: 2,
-      );
       _setCellValue(sheet, currentRow, col++, hasDays ? esicInt : 0, isNumber: true, hAlign: HAlignType.center);
       _setCellValue(sheet, currentRow, col++, hasDays ? pt : 0, isNumber: true, hAlign: HAlignType.center);
       _setCellValue(sheet, currentRow, col++, displayedTotalDed, isNumber: true);
       _setCellValue(sheet, currentRow, col++, net, isNumber: true, decimalPlaces: 0);
 
+      // Gray out deduction columns and net salary if no days (columns 13 to 18 in 1‑based index)
       if (!hasDays) {
-        for (int c = 14; c <= 21; c++) {
+        for (int c = 13; c <= 18; c++) {
           final cell = sheet.getRangeByIndex(currentRow, c);
           cell.cellStyle.fontColor = '#BBBBBB';
         }
@@ -215,11 +182,8 @@ class ExcelExportService {
       sumBasic: sumBasic,
       sumOther: sumOther,
       sumGross: sumGross,
-      sumDaysInMonth: daysInMonth,
-      sumDaysPresent: sumDaysPresent,
       sumPf: sumPf,
       sumMsw: sumMsw,
-      sumEsic1: sumEsic1,
       sumEsicP: sumEsicP,
       sumPt: sumPt,
       sumTd: sumTd,
@@ -283,11 +247,8 @@ class ExcelExportService {
     required double sumBasic,
     required double sumOther,
     required double sumGross,
-    required int sumDaysInMonth,
-    required int sumDaysPresent,
     required int sumPf,
     required int sumMsw,
-    required double sumEsic1,
     required int sumEsicP,
     required int sumPt,
     required int sumTd,
@@ -306,11 +267,8 @@ class ExcelExportService {
     _setCellValue(sheet, row, col++, sumOther, isNumber: true);
     _setCellValue(sheet, row, col++, 0, isNumber: true, hAlign: HAlignType.center);
     _setCellValue(sheet, row, col++, sumGross, isNumber: true);
-    _setCellValue(sheet, row, col++, sumDaysInMonth, isNumber: true, hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, sumDaysPresent, isNumber: true, hAlign: HAlignType.center);
     _setCellValue(sheet, row, col++, sumPf, isNumber: true);
     _setCellValue(sheet, row, col++, sumMsw, isNumber: true, hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, sumEsic1, isNumber: true, decimalPlaces: 0);
     _setCellValue(sheet, row, col++, sumEsicP, isNumber: true, hAlign: HAlignType.center);
     _setCellValue(sheet, row, col++, sumPt, isNumber: true, hAlign: HAlignType.center);
     _setCellValue(sheet, row, col++, sumTd, isNumber: true);

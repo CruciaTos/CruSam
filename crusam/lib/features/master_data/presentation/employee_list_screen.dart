@@ -108,7 +108,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   }
 
   Future<void> _goToForm([EmployeeModel? emp]) async {
-    final result = await showDialog(
+    await showDialog(
       context: context,
       barrierColor: Colors.black45,
       barrierDismissible: false,

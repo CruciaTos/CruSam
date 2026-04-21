@@ -28,11 +28,7 @@ class ExcelExportService {
   static const double _colWidthCode        = 10.0;
   static const double _colWidthBeneficiary = 22.0;
   static const double _colWidthPlace       = 29.0;
-  static const double _colWidthExpenses    = 20.0; // ← was blank column
   static const double _colWidthBankDetails = 25.0;
-  static const double _colWidthDebitName   = 18.0;
-  static const double _colWidthFrom        = 10.0;
-  static const double _colWidthTo          = 10.0;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🖼️ SIGNATURE IMAGE CONFIGURATION
@@ -60,8 +56,7 @@ class ExcelExportService {
   static const String _splitTextColor    = '#FFFFFFFF';
   static const String _splitLabelColor   = '#FF94A3B8';
   static const String _splitValueColor   = '#FFCBD5E1';
-  // 👇 Number of columns between the label and the value in the bank split box
-  static const int _bankSplitColumnOffset = 3;   // <-- CHANGE THIS TO ADJUST BLANK COLUMNS
+  static const int _bankSplitColumnOffset = 3;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 🔲 DATA TABLE OUTER BORDER
@@ -114,9 +109,6 @@ class ExcelExportService {
         'Bill-Data-${voucher.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
     final Worksheet sheet = workbook.worksheets.addWithName(sheetName);
 
-    // Derive month name once from the voucher date
-    final String monthName = _monthFromDate(voucher.date);
-
     _setColumnWidths(sheet);
     _writeTitleRow(sheet, voucher, config);
     _writeHeaderRow(sheet);
@@ -130,7 +122,7 @@ class ExcelExportService {
 
     int rowIndex = 4;
     for (final r in sortedRows) {
-      _writeDataRow(sheet, rowIndex, r, config, monthName);
+      _writeDataRow(sheet, rowIndex, r, config);
       rowIndex++;
     }
     final int lastDataRow = rowIndex;
@@ -138,7 +130,7 @@ class ExcelExportService {
     if (_dataTableOuterBorder) {
       final int headerRow = 4;
       final int startCol = _dataStartCol;
-      final int endCol = startCol + 11; // 12 columns (indices 0..11)
+      final int endCol = startCol + 7; // 8 columns (indices 0..7)
       final Range tableRange = sheet.getRangeByIndex(headerRow, startCol, lastDataRow, endCol);
       _applyBorder(tableRange);
     }
@@ -177,6 +169,7 @@ class ExcelExportService {
       sheet.getRangeByIndex(1, col).columnWidth = _colWidthBlankLeft;
       col++;
     }
+    // 8 columns: Amount, Debit A/C, IFSC, Credit A/C, Code, Beneficiary, Place, Bank Details
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthAmount;      col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitAc;     col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthIFSC;        col++;
@@ -184,31 +177,32 @@ class ExcelExportService {
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;        col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary; col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;       col++;
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthExpenses;    col++; // ← Expenses
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails; col++;
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitName;   col++;
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthFrom;        col++;
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthTo;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails;
   }
 
   static void _writeTitleRow(Worksheet sheet, VoucherModel voucher,
       CompanyConfigModel config) {
-    final Range titleRange = sheet.getRangeByIndex(2, 2, 2, 7);
+    // Title spans from start column to the 6th data column (Place)
+    final int titleStartCol = _dataStartCol;
+    final int titleEndCol = titleStartCol + 5; // columns: Amount..Place (6 columns)
+    final Range titleRange = sheet.getRangeByIndex(2, titleStartCol, 2, titleEndCol);
     titleRange.merge();
     final titleText =
         '${config.companyName} : ${voucher.title.isEmpty ? 'Expenses Statement' : voucher.title}';
     titleRange.setText(titleText);
     _applyCellStyle(titleRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
 
-    final Range deptRange = sheet.getRangeByIndex(2, 8);
+    // Department code in the rightmost column (Bank Details)
+    final int deptCol = _dataStartCol + 7; // Bank Details column
+    final Range deptRange = sheet.getRangeByIndex(2, deptCol);
     deptRange.setText(voucher.deptCode);
-    _applyCellStyle(deptRange, bold: true, fontSize: 12, hAlign: HAlignType.left);
+    _applyCellStyle(deptRange, bold: true, fontSize: 12, hAlign: HAlignType.right);
   }
 
   static void _writeHeaderRow(Worksheet sheet) {
     const headers = [
       'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
-      'Beneficiary', 'Place', 'Expenses', 'Bank Details', 'Debit Name', 'Fr.', 'To',
+      'Beneficiary', 'Place', 'Bank Details',
     ];
     final int row = 4;
     int col = _dataStartCol;
@@ -225,7 +219,6 @@ class ExcelExportService {
     int rowIndex,
     dynamic r,
     CompanyConfigModel config,
-    String monthName,
   ) {
     int col = _dataStartCol;
 
@@ -236,17 +229,7 @@ class ExcelExportService {
     _setCellValue(sheet, rowIndex, col, r.sbCode, hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, r.employeeName, hAlign: HAlignType.center); col++;
     _setCellValue(sheet, rowIndex, col, r.branch, hAlign: HAlignType.center); col++;
-    // Expenses column — dynamically populated from voucher date month
-    _setCellValue(
-      sheet, rowIndex, col,
-      monthName.isNotEmpty ? 'Exp. for - $monthName' : '',
-      hAlign: HAlignType.center,
-    ); col++;
-    _setCellValue(sheet, rowIndex, col, r.bankDetails, hAlign: HAlignType.center); col++;
-    _setCellValue(sheet, rowIndex, col, config.companyName.toLowerCase(),
-        hAlign: HAlignType.center); col++;
-    _setCellValue(sheet, rowIndex, col, _fmtDate(r.fromDate), hAlign: HAlignType.center); col++;
-    _setCellValue(sheet, rowIndex, col, _fmtDate(r.toDate), hAlign: HAlignType.center);
+    _setCellValue(sheet, rowIndex, col, r.bankDetails, hAlign: HAlignType.center);
 
     for (int c = _dataStartCol; c < col; c++) {
       _applyBorder(sheet.getRangeByIndex(rowIndex + 1, c));
@@ -309,7 +292,7 @@ class ExcelExportService {
   }) {
     int row = startRow;
     final int labelCol = _dataStartCol;
-    final int valueCol = labelCol + _bankSplitColumnOffset;   // ← NOW CONFIGURABLE
+    final int valueCol = labelCol + _bankSplitColumnOffset;
 
     final Range titleRange = sheet.getRangeByIndex(row, labelCol, row, valueCol);
     titleRange.merge();
@@ -391,14 +374,7 @@ class ExcelExportService {
 
       double targetWidthPx;
       if (_signatureSize == 0) {
-        final List<double> widths = [
-          _colWidthAmount, _colWidthDebitAc, _colWidthIFSC, _colWidthCreditAc,
-          _colWidthCode, _colWidthBeneficiary, _colWidthPlace, _colWidthExpenses,
-          _colWidthBankDetails, _colWidthDebitName, _colWidthFrom, _colWidthTo,
-        ];
-        double totalWidthUnits = widths[1] + widths[10] + widths[11];
-        const double pxPerUnit = 7.0;
-        targetWidthPx = totalWidthUnits * pxPerUnit;
+        targetWidthPx = 200.0; // fallback width
       } else {
         targetWidthPx = _signatureSize.toDouble();
       }
@@ -419,7 +395,7 @@ class ExcelExportService {
   }
 
   static void _configurePrintSetup(Worksheet sheet, int lastRow) {
-    final int toColumnIndex = _dataStartCol + 11; // 12 columns (0..11)
+    final int toColumnIndex = _dataStartCol + 7; // 8 columns (0..7)
     final String endColLetter = _colIndexToLetter(toColumnIndex);
     final String printArea = '$_printStartColumn$_printStartRow:$endColLetter$lastRow';
     sheet.pageSetup.printArea = printArea;

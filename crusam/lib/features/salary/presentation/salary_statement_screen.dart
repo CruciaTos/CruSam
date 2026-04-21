@@ -34,7 +34,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   late final ScrollController _hScroll;
 
   // Column width overrides (index → width in px)
-  // Now covers indices 0–20 (added Total Days @ 12, Days Present @ 13)
+  // Now covers indices 0–17 (18 columns)
   late final Map<int, double> _columnWidths;
 
   // Text controllers for the column-width fields
@@ -69,12 +69,12 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   }
 
   /// Attempts to copy default widths; falls back to a built-in map if static
-  /// is uninitialized. Now covers 0–20 (21 columns).
+  /// is uninitialized. Now covers 0–17 (18 columns).
   Map<int, double> _initializeColumnWidths() {
     try {
       return Map.of(SalaryStatementPreview.defaultColumnWidths);
     } catch (e) {
-      // Fallback default column widths
+      // Fallback default column widths (18 columns)
       return {
         0: 26.0,
         1: 124.0,
@@ -88,15 +88,12 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         9: 50.0,
         10: 38.0,
         11: 54.0,
-        12: 34.0, // Total Days
-        13: 34.0, // Days Present
-        14: 36.0,
-        15: 30.0,
-        16: 48.0,
-        17: 30.0,
-        18: 36.0,
-        19: 50.0,
-        20: 56.0,
+        12: 36.0,
+        13: 30.0,
+        14: 30.0,
+        15: 36.0,
+        16: 50.0,
+        17: 56.0,
       };
     }
   }
@@ -641,7 +638,6 @@ class _LeftPaneState extends State<_LeftPane> {
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     int sumPf = 0, sumEsic = 0, sumMsw = 0, sumPt = 0, sumTd = 0;
     int withDays = 0;
-    int sumDaysPresent = 0;
 
     for (final e in widget.employees) {
       sumBasic += e.basicCharges;
@@ -654,7 +650,6 @@ class _LeftPaneState extends State<_LeftPane> {
       sumTd += _td(e);
       sumNet += _net(e);
       if (_days(e) > 0) withDays++;
-      sumDaysPresent += _days(e);
     }
 
     return ListView(
@@ -668,8 +663,6 @@ class _LeftPaneState extends State<_LeftPane> {
             withDays == widget.employees.length
                 ? AppColors.emerald700
                 : AppColors.amber700),
-        _row('Total Days (month)', '${widget.daysInMonth}', AppColors.slate600),
-        _row('Total Days Present', '$sumDaysPresent', AppColors.emerald700),
         const Divider(height: AppSpacing.lg),
 
         Text('Earnings',
@@ -812,14 +805,7 @@ class _LeftPaneState extends State<_LeftPane> {
                       i < SalaryStatementPreview.columnLabels.length
                           ? SalaryStatementPreview.columnLabels[i]
                           : 'Col $i',
-                      style: AppTextStyles.small.copyWith(
-                        color: (i == 12 || i == 13)
-                            ? AppColors.emerald700
-                            : null,
-                        fontWeight: (i == 12 || i == 13)
-                            ? FontWeight.w600
-                            : null,
-                      ),
+                      style: AppTextStyles.small,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
