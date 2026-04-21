@@ -3,17 +3,61 @@ import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 
 /// Landscape A4 salary statement preview.
-/// Mirrors the PDF format: company header + full salary table with all
-/// statutory deductions (PF, MSW, ESIC, PT) and totals row.
 ///
-/// [_SalaryTable] is a StatefulWidget so its ScrollController has a stable
-/// lifecycle and is never created inside build() — fixes the
-/// "ScrollController has no ScrollPosition attached" crash.
+/// Deductions (PF, MSW, ESIC, PT) and Net Salary are calculated from
+/// **prorated (earned)** values based on days present from [daysMap].
+/// If an employee has zero days entered, all deduction columns and
+/// Net Salary show 0 (greyed out).
+///
+/// Basic / Other / Gross columns always show full-month structure values.
+/// Column widths are fully configurable via [columnWidths].
+///
+/// Column index map (21 columns total):
+///  0  Sr. No        1  Name           2  PF NO.         3  UAN NO.
+///  4  Code          5  Zone           6  IFSC           7  Account Number
+///  8  Basic         9  Other         10  Arrears        11  Gross
+/// 12  Total Days   13  Days Present  14  PF             15  MSW
+/// 16  ESIC1        17  ESIC P        18  P Tax          19  Total Ded.
+/// 20  Net Salary
+
 class SalaryStatementPreview extends StatelessWidget {
   // ── Page dimensions (landscape A4) ────────────────────────────────────────
-  static const double pageWidth    = 1122.5;
-  static const double pageHeight   = 793.7;
+  static const double pageWidth  = 1122.5;
+  static const double pageHeight = 793.7;
   static const int    _rowsPerPage = 32;
+
+  // ── Default column widths ─────────────────────────────────────────────────
+  static const Map<int, double> defaultColumnWidths = {
+    0:  26,   // Sr. No
+    1:  124,  // Name
+    2:  84,   // PF NO.
+    3:  92,   // UAN NO.
+    4:  30,   // Code
+    5:  38,   // Zone
+    6:  74,   // IFSC
+    7:  104,  // Account Number
+    8:  50,   // Basic
+    9:  50,   // Other
+    10: 38,   // Arrears
+    11: 54,   // Gross
+    12: 34,   // Total Days  ← NEW
+    13: 34,   // Days Present ← NEW
+    14: 36,   // PF
+    15: 30,   // MSW
+    16: 48,   // ESIC1
+    17: 30,   // ESIC P
+    18: 36,   // P Tax
+    19: 50,   // Total Ded.
+    20: 56,   // Net Salary
+  };
+
+  static const List<String> columnLabels = [
+    'Sr. No', 'Name', 'PF No.', 'UAN No.', 'Code', 'Zone', 'IFSC',
+    'Account No.', 'Basic', 'Other', 'Arrears', 'Gross',
+    'Total Days', 'Days Present',  // ← NEW
+    'PF', 'MSW',
+    'ESIC1', 'ESIC P', 'P Tax', 'Total Ded.', 'Net Salary',
+  ];
 
   final CompanyConfigModel  config;
   final EdgeInsets          margins;
@@ -23,62 +67,118 @@ class SalaryStatementPreview extends StatelessWidget {
   final bool                isMsw;
   final bool                isFeb;
 
+  /// Maps employee ID → days present.  Absent / 0 → deductions all 0.
+  final Map<int, int> daysMap;
+
+  /// Total calendar days in the selected month (e.g. 31 for March).
+  final int daysInMonth;
+
+  /// Override individual column widths by index (0–20).
+  final Map<int, double> columnWidths;
+
   const SalaryStatementPreview({
     super.key,
     required this.config,
-    this.margins   = const EdgeInsets.all(14),
+    this.margins      = const EdgeInsets.all(14),
     required this.employees,
     required this.monthName,
     required this.year,
-    this.isMsw     = false,
-    this.isFeb     = false,
+    this.isMsw        = false,
+    this.isFeb        = false,
+    this.daysMap      = const {},
+    this.daysInMonth  = 0,
+    this.columnWidths = const {},
   });
 
-  // ── Statutory helpers (full-month, non-prorated) ───────────────────────────
+  // ── Per-employee helpers ──────────────────────────────────────────────────
 
-  static int _pf(EmployeeModel e) => (e.basicCharges * 0.12).round();
+  int _days(EmployeeModel e) => daysMap[e.id ?? -1] ?? 0;
 
-  static double _esicDecimal(EmployeeModel e) =>
-      e.grossSalary < 21000 ? e.grossSalary * 0.0075 : 0.0;
+  double _earnedBasic(EmployeeModel e) {
+    final d = _days(e);
+    if (d == 0 || daysInMonth == 0) return 0;
+    return e.basicCharges * d / daysInMonth;
+  }
 
-  static int _esicInt(EmployeeModel e) =>
-      e.grossSalary < 21000 ? (e.grossSalary * 0.0075).ceil() : 0;
+  double _earnedGross(EmployeeModel e) {
+    final d = _days(e);
+    if (d == 0 || daysInMonth == 0) return 0;
+    return e.grossSalary * d / daysInMonth;
+  }
 
-  static int _msw(bool isMsw) => isMsw ? 6 : 0;
+  int _pf(EmployeeModel e) {
+    final eb = _earnedBasic(e);
+    return eb == 0 ? 0 : (eb * 0.12).round();
+  }
 
-  static int _pt(EmployeeModel e, bool isFeb) {
-    final g        = e.grossSalary;
+  double _esicDecimal(EmployeeModel e) {
+    if (e.grossSalary >= 21000) return 0.0;
+    final eg = _earnedGross(e);
+    return eg == 0 ? 0.0 : eg * 0.0075;
+  }
+
+  int _esicInt(EmployeeModel e) {
+    if (e.grossSalary >= 21000) return 0;
+    final eg = _earnedGross(e);
+    return eg == 0 ? 0 : (eg * 0.0075).ceil();
+  }
+
+  int _msw() => isMsw ? 6 : 0;
+
+  int _pt(EmployeeModel e) {
+    final eg = _earnedGross(e);
+    if (eg == 0) return 0;
     final isFemale = e.gender.toUpperCase() == 'F';
-    if (isFemale)  return g < 25000 ? 0 : (isFeb ? 300 : 200);
-    if (g < 7500)  return 0;
-    if (g < 10000) return 175;
+    if (isFemale) return eg < 25000 ? 0 : (isFeb ? 300 : 200);
+    if (eg < 7500)  return 0;
+    if (eg < 10000) return 175;
     return isFeb ? 300 : 200;
   }
 
-  static int _totalDed(EmployeeModel e, bool isMsw, bool isFeb) =>
-      _pf(e) + _esicInt(e) + _msw(isMsw) + _pt(e, isFeb);
+  int _totalDed(EmployeeModel e) => _pf(e) + _esicInt(e) + _msw() + _pt(e);
 
-  static double _net(EmployeeModel e, bool isMsw, bool isFeb) =>
-      e.grossSalary - _totalDed(e, isMsw, isFeb);
+  double _net(EmployeeModel e) {
+    final eg = _earnedGross(e);
+    return eg == 0 ? 0 : eg - _totalDed(e);
+  }
+
+  // ── Effective column-width map (now 0–20) ─────────────────────────────────
+  Map<int, TableColumnWidth> _colWidths() {
+    final result = <int, TableColumnWidth>{};
+    for (int i = 0; i <= 20; i++) {
+      result[i] = FixedColumnWidth(columnWidths[i] ?? defaultColumnWidths[i]!);
+    }
+    return result;
+  }
 
   // ── Static builder for PdfExportService ───────────────────────────────────
 
   static List<Widget> buildPdfPages({
     required CompanyConfigModel  config,
-    EdgeInsets                   margins   = const EdgeInsets.all(14),
+    EdgeInsets                   margins      = const EdgeInsets.all(14),
     required List<EmployeeModel> employees,
     required String              monthName,
     required int                 year,
-    bool                         isMsw     = false,
-    bool                         isFeb     = false,
+    bool                         isMsw        = false,
+    bool                         isFeb        = false,
+    Map<int, int>                daysMap      = const {},
+    int                          daysInMonth  = 0,
+    Map<int, double>             columnWidths = const {},
   }) {
     final preview = SalaryStatementPreview(
-      config: config, margins: margins, employees: employees,
-      monthName: monthName, year: year, isMsw: isMsw, isFeb: isFeb,
+      config:       config,
+      margins:      margins,
+      employees:    employees,
+      monthName:    monthName,
+      year:         year,
+      isMsw:        isMsw,
+      isFeb:        isFeb,
+      daysMap:      daysMap,
+      daysInMonth:  daysInMonth,
+      columnWidths: columnWidths,
     );
     if (employees.isEmpty) {
-      return [preview._buildPage(
-          slice: const [], startIndex: 0, showTotals: true)];
+      return [preview._buildPage(slice: const [], startIndex: 0, showTotals: true)];
     }
     final pages = <Widget>[];
     for (int i = 0; i < employees.length; i += _rowsPerPage) {
@@ -97,8 +197,16 @@ class SalaryStatementPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pages = buildPdfPages(
-      config: config, margins: margins, employees: employees,
-      monthName: monthName, year: year, isMsw: isMsw, isFeb: isFeb,
+      config:       config,
+      margins:      margins,
+      employees:    employees,
+      monthName:    monthName,
+      year:         year,
+      isMsw:        isMsw,
+      isFeb:        isFeb,
+      daysMap:      daysMap,
+      daysInMonth:  daysInMonth,
+      columnWidths: columnWidths,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -125,10 +233,7 @@ class SalaryStatementPreview extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: [
-          BoxShadow(
-              color: Color(0x33000000),
-              blurRadius: 12,
-              offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x33000000), blurRadius: 12, offset: Offset(0, 4)),
         ],
       ),
       child: Padding(
@@ -136,29 +241,19 @@ class SalaryStatementPreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Text(
-                '${config.companyName.toUpperCase()} — Salary Statement for the Month of '
-                '${monthName.toUpperCase()} - $year',
-                style: const TextStyle(
-                  fontSize:      9.5,
-                  fontWeight:    FontWeight.w900,
-                  color:         Color(0xFF1A1A1A),
-                  letterSpacing: 0.3,
-                ),
-              ),
+            // ── Page header ────────────────────────────────────────────
+            _PageHeader(
+              config:    config,
+              monthName: monthName,
+              year:      year,
             ),
             const SizedBox(height: 6),
-
-            // _SalaryTable is StatefulWidget — owns its ScrollController.
             Expanded(
               child: _SalaryTable(
-                slice:        slice,
-                startIndex:   startIndex,
-                showTotals:   showTotals,
-                allEmployees: employees,
-                isMsw:        isMsw,
-                isFeb:        isFeb,
+                slice:      slice,
+                startIndex: startIndex,
+                showTotals: showTotals,
+                preview:    this,
               ),
             ),
           ],
@@ -168,219 +263,256 @@ class SalaryStatementPreview extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// _SalaryTable
-//
-// Must be StatefulWidget so _hScroll is created once in initState() and
-// disposed in dispose(). Creating a ScrollController inside build() causes
-// "ScrollController has no ScrollPosition attached" because the controller
-// is re-instantiated on every rebuild before the Scrollbar can attach.
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Page header (unchanged) ───────────────────────────────────────────────────
 
-class _SalaryTable extends StatefulWidget {
-  final List<EmployeeModel> slice;
-  final List<EmployeeModel> allEmployees;
-  final int                 startIndex;
-  final bool                showTotals;
-  final bool                isMsw;
-  final bool                isFeb;
+class _PageHeader extends StatelessWidget {
+  final CompanyConfigModel config;
+  final String monthName;
+  final int    year;
 
-  const _SalaryTable({
-    required this.slice,
-    required this.allEmployees,
-    required this.startIndex,
-    required this.showTotals,
-    required this.isMsw,
-    required this.isFeb,
+  const _PageHeader({
+    required this.config,
+    required this.monthName,
+    required this.year,
   });
 
   @override
-  State<_SalaryTable> createState() => _SalaryTableState();
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Logo
+        SizedBox(
+          width: 90,
+          height: 50,
+          child: Image.asset(
+            'assets/images/aarti_logo.png',
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Title block
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                config.companyName.isNotEmpty
+                    ? config.companyName
+                    : 'Aarti Enterprises',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'SALARY STATEMENT FOR THE MONTH OF '
+                '${monthName.toUpperCase()} $year',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _SalaryTableState extends State<_SalaryTable> {
-  late final ScrollController _hScroll;
+// ══════════════════════════════════════════════════════════════════════════════
+// _SalaryTable — StatelessWidget
+// The parent _PreviewPane owns all scroll controllers; this widget renders
+// the Table directly with no inner Scrollbar or SingleChildScrollView.
+// ══════════════════════════════════════════════════════════════════════════════
 
-  @override
-  void initState() {
-    super.initState();
-    _hScroll = ScrollController(); // created once, stable lifecycle
-  }
+class _SalaryTable extends StatelessWidget {
+  final List<EmployeeModel>    slice;
+  final int                    startIndex;
+  final bool                   showTotals;
+  final SalaryStatementPreview preview;
 
-  @override
-  void dispose() {
-    _hScroll.dispose();
-    super.dispose();
-  }
+  const _SalaryTable({
+    required this.slice,
+    required this.startIndex,
+    required this.showTotals,
+    required this.preview,
+  });
 
-  // ── Column widths ─────────────────────────────────────────────────────────
-  static const Map<int, TableColumnWidth> _cw = {
-    0:  FixedColumnWidth(26),   // Sr. No
-    1:  FixedColumnWidth(124),  // Name
-    2:  FixedColumnWidth(84),   // PF NO.
-    3:  FixedColumnWidth(92),   // UAN NO.
-    4:  FixedColumnWidth(30),   // Code
-    5:  FixedColumnWidth(38),   // Zone
-    6:  FixedColumnWidth(74),   // IFSC
-    7:  FixedColumnWidth(104),  // Account number
-    8:  FixedColumnWidth(50),   // Basic
-    9:  FixedColumnWidth(50),   // Other
-    10: FixedColumnWidth(38),   // Arrears
-    11: FixedColumnWidth(54),   // Gross
-    12: FixedColumnWidth(36),   // PF
-    13: FixedColumnWidth(30),   // MSW
-    14: FixedColumnWidth(48),   // ESIC1
-    15: FixedColumnWidth(30),   // ESIC P
-    16: FixedColumnWidth(36),   // P Tax
-    17: FixedColumnWidth(50),   // Total Ded.
-    18: FixedColumnWidth(56),   // Net Salary
-  };
+  static const _hdrBg   = Color(0xFFE3E8F4);
+  static const _totBg   = Color(0xFFD6DCF5);
+  static const _altBg   = Color(0xFFF8FAFC);
+  static const _green   = Color(0xFF1A6B2F);
+  static const _daysBg  = Color(0xFFEEF9EE); // subtle green tint for days columns
 
-  static const _hdrBg    = Color(0xFFE3E8F4);
-  static const _totBg    = Color(0xFFD6DCF5);
-  static const _altBg    = Color(0xFFF8FAFC);
-  static const _green    = Color(0xFF1A6B2F);
-
-  static const _hStyle = TextStyle(
-      fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black);
-  static const _dStyle = TextStyle(
-      fontSize: 7.5, fontWeight: FontWeight.normal, color: Colors.black);
-  static const _dBold  = TextStyle(
-      fontSize: 7.5, fontWeight: FontWeight.bold, color: Colors.black);
-  static const _netStyle = TextStyle(
-      fontSize: 7.5, fontWeight: FontWeight.bold, color: _green);
-  static const _monoStyle = TextStyle(
-      fontSize: 6.5, fontWeight: FontWeight.normal,
-      color: Colors.black, fontFamily: 'monospace');
+  static const _hStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
+  static const _dStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Colors.black);
+  static const _dBold  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
+  static const _netStyle  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: _green);
+  static const _zeroStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Color(0xFFBBBBBB));
+  static const _monoStyle = TextStyle(fontSize: 6.5, fontWeight: FontWeight.normal, color: Colors.black, fontFamily: 'monospace');
+  static const _daysStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.w600,  color: Color(0xFF1A6B2F));
+  static const _daysZero  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Color(0xFFBBBBBB));
 
   @override
   Widget build(BuildContext context) {
-    // Grand totals across ALL employees (not just this page's slice)
-    double sumBasic = 0, sumOther = 0, sumGross = 0,
-           sumEsic1 = 0, sumNet   = 0;
-    int    sumPf = 0, sumMsw = 0, sumEsicP = 0,
-           sumPt = 0, sumTd  = 0;
+    // Grand totals
+    double sumBasic = 0, sumOther = 0, sumGross = 0, sumEsic1 = 0, sumNet = 0;
+    int    sumPf = 0, sumMsw = 0, sumEsicP = 0, sumPt = 0, sumTd = 0;
+    // Days totals (sum of days present across all employees)
+    int    sumDaysPresent = 0;
 
-    for (final e in widget.allEmployees) {
-      sumBasic  += e.basicCharges;
-      sumOther  += e.otherCharges;
-      sumGross  += e.grossSalary;
-      sumPf     += SalaryStatementPreview._pf(e);
-      sumMsw    += SalaryStatementPreview._msw(widget.isMsw);
-      sumEsic1  += SalaryStatementPreview._esicDecimal(e);
-      sumEsicP  += SalaryStatementPreview._esicInt(e);
-      sumPt     += SalaryStatementPreview._pt(e, widget.isFeb);
-      sumTd     += SalaryStatementPreview._totalDed(
-          e, widget.isMsw, widget.isFeb);
-      sumNet    += SalaryStatementPreview._net(
-          e, widget.isMsw, widget.isFeb);
+    for (final e in preview.employees) {
+      sumBasic       += e.basicCharges;
+      sumOther       += e.otherCharges;
+      sumGross       += e.grossSalary;
+      sumPf          += preview._pf(e);
+      sumMsw         += preview._msw();
+      sumEsic1       += preview._esicDecimal(e);
+      sumEsicP       += preview._esicInt(e);
+      sumPt          += preview._pt(e);
+      sumTd          += preview._totalDed(e);
+      sumNet         += preview._net(e);
+      sumDaysPresent += preview._days(e);
     }
 
-    return Scrollbar(
-      controller:      _hScroll, // same instance every build
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        controller:      _hScroll,
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          border:       TableBorder.all(color: Colors.black, width: 0.5),
-          columnWidths: _cw,
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+    return Table(
+      border:       TableBorder.all(color: Colors.black, width: 0.5),
+      columnWidths: preview._colWidths(),
+      defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+      children: [
+
+        // ── Header ────────────────────────────────────────────────────────
+        TableRow(
+          decoration: const BoxDecoration(color: _hdrBg),
           children: [
-            // Header
-            TableRow(
-              decoration: const BoxDecoration(color: _hdrBg),
-              children: [
-                _h('Sr.\nNo.'),
-                _h('Name of Technician', left: true),
-                _h('PF NO.'),
-                _h('UAN NO.'),
-                _h('Code'),
-                _h('Zone'),
-                _h('IFSC code'),
-                _h('Account\nnumber'),
-                _h('Basic'),
-                _h('Other'),
-                _h('Increment\nArrs.'),
-                _h('Gross\nSalary'),
-                _h('PF'),
-                _h('MSW'),
-                _h('ESIC1'),
-                _h('ESIC\nP'),
-                _h('P Tax1'),
-                _h('Total\nDed.'),
-                _h('Net Salary'),
-              ],
-            ),
-
-            // Data rows
-            ...widget.slice.asMap().entries.map((entry) {
-              final globalIdx = widget.startIndex + entry.key;
-              final e   = entry.value;
-              final pf  = SalaryStatementPreview._pf(e);
-              final e1  = SalaryStatementPreview._esicDecimal(e);
-              final eP  = SalaryStatementPreview._esicInt(e);
-              final msw = SalaryStatementPreview._msw(widget.isMsw);
-              final pt  = SalaryStatementPreview._pt(e, widget.isFeb);
-              final td  = SalaryStatementPreview._totalDed(
-                  e, widget.isMsw, widget.isFeb);
-              final net = SalaryStatementPreview._net(
-                  e, widget.isMsw, widget.isFeb);
-
-              return TableRow(
-                decoration: BoxDecoration(
-                    color: globalIdx.isOdd ? _altBg : Colors.white),
-                children: [
-                  _d('${globalIdx + 1}',  center: true),
-                  _d(e.name,              left: true,
-                      style: const TextStyle(
-                          fontSize: 7.0, color: Colors.black)),
-                  _mono(e.pfNo),
-                  _mono(e.uanNo),
-                  _d(e.code,              center: true),
-                  _d(e.zone,              center: true),
-                  _mono(e.ifscCode),
-                  _mono(e.accountNumber),
-                  _d(_n(e.basicCharges),  right: true),
-                  _d(_n(e.otherCharges),  right: true),
-                  _d('0',                 center: true),
-                  _d(_n(e.grossSalary),   right: true, style: _dBold),
-                  _d('$pf',               right: true),
-                  _d('$msw',              center: true),
-                  _d(e1 == 0 ? '0.00' : e1.toStringAsFixed(2),
-                      right: true),
-                  _d(eP == 0 ? '0' : '$eP', center: true),
-                  _d('$pt',               center: true),
-                  _d('$td',               right: true, style: _dBold),
-                  _d(_n(net),             right: true, style: _netStyle),
-                ],
-              );
-            }),
-
-            // Totals row (last page only)
-            if (widget.showTotals)
-              TableRow(
-                decoration: const BoxDecoration(color: _totBg),
-                children: [
-                  _t('TOTAL :-', span: true),
-                  _t(''), _t(''), _t(''), _t(''),
-                  _t(''), _t(''), _t(''),
-                  _t(_n(sumBasic)),
-                  _t(_n(sumOther)),
-                  _t('0',           center: true),
-                  _t(_n(sumGross)),
-                  _t('$sumPf'),
-                  _t('$sumMsw',     center: true),
-                  _t(sumEsic1.toStringAsFixed(0)),
-                  _t('$sumEsicP',   center: true),
-                  _t('$sumPt',      center: true),
-                  _t('$sumTd'),
-                  _t(_n(sumNet),    color: _green),
-                ],
-              ),
+            _h('Sr.\nNo.'),
+            _h('Name of Technician', left: true),
+            _h('PF NO.'),
+            _h('UAN NO.'),
+            _h('Code'),
+            _h('Zone'),
+            _h('IFSC code'),
+            _h('Account\nnumber'),
+            _h('Basic'),
+            _h('Other'),
+            _h('Increment\nArrs.'),
+            _h('Gross\nSalary'),
+            // ── NEW columns ───────────────────────────────────────────────
+            _hDays('Total\nDays'),
+            _hDays('Days\nPresent'),
+            // ─────────────────────────────────────────────────────────────
+            _h('PF'),
+            _h('MSW'),
+            _h('ESIC1'),
+            _h('ESIC\nP'),
+            _h('P Tax1'),
+            _h('Total\nDed.'),
+            _h('Net Salary'),
           ],
         ),
-      ),
+
+        // ── Data rows ─────────────────────────────────────────────────────
+        ...slice.asMap().entries.map((entry) {
+          final globalIdx   = startIndex + entry.key;
+          final e           = entry.value;
+          final hasDays     = (preview.daysMap[e.id ?? -1] ?? 0) > 0;
+          final daysPresent = preview._days(e);
+          final totalDays   = preview.daysInMonth;
+          final pf          = preview._pf(e);
+          final e1          = preview._esicDecimal(e);
+          final eP          = preview._esicInt(e);
+          final msw         = preview._msw();
+          final pt          = preview._pt(e);
+          final td          = preview._totalDed(e);
+          final net         = preview._net(e);
+
+          return TableRow(
+            decoration: BoxDecoration(
+                color: globalIdx.isOdd ? _altBg : Colors.white),
+            children: [
+              _d('${globalIdx + 1}', center: true),
+              _d(e.name, left: true,
+                  style: const TextStyle(fontSize: 7.0, color: Colors.black)),
+              _mono(e.pfNo),
+              _mono(e.uanNo),
+              _d(e.code,  center: true),
+              _d(e.zone,  center: true),
+              _mono(e.ifscCode),
+              _mono(e.accountNumber),
+              _d(_n(e.basicCharges), right: true),
+              _d(_n(e.otherCharges), right: true),
+              _d('0', center: true),
+              _d(_n(e.grossSalary),  right: true, style: _dBold),
+
+              // ── NEW: Total Days ───────────────────────────────────────
+              _daysCell('$totalDays', center: true),
+              // ── NEW: Days Present ─────────────────────────────────────
+              _daysCell(
+                daysPresent > 0 ? '$daysPresent' : '—',
+                center: true,
+                zero: daysPresent == 0,
+              ),
+
+              // ── Deduction columns: prorated or zero ───────────────────
+              hasDays
+                  ? _d('$pf',  right: true)
+                  : _d('0',    right: true, style: _zeroStyle),
+              hasDays
+                  ? _d('$msw', center: true)
+                  : _d('0',    center: true, style: _zeroStyle),
+              hasDays
+                  ? _d(e1 == 0 ? '0.00' : e1.toStringAsFixed(2), right: true)
+                  : _d('0.00', right: true, style: _zeroStyle),
+              hasDays
+                  ? _d(eP == 0 ? '0' : '$eP', center: true)
+                  : _d('0', center: true, style: _zeroStyle),
+              hasDays
+                  ? _d('$pt', center: true)
+                  : _d('0',   center: true, style: _zeroStyle),
+              hasDays
+                  ? _d('$td', right: true, style: _dBold)
+                  : _d('0',   right: true, style: _zeroStyle),
+              hasDays
+                  ? _d(_n(net), right: true, style: _netStyle)
+                  : _d('0',    right: true, style: _zeroStyle),
+            ],
+          );
+        }),
+
+        // ── Totals row (last page only) ────────────────────────────────────
+        if (showTotals)
+          TableRow(
+            decoration: const BoxDecoration(color: _totBg),
+            children: [
+              _t('TOTAL :-', span: true),
+              _t(''), _t(''), _t(''), _t(''),
+              _t(''), _t(''), _t(''),
+              _t(_n(sumBasic)),
+              _t(_n(sumOther)),
+              _t('0',           center: true),
+              _t(_n(sumGross)),
+              // ── NEW: Total Days total cell shows daysInMonth (same for all)
+              _tDays('${preview.daysInMonth}'),
+              // ── NEW: Days Present total — sum of all days entered
+              _tDays('$sumDaysPresent'),
+              _t('$sumPf'),
+              _t('$sumMsw',   center: true),
+              _t(sumEsic1.toStringAsFixed(0)),
+              _t('$sumEsicP', center: true),
+              _t('$sumPt',    center: true),
+              _t('$sumTd'),
+              _t(_n(sumNet),  color: _green),
+            ],
+          ),
+      ],
     );
   }
 
@@ -391,6 +523,18 @@ class _SalaryTableState extends State<_SalaryTable> {
         child: Text(t,
             textAlign: left ? TextAlign.left : TextAlign.center,
             style:     _hStyle,
+            maxLines:  2,
+            overflow:  TextOverflow.ellipsis),
+      );
+
+  /// Header cell for the two new days columns — same style but slightly
+  /// differentiated with a green tint background (applied via TableRow
+  /// decoration override is not possible per-cell, so we tint text instead).
+  static Widget _hDays(String t) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+        child: Text(t,
+            textAlign: TextAlign.center,
+            style: _hStyle.copyWith(color: const Color(0xFF1A6B2F)),
             maxLines:  2,
             overflow:  TextOverflow.ellipsis),
       );
@@ -415,6 +559,19 @@ class _SalaryTableState extends State<_SalaryTable> {
           overflow:  TextOverflow.ellipsis),
     );
   }
+
+  /// Data cell for the two new days columns.
+  static Widget _daysCell(String t, {bool center = false, bool zero = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: Text(
+          t,
+          textAlign: center ? TextAlign.center : TextAlign.right,
+          style:     zero ? _daysZero : _daysStyle,
+          maxLines:  1,
+          overflow:  TextOverflow.ellipsis,
+        ),
+      );
 
   static Widget _mono(String t) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
@@ -441,6 +598,22 @@ class _SalaryTableState extends State<_SalaryTable> {
             fontSize:   7.5,
             fontWeight: FontWeight.bold,
             color:      color ?? Colors.black,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+
+  /// Totals-row cell for days columns — green bold.
+  static Widget _tDays(String t) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+        child: Text(
+          t,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize:   7.5,
+            fontWeight: FontWeight.bold,
+            color:      _green,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
