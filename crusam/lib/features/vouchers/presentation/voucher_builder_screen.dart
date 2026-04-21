@@ -30,7 +30,11 @@
 //        - asset: assets/fonts/NotoSans_ExtraCondensed-Bold.ttf
 //          weight: 700
 // ════════════════════════════════════════════════════════════════════════════
-
+import '../widgets/voucher_row_widget.dart' as voucher_row_widget;
+import '../widgets/calculations_card.dart';
+import '../widgets/bank_split_card.dart';
+import '../widgets/invoice_preview_dialog.dart';
+import '../widgets/item_description_field.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_constants.dart';
@@ -42,12 +46,8 @@ import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
-import '../services/pdf_export_service.dart';               // ← added for PDF export
-import '../widgets/voucher_row_widget.dart' as voucher_row_widget;
-import '../widgets/calculations_card.dart';
-import '../widgets/bank_split_card.dart';
-import '../widgets/invoice_preview_dialog.dart';
-import '../widgets/item_description_field.dart';
+import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
+
 
 // ────────────────────────────────────────────────────────────────────────────
 //  Design tokens  (private to this file)
@@ -606,8 +606,8 @@ class _DeptDropdown extends StatelessWidget {
           initialSelection: notifier.current.deptCode,
           width           : box.maxWidth,
           textStyle       : _Tok.tsInput,
-          enableFilter    : false,   // ← added
-          enableSearch    : false,   // ← added
+          enableFilter    : false,
+          enableSearch    : false,
           trailingIcon    : const Icon(
             Icons.keyboard_arrow_down_rounded,
             size : 18,
@@ -635,7 +635,7 @@ class _DeptDropdown extends StatelessWidget {
           inputDecorationTheme: InputDecorationTheme(
             isDense       : true,
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 10, vertical: 3,   // ← reduced from 9
+              horizontal: 10, vertical: 3,
             ),
             filled        : true,
             fillColor     : _Tok.surface,
@@ -766,113 +766,112 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-//  FINALISE & EXPORT  —  PDF (tax invoice) + Excel (bank sheet only)
-// ──────────────────────────────────────────────────────────────────────────
-Future<void> _finaliseAndExport() async {
-  if (_exporting) return;
+  //  FINALISE & EXPORT  —  PDF (tax invoice + voucher) via WidgetPdfExportService
+  //                        + Excel (bank sheet)
+  // ──────────────────────────────────────────────────────────────────────────
+  Future<void> _finaliseAndExport() async {
+    if (_exporting) return;
 
-  if (_notifier.current.title.trim().isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-          content: Text('Please enter a voucher title before exporting')),
-    );
-    return;
-  }
-  if (_notifier.current.rows.isEmpty) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add at least one row before exporting')),
-    );
-    return;
-  }
+    if (_notifier.current.title.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Please enter a voucher title before exporting')),
+      );
+      return;
+    }
+    if (_notifier.current.rows.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one row before exporting')),
+      );
+      return;
+    }
 
-  setState(() => _exporting = true);
+    setState(() => _exporting = true);
 
-  if (!mounted) return;
-  showDialog(
-    context          : context,
-    barrierDismissible: false,
-    builder          : (_) => const AlertDialog(
-      content: Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
-        child  : Row(
-          mainAxisSize: MainAxisSize.min,
-          children    : [
-            CircularProgressIndicator(),
-            SizedBox(width: 20),
-            Text('Generating files…'),
-          ],
+    if (!mounted) return;
+    showDialog(
+      context          : context,
+      barrierDismissible: false,
+      builder          : (_) => const AlertDialog(
+        content: Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child  : Row(
+            mainAxisSize: MainAxisSize.min,
+            children    : [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Text('Generating files…'),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-
-  String? errorMsg;
-
-  try {
-    final voucher = _notifier.enriched;
-    final config  = _notifier.config;
-
-    // 1. Save as draft
-    await _notifier.saveVoucher();
-
-    // 2. Export PDF bundle (tax invoice + voucher)
-    await PdfExportService.exportInvoiceBundle(
-      context: context,
-      voucher: voucher,
-      config: config,
-      taxInvoiceMargins: const EdgeInsets.all(24),
-      voucherMargins: const EdgeInsets.all(24),
     );
 
-    // 3. Export Excel bank disbursement sheet ONLY
-    //    (identical to what "Preview Bank Sheet" produces)
-    await ExcelExportService.exportBankDisbursement(
-      voucher,
-      config,
-      idbiToOther: _notifier.idbiToOther,
-      idbiToIdbi : _notifier.idbiToIdbi,
-    );
-  } catch (e, st) {
-    errorMsg = '$e\n\n$st';
-  } finally {
-    if (mounted) setState(() => _exporting = false);
-  }
+    String? errorMsg;
 
-  // Dismiss progress dialog
-  if (!mounted) return;
-  Navigator.of(context, rootNavigator: true).pop();
+    try {
+      final voucher = _notifier.enriched;
+      final config  = _notifier.config;
 
-  if (errorMsg != null) {
-    await showDialog(
-      context: context,
-      builder: (dc) => AlertDialog(
-        title: Row(children: const [
-          Icon(Icons.error_outline, color: Colors.red),
-          SizedBox(width: 8),
-          Text('Export Failed'),
-        ]),
-        content: SizedBox(
-          width: 560, height: 300,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              errorMsg!,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+      // 1. Save as draft
+      await _notifier.saveVoucher();
+
+      // 2. Export PDF bundle (tax invoice portrait + voucher landscape)
+      //    using the new WidgetPdfExportService — margins default to 24pt.
+      await WidgetPdfExportService.exportTaxInvoiceAndVoucher(
+        voucher: voucher,
+        config : config,
+      );
+
+      // 3. Export Excel bank disbursement sheet
+      await ExcelExportService.exportBankDisbursement(
+        voucher,
+        config,
+        idbiToOther: _notifier.idbiToOther,
+        idbiToIdbi : _notifier.idbiToIdbi,
+      );
+    } catch (e, st) {
+      errorMsg = '$e\n\n$st';
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+
+    // Dismiss progress dialog
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (errorMsg != null) {
+      await showDialog(
+        context: context,
+        builder: (dc) => AlertDialog(
+          title: Row(children: const [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Export Failed'),
+          ]),
+          content: SizedBox(
+            width: 560, height: 300,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                errorMsg!,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dc),
+              child    : const Text('Close'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dc),
-            child    : const Text('Close'),
-          ),
-        ],
-      ),
-    );
-    return;
+      );
+      return;
+    }
+
+    if (mounted) _showInvoiceMadeOverlay();
   }
 
-  if (mounted) _showInvoiceMadeOverlay();
-}
   void _showInvoiceMadeOverlay() {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -1174,7 +1173,7 @@ class _RowsTable extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  _ActionButtons  (with white text/icons as requested)
+//  _ActionButtons
 // ════════════════════════════════════════════════════════════════════════════
 
 class _ActionButtons extends StatelessWidget {
@@ -1200,7 +1199,7 @@ class _ActionButtons extends StatelessWidget {
         runSpacing: AppSpacing.sm,
         alignment : WrapAlignment.end,
         children  : [
-          // ── Discard Draft (white text + icon) ──────────────────────────
+          // ── Discard Draft ──────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: () async {
               final confirm = await showDialog<bool>(
@@ -1239,7 +1238,7 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Save as Draft (white text + icon) ──────────────────────────
+          // ── Save as Draft ──────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: onSave,
             icon     : const Icon(Icons.save, size: 16, color: Colors.white),
@@ -1250,7 +1249,7 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Preview Invoice (white text + icon) ────────────────────────
+          // ── Preview Invoice ────────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: () => InvoicePreviewDialog.show(
               context, notifier, notifier.config, PreviewType.invoice,
@@ -1263,7 +1262,7 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Preview Bank Sheet (white text + icon) ─────────────────────
+          // ── Preview Bank Sheet ─────────────────────────────────────────
           OutlinedButton.icon(
             onPressed: exportingBankSheet ? null : onExportBankSheet,
             icon: exportingBankSheet
@@ -1283,7 +1282,7 @@ class _ActionButtons extends StatelessWidget {
             ),
           ),
 
-          // ── Finalise & Export (unchanged style, uses new logic) ────────
+          // ── Finalise & Export ──────────────────────────────────────────
           ElevatedButton.icon(
             onPressed: exporting ? null : onFinalise,
             icon: exporting

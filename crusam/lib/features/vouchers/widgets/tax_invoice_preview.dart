@@ -8,6 +8,12 @@ class TaxInvoicePreview extends StatelessWidget {
   static const double a4Width = 793.7;
   static const double a4Height = 1122.5;
 
+  // ---------- Configurable Header Height ----------
+  // Change this value to adjust both logo and letterhead image heights.
+  // The divider and all content below will automatically shift.
+  static const double headerHeight = 140.0;
+  // ------------------------------------------------
+
   final VoucherModel voucher;
   final CompanyConfigModel config;
   final EdgeInsets margins;
@@ -105,15 +111,15 @@ class TaxInvoicePreview extends StatelessWidget {
       children: [
         _buildLogo(),
         const SizedBox(width: 20),
-        Expanded(child: _buildCompanyInfo()),
+        Expanded(child: _buildLetterheadImage()),
       ],
     );
   }
 
   Widget _buildLogo() {
     return SizedBox(
-      width: 110,
-      height: 75,
+      width: 140,
+      height: headerHeight,
       child: Image.asset(
         'assets/images/aarti_logo.png',
         fit: BoxFit.contain,
@@ -122,33 +128,15 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  Widget _buildCompanyInfo() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(
-          config.companyName.toUpperCase(),
-          textAlign: TextAlign.right,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: _green,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          config.address,
-          textAlign: TextAlign.right,
-          style: _bodyStyle.copyWith(fontSize: 10),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Tel.  Office  :  ${config.phone}',
-          textAlign: TextAlign.right,
-          style: _bodyStyle.copyWith(fontSize: 10, fontWeight: FontWeight.w700),
-        ),
-      ],
+  Widget _buildLetterheadImage() {
+    return SizedBox(
+      height: headerHeight,
+      child: Image.asset(
+        'assets/images/letterhead.png',
+        fit: BoxFit.contain,
+        alignment: Alignment.centerRight,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      ),
     );
   }
 
@@ -825,7 +813,7 @@ class _FallbackLogo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 110,
-      height: 75,
+      height: TaxInvoicePreview.headerHeight,  // consistent with headerHeight
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(52),
         border: Border.all(color: const Color(0xFF1A237E), width: 3),

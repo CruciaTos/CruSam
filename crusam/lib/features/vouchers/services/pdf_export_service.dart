@@ -10,6 +10,7 @@
 //   mix of portrait and landscape pages, including the voucher bundle where
 //   page 1 is portrait and pages 2+ are landscape.
 // • All other logic, public API, and existing callers are unchanged.
+// • Added 'letterhead.png' to asset precache list for invoice bundle.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -286,6 +287,7 @@ class PdfExportService {
   static Future<void> _precacheInvoiceAssets(BuildContext context) async {
     await _precacheAssets(context, [
       'assets/images/aarti_logo.png',
+      'assets/images/letterhead.png',     // ← added for new letterhead image
       'assets/images/aarti_signature.png',
     ]);
   }

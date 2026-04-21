@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -8,6 +10,7 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
+import '../../../core/preferences/export_preferences_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../widgets/invoice_preview_dialog.dart';
 import 'package:go_router/go_router.dart';
@@ -22,6 +25,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   List<VoucherModel> _vouchers = [];
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _loading = true;
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -68,7 +72,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   void _editVoucher(BuildContext context, VoucherModel v) {
-    // Confirm before overwriting any unsaved work in the builder
     final hasUnsavedWork = VoucherNotifier.instance.current.rows.isNotEmpty ||
         VoucherNotifier.instance.current.title.isNotEmpty;
 
@@ -103,10 +106,128 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   void _loadIntoBuilder(BuildContext context, VoucherModel v) {
-    // Push voucher into the singleton so VoucherBuilderScreen picks it up
     VoucherNotifier.instance.update((_) => v);
     context.go('/vouchers');
   }
+
+  // ── Export invoice list as CSV ─────────────────────────────────────────────
+  Future<void> _exportList() async {
+    if (_exporting || _vouchers.isEmpty) {
+      if (_vouchers.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No invoices to export.')),
+        );
+      }
+      return;
+    }
+    setState(() => _exporting = true);
+
+    try {
+      // Build CSV content
+      final buf = StringBuffer();
+
+      // Header row
+      buf.writeln('Bill No,Date,Voucher Ref,Dept,Base Amount,CGST,SGST,Total Amount,Status');
+
+      // Data rows — escape fields that may contain commas or quotes
+      for (final v in _vouchers) {
+        buf.writeln([
+          _csvField(v.billNo.isEmpty ? '—' : v.billNo),
+          _csvField(v.date),
+          _csvField(v.title.isEmpty ? '(Untitled)' : v.title),
+          _csvField(v.deptCode),
+          v.baseTotal.toStringAsFixed(2),
+          v.cgst.toStringAsFixed(2),
+          v.sgst.toStringAsFixed(2),
+          v.finalTotal.toStringAsFixed(2),
+          _csvField(v.status.name),
+        ].join(','));
+      }
+
+      // Resolve output directory (mirrors WidgetPdfExportService._outputDir)
+      final dir = await _outputDir();
+      final stamp = DateTime.now();
+      final filename =
+          'invoice_list_${stamp.year}${_pad(stamp.month)}${_pad(stamp.day)}'
+          '_${_pad(stamp.hour)}${_pad(stamp.minute)}.csv';
+      final path = '${dir.path}${Platform.pathSeparator}$filename';
+
+      await File(path).writeAsString(buf.toString(), flush: true);
+
+      // Open the file with the OS default app
+      _openFile(path);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported: $filename'),
+            action: SnackBarAction(
+              label: 'Open Folder',
+              onPressed: () => _openFolder(dir.path),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  // ── CSV helpers ────────────────────────────────────────────────────────────
+
+  /// Wraps a field in double-quotes if it contains commas, quotes, or newlines,
+  /// and escapes any internal double-quotes per RFC 4180.
+  static String _csvField(String value) {
+    if (value.contains(',') || value.contains('"') || value.contains('\n')) {
+      return '"${value.replaceAll('"', '""')}"';
+    }
+    return value;
+  }
+
+  static String _pad(int n) => n.toString().padLeft(2, '0');
+
+  // ── OS helpers ─────────────────────────────────────────────────────────────
+
+  static Future<Directory> _outputDir() async {
+    final saved = ExportPreferencesNotifier.instance.pdfPath;
+    if (saved.isNotEmpty) {
+      final dir = Directory(saved);
+      if (await dir.exists()) return dir;
+    }
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ?? '.';
+    final dl = Directory(
+        Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
+    if (await dl.exists()) return dl;
+    return getApplicationDocumentsDirectory();
+  }
+
+  static void _openFile(String path) {
+    try {
+      if (Platform.isWindows)    Process.run('cmd',    ['/c', 'start', '', path]);
+      else if (Platform.isMacOS) Process.run('open',   [path]);
+      else if (Platform.isLinux) Process.run('xdg-open', [path]);
+    } catch (_) {}
+  }
+
+  static void _openFolder(String folder) {
+    try {
+      if (Platform.isWindows)    Process.run('explorer', [folder]);
+      else if (Platform.isMacOS) Process.run('open',     [folder]);
+      else if (Platform.isLinux) Process.run('xdg-open', [folder]);
+    } catch (_) {}
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -119,9 +240,15 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             Text('Generated Invoices', style: AppTextStyles.h3),
             const Spacer(),
             OutlinedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.download_outlined, size: 16),
-              label: const Text('Export List'),
+              onPressed: (_loading || _exporting) ? null : _exportList,
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download_outlined, size: 16),
+              label: Text(_exporting ? 'Exporting…' : 'Export List'),
             ),
           ],
         ),
@@ -133,7 +260,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             child: Card(
               margin: EdgeInsets.zero,
               elevation: 2,
-              clipBehavior: Clip.antiAlias, // ← THIS FIXES THE ROUNDED CORNERS
+              clipBehavior: Clip.antiAlias,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(color: Colors.grey.shade300),
@@ -161,25 +288,31 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                         ],
                         rows: _vouchers.map((v) => DataRow(cells: [
                           DataCell(Text(
-                             v.billNo.isNotEmpty ? v.billNo : '—',
-                            style: AppTextStyles.bodySemi.copyWith(color: AppColors.indigo600, fontSize: 13),
+                            v.billNo.isNotEmpty ? v.billNo : '—',
+                            style: AppTextStyles.bodySemi.copyWith(
+                                color: AppColors.indigo600, fontSize: 13),
                           )),
                           DataCell(Text(v.date)),
                           DataCell(Text(v.title.isEmpty ? '(Untitled)' : v.title)),
                           DataCell(Text(v.deptCode)),
-                          DataCell(Text(formatCurrency(v.finalTotal),
-                              style: AppTextStyles.bodySemi.copyWith(fontSize: 13))),
+                          DataCell(Text(
+                            formatCurrency(v.finalTotal),
+                            style: AppTextStyles.bodySemi.copyWith(fontSize: 13),
+                          )),
                           DataCell(_StatusBadge(status: v.status)),
                           DataCell(Row(children: [
                             IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 17, color: AppColors.indigo600),
+                              icon: const Icon(Icons.edit_outlined,
+                                  size: 17, color: AppColors.indigo600),
                               onPressed: () => _editVoucher(context, v),
                               tooltip: 'Edit',
                             ),
                             IconButton(
-                              icon: const Icon(Icons.description_outlined, size: 17, color: AppColors.indigo600),
+                              icon: const Icon(Icons.description_outlined,
+                                  size: 17, color: AppColors.indigo600),
                               onPressed: () {
-                                final previewNotifier = VoucherNotifier()..current = v;
+                                final previewNotifier = VoucherNotifier()
+                                  ..current = v;
                                 InvoicePreviewDialog.show(
                                   context,
                                   previewNotifier,
@@ -190,7 +323,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                               tooltip: 'View',
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 17, color: Colors.red),
+                              icon: const Icon(Icons.delete_outline,
+                                  size: 17, color: Colors.red),
                               onPressed: () => _deleteVoucher(v),
                               tooltip: 'Delete',
                             ),
@@ -220,8 +354,11 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Text(
         status.name.toUpperCase(),
-        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-            color: saved ? AppColors.emerald700 : AppColors.amber700),
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: saved ? AppColors.emerald700 : AppColors.amber700,
+        ),
       ),
     );
   }

@@ -23,6 +23,7 @@ class WidgetPdfExportService {
   static pw.Font? _bold;
   static pw.MemoryImage? _logo;
   static pw.MemoryImage? _sig;
+  static pw.MemoryImage? _letterhead; // ← NEW: mirrors TaxInvoicePreview
 
   // ── Palette ─────────────────────────────────────────────────────────────────
   static const _black   = PdfColor.fromInt(0xFF000000);
@@ -35,14 +36,19 @@ class WidgetPdfExportService {
 
   static const _bSide = pw.BorderSide(color: _black, width: 0.75);
 
+  // ── Header height — mirrors TaxInvoicePreview.headerHeight (140px logical)
+  // Scaled to PDF pt: 140 × (547 / 793.7) ≈ 96.5pt. Round to 97.
+  static const double _headerHeightPt = 97.0;
+
   // ── Init ────────────────────────────────────────────────────────────────────
   static Future<void> _init() async {
     _regular ??= pw.Font.ttf(
         await rootBundle.load('assets/fonts/NotoSans-Regular.ttf'));
     _bold ??=
         pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
-    _logo ??= await _tryImg('assets/images/aarti_logo.png');
-    _sig  ??= await _tryImg('assets/images/aarti_signature.png');
+    _logo        ??= await _tryImg('assets/images/aarti_logo.png');
+    _sig         ??= await _tryImg('assets/images/aarti_signature.png');
+    _letterhead  ??= await _tryImg('assets/images/letterhead.png'); // ← NEW
   }
 
   static Future<pw.MemoryImage?> _tryImg(String path) async {
@@ -121,11 +127,9 @@ class WidgetPdfExportService {
     } else {
       for (var i = 0; i < sorted.length; i += rowsPerPage) {
         final end    = (i + rowsPerPage).clamp(0, sorted.length);
-        // FIX: capture slice and isLast as final locals so the closure always
-        // holds the correct values for this iteration (avoids loop-capture bug).
         final slice  = sorted.sublist(i, end);
         final isLast = end >= sorted.length;
-        final start  = i; // capture loop variable for startIndex
+        final start  = i;
         doc.addPage(pw.Page(
           pageFormat: PdfPageFormat.a4.landscape,
           margin: voucherMargins,
@@ -142,8 +146,7 @@ class WidgetPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // TAX INVOICE PAGE — rebuilt to match TaxInvoicePreview exactly,
-  // using pw.Table for all multi-cell rows (no IntrinsicHeight needed).
+  // TAX INVOICE PAGE
   // ══════════════════════════════════════════════════════════════════════════
 
   static pw.Widget _taxInvoicePage(
@@ -152,23 +155,29 @@ class WidgetPdfExportService {
     final fromDate = sorted.isNotEmpty ? _fmtDate(sorted.first.fromDate) : '-';
     final toDate   = sorted.isNotEmpty ? _fmtDate(sorted.last.toDate)   : '-';
 
-    // Column widths proportionally scaled from TaxInvoicePreview to PDF A4.
-    // Preview logical-px: sr=28, fr=65, to=65, qty=36, rate=50, amt=90 → fixed=334
-    // A4 content width: 595.28 − 2×24 = 547.28 ≈ 547 pt
-    // Scale = 547 / 745.7 (preview content) ≈ 0.734
+    // Column widths for PDF A4 content.
+    // A4 content = 595.28 - 2x24 margin = 547.28pt.
+    // Outer container uses Border.all(0.9) in border-box sizing,
+    // so usable inner width = 547.28 - 2x0.9 = 545.48pt.
+    //
+    // rateW widened 37->52 so taxLblW=78pt fits "Total amount before Tax"
+    // on one line (matches Flutter TaxInvoicePreview). descW absorbs the
+    // 15pt reduction.
+    const outerBorder = 0.9;
+    const usableW = 547.28 - 2 * outerBorder; // 545.48
+
     const srW   = 20.0;
     const frW   = 47.0;
     const toW   = 47.0;
     const qtyW  = 26.0;
-    const rateW = 37.0;
+    const rateW = 60.0; // widened from 37 -> taxLblW=86, single-line tax labels
     const amtW  = 66.0;
-    const fixedSum = srW + frW + toW + qtyW + rateW + amtW; // 243
-    const descW = 547.0 - fixedSum;                          // 304
+    const fixedSum = srW + frW + toW + qtyW + rateW + amtW; // 258
+    const descW = usableW - fixedSum;                        // ~287.48
 
-    // Bank panel spans the left 4 columns; tax panel spans the right 3.
-    const bankW   = srW + frW + toW + descW;  // 418
-    const taxW    = qtyW + rateW + amtW;       // 129
-    const taxLblW = taxW - amtW;               //  63
+    const bankW   = srW + frW + toW + descW;  // ~401.48
+    const taxW    = qtyW + rateW + amtW;       // 144
+    const taxLblW = taxW - amtW;               //  78
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -230,7 +239,7 @@ class WidgetPdfExportService {
                 ],
               ),
 
-              // ── 2. Data row (pw.Table = uniform cell height, no IntrinsicHeight) ──
+              // ── 2. Data row ──────────────────────────────────────────────
               pw.Table(
                 border: pw.TableBorder(
                   bottom: _bSide,
@@ -267,7 +276,7 @@ class WidgetPdfExportService {
                 ],
               ),
 
-              // ── 3. Bank info + Tax summary (pw.Table = equal height both sides) ──
+              // ── 3. Bank info + Tax summary ───────────────────────────────
               pw.Table(
                 border: pw.TableBorder(
                   bottom: _bSide,
@@ -340,40 +349,74 @@ class WidgetPdfExportService {
     );
   }
 
-  // ── Invoice header (logo left, company info right) ─────────────────────────
-  static pw.Widget _invoiceHeader(CompanyConfigModel config) =>
-      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+  // ── Invoice header ─────────────────────────────────────────────────────────
+  // FIX: Now mirrors TaxInvoicePreview._buildHeader() exactly:
+  //   • Left  → logo image (fixed width, _headerHeightPt tall)
+  //   • Right → letterhead.png (Expanded, right-aligned, contain fit)
+  //             Falls back to text-based company info only when the image
+  //             asset is missing, keeping parity with the Flutter widget.
+  static pw.Widget _invoiceHeader(CompanyConfigModel config) {
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        // ── Logo (left) ──────────────────────────────────────────────────
         if (_logo != null)
           pw.SizedBox(
-              width: 80,
-              height: 55,
-              child: pw.Image(_logo!, fit: pw.BoxFit.contain))
+            width: 100,
+            height: _headerHeightPt,
+            child: pw.Image(_logo!, fit: pw.BoxFit.contain),
+          )
         else
-          pw.SizedBox(width: 80, height: 55),
+          pw.SizedBox(width: 100, height: _headerHeightPt),
+
         pw.SizedBox(width: 12),
+
+        // ── Letterhead image (right, Expanded) ───────────────────────────
+        // Mirrors: Expanded(child: Image.asset('letterhead.png',
+        //            fit: BoxFit.contain,
+        //            alignment: Alignment.centerRight))
         pw.Expanded(
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Text(
-                config.companyName.toUpperCase(),
-                textAlign: pw.TextAlign.right,
-                style: _ts(size: 15, color: _green, bold: true),
-              ),
-              pw.SizedBox(height: 3),
-              pw.Text(config.address,
-                  textAlign: pw.TextAlign.right, style: _ts(size: 8)),
-              pw.SizedBox(height: 2),
-              pw.Text('Tel.  Office  :  ${config.phone}',
-                  textAlign: pw.TextAlign.right,
-                  style: _ts(size: 8, bold: true)),
-            ],
+          child: pw.SizedBox(
+            height: _headerHeightPt,
+            child: _letterhead != null
+                ? pw.Align(
+                    alignment: pw.Alignment.centerRight,
+                    child: pw.Image(
+                      _letterhead!,
+                      fit: pw.BoxFit.contain,
+                      // Constrain to full available width so it scales like
+                      // BoxFit.contain with Alignment.centerRight in Flutter.
+                      width: double.infinity,
+                      height: _headerHeightPt,
+                    ),
+                  )
+                // ── Text fallback (only when letterhead.png is missing) ───
+                : pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    mainAxisAlignment: pw.MainAxisAlignment.center,
+                    children: [
+                      pw.Text(
+                        config.companyName.toUpperCase(),
+                        textAlign: pw.TextAlign.right,
+                        style: _ts(size: 15, color: _green, bold: true),
+                      ),
+                      pw.SizedBox(height: 3),
+                      pw.Text(config.address,
+                          textAlign: pw.TextAlign.right,
+                          style: _ts(size: 8)),
+                      pw.SizedBox(height: 2),
+                      pw.Text('Tel.  Office  :  ${config.phone}',
+                          textAlign: pw.TextAlign.right,
+                          style: _ts(size: 8, bold: true)),
+                    ],
+                  ),
           ),
         ),
-      ]);
+      ],
+    );
+  }
 
   // ── Bill To (mirrors TaxInvoicePreview._buildBillToSection) ──────────────
-  // Three aligned rows: (name | billNo), (address | date), (gstin | poNo)
   static pw.Widget _billToSection(VoucherModel voucher) => pw.Container(
         decoration: pw.BoxDecoration(
             border: pw.Border.all(color: _black, width: 0.75)),
@@ -439,9 +482,8 @@ class WidgetPdfExportService {
         pw.Text(value, style: _ts(size: 8.5)),
       ]);
 
-  // ── Table cell helpers for the invoice pw.Table rows ──────────────────────
+  // ── Table cell helpers ─────────────────────────────────────────────────────
 
-  /// Generic header cell (used in the header TableRow).
   static pw.Widget _tblHdrCell(String text, {bool centered = false}) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
@@ -452,7 +494,6 @@ class WidgetPdfExportService {
         ),
       );
 
-  /// Generic data cell (used in the item data TableRow).
   static pw.Widget _tblDataCell(
     String text, {
     bool centered = false,
@@ -472,15 +513,12 @@ class WidgetPdfExportService {
         ),
       );
 
-  /// Description cell — matches _DescriptionCell in TaxInvoicePreview:
-  /// description text, spacer, then the voucher footnote.
   static pw.Widget _tblDescCell(String description) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(_multiline(description), style: _ts(size: 8.5)),
-            // Matches _DescriptionCell._descVoucherSpacing scaled to PDF (≈58pt)
             pw.SizedBox(height: 58),
             pw.Text(
               '( Vouchers attached with this original bill )',
@@ -490,8 +528,7 @@ class WidgetPdfExportService {
         ),
       );
 
-  // ── Bank info panel (left side of bank+tax row) ───────────────────────────
-  // Matches _BankInfoPanel in TaxInvoicePreview.
+  // ── Bank info panel ────────────────────────────────────────────────────────
   static pw.Widget _bankInfoPanel(CompanyConfigModel config) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         child: pw.Column(
@@ -527,9 +564,7 @@ class WidgetPdfExportService {
         ]),
       );
 
-  // ── Tax summary panel (right side of bank+tax row) ────────────────────────
-  // Matches _TaxSummaryPanel + _GrandTotalRow in TaxInvoicePreview.
-  // Uses voucher's computed properties: cgst, sgst, totalTax, roundOff, finalTotal.
+  // ── Tax summary panel ──────────────────────────────────────────────────────
   static pw.Widget _taxSummaryPanel(
       VoucherModel voucher, double labelW, double amtW) {
     return pw.Column(
@@ -548,7 +583,6 @@ class WidgetPdfExportService {
           '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
           labelW, amtW,
         ),
-        // Grand total row — highlighted background, no bottom divider
         _taxRow(
           'Total Amount after Tax',
           '₹ ${voucher.finalTotal.toStringAsFixed(0)}',
@@ -561,8 +595,6 @@ class WidgetPdfExportService {
     );
   }
 
-  /// Single tax summary row.
-  /// [labelW] + [amtW] must equal the containing table cell width.
   static pw.Widget _taxRow(
     String label,
     String value,
@@ -572,6 +604,10 @@ class WidgetPdfExportService {
     PdfColor? bg,
     bool last     = false,
   }) {
+    // The right-border on the label container is drawn inside its width
+    // (border-box), so subtract border thickness to keep labelW + amtW
+    // exactly equal to taxW and prevent any overflow.
+    const borderThickness = 0.75;
     return pw.Container(
       decoration: pw.BoxDecoration(
         color: bg,
@@ -579,9 +615,9 @@ class WidgetPdfExportService {
       ),
       child: pw.Row(
         children: [
-          // Label portion — right-aligned, bordered on the right
+          // Label: fixed width, right-aligned text, right-border divider
           pw.Container(
-            width: labelW,
+            width: labelW - borderThickness,
             decoration:
                 const pw.BoxDecoration(border: pw.Border(right: _bSide)),
             padding:
@@ -593,16 +629,18 @@ class WidgetPdfExportService {
               style: _ts(size: 7.5, bold: bold),
             ),
           ),
-          // Amount portion
-          pw.Container(
-            width: amtW,
-            padding:
-                const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text(
-              value,
-              textAlign: pw.TextAlign.right,
-              style: _ts(size: 8, bold: bold),
+          // Amount: use Expanded so it fills the remaining space exactly,
+          // eliminating any accumulation of sub-pixel rounding errors.
+          pw.Expanded(
+            child: pw.Container(
+              padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              alignment: pw.Alignment.centerRight,
+              child: pw.Text(
+                value,
+                textAlign: pw.TextAlign.right,
+                style: _ts(size: 8, bold: bold),
+              ),
             ),
           ),
         ],
@@ -614,31 +652,23 @@ class WidgetPdfExportService {
   // VOUCHER PAGE (LANDSCAPE) — UNTOUCHED
   // ══════════════════════════════════════════════════════════════════════════
 
-  // FIX: The root cause of blank pages 2 & 3 was that the "Expenses" column
-  // was only 40px wide (≈ 46pt after scaling), causing "Exp. for month of April"
-  // to wrap across 3 lines. With 24 rows × 3-line height the table silently
-  // overflowed the page. Fix: widen Expenses to 82px and rebalance the other
-  // columns. Total is still scaled to fit the 794pt content width.
-  //
-  // Old defaults: 58, 88, 72, 90, 34, 105, 72,  40, 50, 44, 44  = 697px
-  // New defaults: 55, 82, 68, 86, 30,  95, 65,  82, 46, 42, 42  = 693px
   static const double _defaultTotalPx = 693.0;
-  static const double _targetWidthPt  = 794.0; // landscape A4 − 48pt margins
+  static const double _targetWidthPt  = 794.0;
 
   static List<double> _getScaledColWidths() {
     const scale = _targetWidthPt / _defaultTotalPx;
     return [
-      55 * scale,  // Amount
-      82 * scale,  // Debit A/c
-      68 * scale,  // IFSC
-      86 * scale,  // Credit A/c
-      30 * scale,  // Code
-      95 * scale,  // Name
-      65 * scale,  // Place
-      82 * scale,  // Expenses  ← was 40; now wide enough for single-line text
-      46 * scale,  // Aarti
-      42 * scale,  // Fr.
-      42 * scale,  // To
+      55 * scale,
+      82 * scale,
+      68 * scale,
+      86 * scale,
+      30 * scale,
+      95 * scale,
+      65 * scale,
+      82 * scale,
+      46 * scale,
+      42 * scale,
+      42 * scale,
     ];
   }
 
@@ -664,13 +694,11 @@ class WidgetPdfExportService {
     required bool showTotal,
   }) {
     final colWidths  = _getScaledColWidths();
-    // Pre-compute month label once; avoids repeated parsing inside the loop.
     final monthLabel = _monthFromIso(voucher.date);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // Header row
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -685,7 +713,6 @@ class WidgetPdfExportService {
         ),
         pw.Divider(color: _black, thickness: 0.75),
         pw.SizedBox(height: 4),
-        // Table
         pw.Table(
           border: pw.TableBorder.all(color: _black, width: 0.5),
           columnWidths: {
@@ -694,13 +721,11 @@ class WidgetPdfExportService {
           },
           defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
           children: [
-            // Header row
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: _hdrBg),
               children: _vHeaders.map((h) {
                 final center = h == 'Aarti';
                 return pw.Padding(
-                  // FIX: tight vertical padding keeps header row short
                   padding: const pw.EdgeInsets.symmetric(
                       horizontal: 3, vertical: 3),
                   child: pw.Align(
@@ -712,7 +737,6 @@ class WidgetPdfExportService {
                 );
               }).toList(),
             ),
-            // Data rows
             ...rows.asMap().entries.map((e) {
               final i  = e.key;
               final r  = e.value;
@@ -727,7 +751,6 @@ class WidgetPdfExportService {
                   _vCell(r.sbCode),
                   _vCell(r.employeeName),
                   _vCell(r.branch),
-                  // FIX: column is now wide enough to render this on one line
                   _vCell('Exp. for month of $monthLabel'),
                   _vCell('Aarti', center: true),
                   _vCell(_fmtDate(r.fromDate)),
@@ -735,7 +758,6 @@ class WidgetPdfExportService {
                 ],
               );
             }),
-            // Total row (only on last page)
             if (showTotal)
               pw.TableRow(
                 decoration: const pw.BoxDecoration(color: _grandBg),
@@ -750,16 +772,16 @@ class WidgetPdfExportService {
                       ),
                     ),
                   ),
-                  _vCell(''), // Debit A/c
-                  _vCell(''), // IFSC
-                  _vCell(''), // Credit A/c
-                  _vCell(''), // Code
-                  _vCell(''), // Name
-                  _vCell(''), // Place
-                  _vCell(''), // Expenses
-                  _vCell(''), // Aarti
-                  _vCell(''), // Fr.
-                  _vCell(''), // To
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
+                  _vCell(''),
                 ],
               ),
           ],
@@ -824,8 +846,6 @@ class WidgetPdfExportService {
     );
   }
 
-  // FIX: reduced vertical padding from all(2) → symmetric(h:2, v:1.5)
-  // so each row is shorter, allowing 20 rows to fit on one page safely.
   static pw.Widget _vCell(
     String text, {
     bool mono = false,
