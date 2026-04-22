@@ -42,6 +42,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../salary/notifier/salary_data_notifier.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
@@ -275,12 +276,24 @@ class _MetadataCardState extends State<_MetadataCard> {
     if (_addressCtrl.text != c.clientAddress)  _addressCtrl.text = c.clientAddress;
     if (_poCtrl.text      != c.poNo)           _poCtrl.text      = c.poNo;
     if (_billNoCtrl.text  != c.billNo)         _billNoCtrl.text  = c.billNo;
+    _syncSalaryMetadata(c);
+  }
+
+  void _syncSalaryMetadata(VoucherModel c) {
+    final n = SalaryDataNotifier.instance;
+    n.setDateIso(c.date);
+    n.setBillNo(c.billNo);
+    n.setPoNo(c.poNo);
+    n.setClientName(c.clientName);
+    n.setClientAddr(c.clientAddress);
+    n.setClientGstin(c.clientGstin);
   }
 
   void _onChanged() {
     final c = widget.notifier.current;
+    _syncSalaryMetadata(c);
     if (_titleCtrl.text   != c.title        ||
-        _dateCtrl.text    != c.date         ||
+        _dateCtrl.text    != _fmt(c.date)   ||
         _clientCtrl.text  != c.clientName   ||
         _gstnCtrl.text    != c.clientGstin  ||
         _poCtrl.text      != c.poNo         ||

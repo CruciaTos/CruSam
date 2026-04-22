@@ -31,6 +31,22 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
+  void _setControllerText(TextEditingController ctrl, String value) {
+    if (ctrl.text == value) return;
+    ctrl.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+  }
+
+  void _syncBillNoFromSalaryData() {
+    _setControllerText(_billNoCtrl, SalaryDataNotifier.instance.billNo);
+  }
+
+  void _onBillNoChanged() {
+    SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -40,15 +56,16 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
-    // Pre-fill bill no from SalaryDataNotifier (synced by SalaryBillsScreen)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final n = SalaryDataNotifier.instance;
-      if (n.billNo.isNotEmpty) _billNoCtrl.text = n.billNo;
-    });
+    _syncBillNoFromSalaryData();
+    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance.addListener(_syncBillNoFromSalaryData);
+    _billNoCtrl.addListener(_onBillNoChanged);
   }
 
   @override
   void dispose() {
+    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    _billNoCtrl.removeListener(_onBillNoChanged);
     _descNotifier.dispose();
     _marginNotifier.dispose();
     _billNoCtrl.dispose();
@@ -84,13 +101,13 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
           pfAmount:        sc.attachmentAPf,
           esicAmount:      sc.attachmentAEsic,
           totalAfterTax:   sc.attachmentATotal,
-          billNo:          _billNoCtrl.text,
+          billNo:          n.billNo,
           date:            n.dateDisplay,
           poNo:            n.poNo,
           itemDescription: _itemDescription,
-          customerName:    n.clientName.isNotEmpty ? n.clientName : _config.companyName,
-          customerAddress: n.clientAddr.isNotEmpty ? n.clientAddr : _config.address,
-          customerGst:     n.clientGstin.isNotEmpty ? n.clientGstin : _config.gstin,
+          customerName:    n.clientName,
+          customerAddress: n.clientAddr,
+          customerGst:     n.clientGstin,
         ),
         fileNameSlug:         'attachment_a',
         filePrefix:           'attachment_a',
@@ -201,24 +218,16 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                           config:          _config,
                           margins:         _margins,
                           itemDescription: _itemDescription,
-                          billNo:          _billNoCtrl.text,
+                          billNo:          n.billNo,
                           poNo:            n.poNo,
                           date:            date,
                           itemAmount:      sc.totalGrossFull,
                           pfAmount:        sc.attachmentAPf,
                           esicAmount:      sc.attachmentAEsic,
                           totalAfterTax:   sc.attachmentATotal,
-                          customerName: n.clientName.isNotEmpty
-                              ? n.clientName
-                              : 'M/s Diversey India Hygiene Private Ltd.',
-                          customerAddress: n.clientAddr.isNotEmpty
-                              ? n.clientAddr
-                              : '501,5th flr,Ackruti center point, '
-                                  'MIDC Central Road,Andheri (East), '
-                                  'Mumbai-400093',
-                          customerGst: n.clientGstin.isNotEmpty
-                              ? n.clientGstin
-                              : '27AABCC1597Q1Z2',
+                          customerName:    n.clientName,
+                          customerAddress: n.clientAddr,
+                          customerGst:     n.clientGstin,
                         ),
                       ),
                     ),

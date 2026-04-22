@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/employee_model.dart';
@@ -66,6 +67,16 @@ class VoucherNotifier extends ChangeNotifier {
     totalTax:  totalTax,  roundOff: roundOff, finalTotal: finalTotal,
   );
 
+  void _syncSalaryMetadata() {
+    final n = SalaryDataNotifier.instance;
+    n.setDateIso(current.date);
+    n.setBillNo(current.billNo);
+    n.setPoNo(current.poNo);
+    n.setClientName(current.clientName);
+    n.setClientAddr(current.clientAddress);
+    n.setClientGstin(current.clientGstin);
+  }
+
   // ── Load ───────────────────────────────────────────────────────────────────
   /// Call once per screen mount.
   ///
@@ -107,6 +118,7 @@ class VoucherNotifier extends ChangeNotifier {
   // ── Mutations ──────────────────────────────────────────────────────────────
   void update(VoucherModel Function(VoucherModel) fn) {
     current = fn(current);
+    _syncSalaryMetadata();
     notifyListeners();
   }
 
@@ -120,6 +132,7 @@ class VoucherNotifier extends ChangeNotifier {
       debitAccountName:  config.companyName,
     );
     current = current.copyWith(rows: [...current.rows, row]);
+    _syncSalaryMetadata();
     notifyListeners();
   }
 
@@ -127,6 +140,7 @@ class VoucherNotifier extends ChangeNotifier {
     current = current.copyWith(
       rows: current.rows.map((r) => r.id == id ? fn(r) : r).toList(),
     );
+    _syncSalaryMetadata();
     notifyListeners();
   }
 
@@ -153,6 +167,7 @@ class VoucherNotifier extends ChangeNotifier {
     current = current.copyWith(
       rows: current.rows.where((r) => r.id != id).toList(),
     );
+    _syncSalaryMetadata();
     notifyListeners();
   }
 
@@ -190,5 +205,6 @@ class VoucherNotifier extends ChangeNotifier {
       clientAddress:   AppConstants.defaultClientAddress,
       clientGstin:     AppConstants.defaultClientGstin,
     );
+    _syncSalaryMetadata();
   }
 }

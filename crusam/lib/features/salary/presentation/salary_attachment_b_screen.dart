@@ -31,6 +31,22 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
+  void _setControllerText(TextEditingController ctrl, String value) {
+    if (ctrl.text == value) return;
+    ctrl.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+  }
+
+  void _syncBillNoFromSalaryData() {
+    _setControllerText(_billNoCtrl, SalaryDataNotifier.instance.billNo);
+  }
+
+  void _onBillNoChanged() {
+    SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -40,14 +56,16 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final n = SalaryDataNotifier.instance;
-      if (n.billNo.isNotEmpty) _billNoCtrl.text = n.billNo;
-    });
+    _syncBillNoFromSalaryData();
+    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance.addListener(_syncBillNoFromSalaryData);
+    _billNoCtrl.addListener(_onBillNoChanged);
   }
 
   @override
   void dispose() {
+    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    _billNoCtrl.removeListener(_onBillNoChanged);
     _descNotifier.dispose();
     _marginNotifier.dispose();
     _billNoCtrl.dispose();
@@ -80,13 +98,13 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
           config:          _config,
           margins:         _margins,
           itemDescription: _itemDescription,
-          billNo:          _billNoCtrl.text,
+          billNo:          n.billNo,
           poNo:            n.poNo,
           employeeCount:   sc.employeeCount,
           date:            n.dateDisplay,
-          customerName:    _config.companyName,
-          customerAddress: _config.address,
-          customerGst:     _config.gstin,
+          customerName:    n.clientName,
+          customerAddress: n.clientAddr,
+          customerGst:     n.clientGstin,
         ),
         fileNameSlug:         'attachment_b',
         filePrefix:           'attachment_b',
@@ -197,10 +215,13 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                           config:          _config,
                           margins:         _margins,
                           itemDescription: _itemDescription,
-                          billNo:          _billNoCtrl.text,
+                          billNo:          n.billNo,
                           poNo:            n.poNo,
                           employeeCount:   sc.employeeCount,
                           date:            date,
+                          customerName:    n.clientName,
+                          customerAddress: n.clientAddr,
+                          customerGst:     n.clientGstin,
                         ),
                       ),
                     ),

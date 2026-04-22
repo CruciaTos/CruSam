@@ -679,16 +679,16 @@ class SalaryPdfExportService {
 
   static pw.Widget _kvRight(String k, String v, pw.TextStyle s) =>
       pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-        pw.Text(k, style: s.copyWith(fontSize: 10)),
-        pw.Text(v, style: s.copyWith(fontSize: 10)),
+        pw.Text(k, style: s.copyWith(fontSize: 12)),
+        pw.Text(v, style: s.copyWith(fontSize: 12)),
       ]);
 
   static pw.Widget _bankRow(String label, String value, pw.TextStyle s) =>
       pw.Padding(
         padding: const pw.EdgeInsets.only(bottom: 2),
         child: pw.Row(children: [
-          pw.SizedBox(width: 80, child: pw.Text(label, style: s)),
-          pw.Text(':   $value', style: s),
+          pw.SizedBox(width: 80, child: pw.Text(label, style: s.copyWith(fontSize: 13))),
+          pw.Text(':   $value', style: s.copyWith(fontSize: 13)),
         ]),
       );
 

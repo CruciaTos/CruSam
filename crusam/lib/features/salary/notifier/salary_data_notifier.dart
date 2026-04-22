@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../core/constants/app_constants.dart';
+
 class SalaryDataNotifier extends ChangeNotifier {
   SalaryDataNotifier._();
   static final SalaryDataNotifier instance = SalaryDataNotifier._();
@@ -7,11 +9,11 @@ class SalaryDataNotifier extends ChangeNotifier {
   int _month = DateTime.now().month;
   int _year  = DateTime.now().year;
   String _dateIso      = _todayIso();
-  String _poNo        = '';
-  String _billNo      = '';
-  String _clientName  = '';
-  String _clientAddr  = '';
-  String _clientGstin = '';
+  String _poNo         = '-';
+  String _billNo       = 'AE/-/25-26';
+  String _clientName   = AppConstants.defaultClientName;
+  String _clientAddr   = AppConstants.defaultClientAddress;
+  String _clientGstin  = AppConstants.defaultClientGstin;
   String _deptCode    = '';
 
   final Map<int, int> _days = {};
