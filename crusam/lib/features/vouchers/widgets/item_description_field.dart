@@ -191,7 +191,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               shrinkWrap: true,
                               itemCount: items.length,
-                              separatorBuilder: (_, __) => Divider(
+                              separatorBuilder: (_, _) => Divider(
                                 height: 1,
                                 thickness: 1,
                                 color: AppColors.slate50,

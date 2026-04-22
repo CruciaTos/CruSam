@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 
+import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 
@@ -323,10 +324,19 @@ class ExcelExportService {
   static Future<String?> _saveExcelFile(List<int> bytes, String fileName) async {
     try {
       Directory? directory;
+      final savedPath = ExportPreferencesNotifier.instance
+          .resolvedPathForTarget(ExportPathTarget.salaryStatementExcel);
 
-      if (Platform.isAndroid || Platform.isIOS) {
+      if (savedPath.isNotEmpty) {
+        final customDir = Directory(savedPath);
+        if (await customDir.exists()) {
+          directory = customDir;
+        }
+      }
+
+      if (directory == null && (Platform.isAndroid || Platform.isIOS)) {
         directory = await getApplicationDocumentsDirectory();
-      } else {
+      } else if (directory == null) {
         directory = await getDownloadsDirectory();
         directory ??= await getApplicationDocumentsDirectory();
       }

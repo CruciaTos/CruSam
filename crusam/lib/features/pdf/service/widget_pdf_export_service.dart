@@ -7,7 +7,6 @@ import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
@@ -142,7 +141,12 @@ class WidgetPdfExportService {
     }
 
     await _saveAndShare(
-        doc, voucher.billNo, 'tax_invoice_voucher', 'Tax Invoice & Voucher');
+      doc,
+      voucher.billNo,
+      'tax_invoice_voucher',
+      'Tax Invoice & Voucher',
+      ExportPathTarget.taxInvoiceVoucherPdf,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -876,8 +880,10 @@ class WidgetPdfExportService {
     return iso;
   }
 
-  static Future<Directory> _outputDir() async {
-    final saved = ExportPreferencesNotifier.instance.pdfPath;
+  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
+    final saved = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.pdfPath;
     if (saved.isNotEmpty) {
       final dir = Directory(saved);
       if (await dir.exists()) return dir;
@@ -911,21 +917,21 @@ class WidgetPdfExportService {
   }
 
   static Future<void> _saveAndShare(
-      pw.Document doc, String billNo, String prefix, String subject) async {
+    pw.Document doc,
+    String billNo,
+    String prefix,
+    String subject,
+    ExportPathTarget target,
+  ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
     final slug = billNo.isEmpty
         ? '${DateTime.now().millisecondsSinceEpoch}'
         : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
-    final dir      = await _outputDir();
+    final dir      = await _outputDir(target);
     final basePath = '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
     // FIX 1: never overwrite — auto-increment filename if file already exists
     final path     = await _uniquePath(basePath);
-    final fileName = File(path).uri.pathSegments.last;
     await File(path).writeAsBytes(bytes, flush: true);
-    await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: fileName)],
-      subject: subject,
-    );
   }
 }

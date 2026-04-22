@@ -94,7 +94,9 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     _horizontalScrollController.dispose();
     _marginHCtrl.dispose();
     _marginVCtrl.dispose();
-    for (final c in _colCtrls) c.dispose();
+    for (final c in _colCtrls) {
+      c.dispose();
+    }
     _searchFocusNode.dispose();
     _addButtonFocusNode.dispose();
     _colButtonFocusNode.dispose();

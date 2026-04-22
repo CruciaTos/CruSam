@@ -294,7 +294,7 @@ class _PageHeader extends StatelessWidget {
           child: Image.asset(
             'assets/images/aarti_logo.png',
             fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
           ),
         ),
         const SizedBox(width: 12),

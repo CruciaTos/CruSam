@@ -42,8 +42,12 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   @override
   void dispose() {
     _ctrl.removeListener(_syncControllers);
-    for (final c in _daysCtrls.values)      c.dispose();
-    for (final f in _daysFocusNodes.values) f.dispose();
+    for (final c in _daysCtrls.values) {
+      c.dispose();
+    }
+    for (final f in _daysFocusNodes.values) {
+      f.dispose();
+    }
     super.dispose();
   }
 

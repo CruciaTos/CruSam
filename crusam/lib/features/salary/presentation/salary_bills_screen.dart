@@ -374,7 +374,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                           SalaryDataNotifier.instance,
                           _marginNotifier,
                         ]),
-                        builder: (_, __) => SalaryBillPreview(
+                        builder: (_, _) => SalaryBillPreview(
                           config:            _config,
                           margins:           _margins,
                           customerName:      _clientNameCtrl.text,

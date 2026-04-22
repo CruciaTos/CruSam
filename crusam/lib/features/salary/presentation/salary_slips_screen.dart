@@ -418,7 +418,7 @@ class _EmployeePanel extends StatelessWidget {
         // Two consecutive highlighted employees → one unified box
         items.add(_GroupedEmpTile(
           first: emp,
-          second: next!,
+          second: next,
           firstDays: getDays(emp),
           secondDays: getDays(next),
           onTapFirst: () => onSelect(emp),

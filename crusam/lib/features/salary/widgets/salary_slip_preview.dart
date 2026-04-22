@@ -185,7 +185,7 @@ class SalarySlipPreview extends StatelessWidget {
         child: Image.asset(
           'assets/images/aarti_logo.png',
           fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const _FallbackLogo(),
+          errorBuilder: (_, _, _) => const _FallbackLogo(),
         ),
       );
 
@@ -195,7 +195,7 @@ class SalarySlipPreview extends StatelessWidget {
           'assets/images/letterhead.png',
           fit: BoxFit.contain,
           alignment: Alignment.centerRight,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          errorBuilder: (_, _, _) => const SizedBox.shrink(),
         ),
       );
 
@@ -665,8 +665,9 @@ class SalarySlipPairPage extends StatelessWidget {
     if (isFemale) {
       pt = eGross < 25000 ? 0 : (isFeb ? 300 : 200);
     } else {
-      if (eGross < 7500)       pt = 0;
-      else if (eGross < 10000) pt = 175;
+      if (eGross < 7500) {
+        pt = 0;
+      } else if (eGross < 10000) pt = 175;
       else                     pt = isFeb ? 300 : 200;
     }
 

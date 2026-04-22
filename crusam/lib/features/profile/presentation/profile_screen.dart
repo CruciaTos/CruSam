@@ -77,7 +77,7 @@ class _PdfMethodCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Switch(
                   value: prefs.useWidgetPdfForInvoiceVoucher,
-                  activeColor: AppColors.indigo600,
+                  activeThumbColor: AppColors.indigo600,
                   onChanged: (v) => prefs.setUseWidgetPdf(v),
                 ),
               ],
@@ -716,9 +716,30 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
   // Local controllers kept in sync with the notifier.
   late final TextEditingController _pdfCtrl;
   late final TextEditingController _excelCtrl;
+  late final Map<ExportPathTarget, TextEditingController> _targetCtrls;
 
   bool _pdfSaving   = false;
   bool _excelSaving = false;
+  final Map<ExportPathTarget, bool> _targetSaving = {
+    for (final target in ExportPathTarget.values) target: false,
+  };
+
+  static const List<ExportPathTarget> _pdfTargets = [
+    ExportPathTarget.taxInvoiceVoucherPdf,
+    ExportPathTarget.bankDisbursementPdf,
+    ExportPathTarget.salaryStatementPdf,
+    ExportPathTarget.salarySlipsPdf,
+    ExportPathTarget.salaryInvoicePdf,
+    ExportPathTarget.attachmentAPdf,
+    ExportPathTarget.attachmentBPdf,
+    ExportPathTarget.finalInvoicePdf,
+  ];
+
+  static const List<ExportPathTarget> _excelTargets = [
+    ExportPathTarget.taxInvoiceExcel,
+    ExportPathTarget.bankDisbursementExcel,
+    ExportPathTarget.salaryStatementExcel,
+  ];
 
   /// True on platforms where a native folder-picker dialog is available.
   bool get _supportsDirectoryPicker =>
@@ -729,6 +750,10 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     super.initState();
     _pdfCtrl   = TextEditingController(text: _prefs.pdfPath);
     _excelCtrl = TextEditingController(text: _prefs.excelPath);
+    _targetCtrls = {
+      for (final target in ExportPathTarget.values)
+        target: TextEditingController(text: _prefs.pathForTarget(target)),
+    };
     _prefs.addListener(_onPrefsChanged);
   }
 
@@ -739,6 +764,13 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     if (_excelCtrl.text != _prefs.excelPath) {
       _excelCtrl.text = _prefs.excelPath;
     }
+    for (final target in ExportPathTarget.values) {
+      final controller = _targetCtrls[target]!;
+      final savedPath = _prefs.pathForTarget(target);
+      if (controller.text != savedPath) {
+        controller.text = savedPath;
+      }
+    }
   }
 
   @override
@@ -746,6 +778,9 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     _prefs.removeListener(_onPrefsChanged);
     _pdfCtrl.dispose();
     _excelCtrl.dispose();
+    for (final controller in _targetCtrls.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -763,6 +798,13 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     if (path == null || !mounted) return;
     _excelCtrl.text = path;
     await _saveExcel();
+  }
+
+  Future<void> _pickTargetDirectory(ExportPathTarget target) async {
+    final path = await _openDirectoryPicker('Choose ${target.label} Folder');
+    if (path == null || !mounted) return;
+    _targetCtrls[target]!.text = path;
+    await _saveTarget(target);
   }
 
   /// Opens `file_selector`'s directory picker.  Returns null if the user
@@ -794,6 +836,14 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     _showSnack('Excel export path saved.');
   }
 
+  Future<void> _saveTarget(ExportPathTarget target) async {
+    setState(() => _targetSaving[target] = true);
+    await _prefs.setPathForTarget(target, _targetCtrls[target]!.text.trim());
+    if (!mounted) return;
+    setState(() => _targetSaving[target] = false);
+    _showSnack('${target.label} path saved.');
+  }
+
   Future<void> _clearPdf() async {
     await _prefs.clearPdfPath();
     if (!mounted) return;
@@ -806,9 +856,62 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
     _showSnack('Excel path reset to default.');
   }
 
+  Future<void> _clearTarget(ExportPathTarget target) async {
+    await _prefs.clearPathForTarget(target);
+    if (!mounted) return;
+    _showSnack('${target.label} path reset to default.');
+  }
+
   void _showSnack(String msg) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String _fallbackText(ExportPathTarget target) {
+    final fallback = _prefs.defaultPathForTarget(target);
+    if (fallback.isNotEmpty) {
+      return 'Fallback: $fallback';
+    }
+    return target.usesPdfDefaults
+        ? 'Fallback: Default PDF path / system downloads'
+        : 'Fallback: Default Excel path / system downloads';
+  }
+
+  Widget _buildTargetGroup(String title, List<ExportPathTarget> targets) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: AppTextStyles.small.copyWith(
+            color: AppColors.slate600,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (int i = 0; i < targets.length; i++) ...[
+          _PathRow(
+            label: targets[i].label,
+            icon: targets[i].usesPdfDefaults
+                ? Icons.picture_as_pdf_outlined
+                : Icons.table_chart_outlined,
+            iconColor: targets[i].usesPdfDefaults
+                ? const Color(0xFFDC2626)
+                : const Color(0xFF16A34A),
+            controller: _targetCtrls[targets[i]]!,
+            isSaving: _targetSaving[targets[i]] ?? false,
+            currentSavedPath: _prefs.pathForTarget(targets[i]),
+            supportsDirectoryPicker: _supportsDirectoryPicker,
+            onPickDirectory: () => _pickTargetDirectory(targets[i]),
+            onSave: () => _saveTarget(targets[i]),
+            onClear: () => _clearTarget(targets[i]),
+            hintText: 'Use dedicated folder for ${targets[i].label}',
+            supportingText: _fallbackText(targets[i]),
+          ),
+          if (i != targets.length - 1) const SizedBox(height: 16),
+        ],
+      ],
+    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -836,14 +939,14 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
             ]),
             const SizedBox(height: 4),
             Text(
-              'Set where PDF and Excel files are saved on your device.',
+              'Set default PDF/Excel folders, then override individual export types when needed.',
               style: AppTextStyles.small.copyWith(color: AppColors.slate500),
             ),
             const SizedBox(height: 20),
 
             // ── PDF path row ───────────────────────────────────────────────
             _PathRow(
-              label: 'PDF',
+              label: 'Default PDF',
               icon: Icons.picture_as_pdf_outlined,
               iconColor: const Color(0xFFDC2626),
               controller: _pdfCtrl,
@@ -853,13 +956,14 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
               onPickDirectory: _pickPdfDirectory,
               onSave: _savePdf,
               onClear: _clearPdf,
+              hintText: 'Fallback for PDF exports without a custom folder',
             ),
 
             const SizedBox(height: 16),
 
             // ── Excel path row ─────────────────────────────────────────────
             _PathRow(
-              label: 'Excel',
+              label: 'Default Excel',
               icon: Icons.table_chart_outlined,
               iconColor: const Color(0xFF16A34A),
               controller: _excelCtrl,
@@ -869,12 +973,20 @@ class _ExportPathsCardState extends State<_ExportPathsCard> {
               onPickDirectory: _pickExcelDirectory,
               onSave: _saveExcel,
               onClear: _clearExcel,
+              hintText: 'Fallback for Excel exports without a custom folder',
             ),
+
+            const SizedBox(height: 20),
+            const Divider(height: 1, color: AppColors.slate200),
+            const SizedBox(height: 20),
+            _buildTargetGroup('PDF Export Targets', _pdfTargets),
+            const SizedBox(height: 20),
+            _buildTargetGroup('Excel Export Targets', _excelTargets),
 
             const SizedBox(height: 12),
             Text(
               _supportsDirectoryPicker
-                  ? 'Tap the folder icon to browse, or type a path and press Save.'
+                  ? 'Tap the folder icon to browse, or type a path and press Save. Custom target folders override the default PDF/Excel folder.'
                   : 'Files are shared via the system share sheet. '
                     'Custom paths are not supported on this platform.',
               style: AppTextStyles.small
@@ -903,6 +1015,8 @@ class _PathRow extends StatelessWidget {
   final VoidCallback onPickDirectory;
   final VoidCallback onSave;
   final VoidCallback onClear;
+  final String? hintText;
+  final String? supportingText;
 
   const _PathRow({
     required this.label,
@@ -915,6 +1029,8 @@ class _PathRow extends StatelessWidget {
     required this.onPickDirectory,
     required this.onSave,
     required this.onClear,
+    this.hintText,
+    this.supportingText,
   });
 
   @override
@@ -969,7 +1085,7 @@ class _PathRow extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: hasPath
                       ? currentSavedPath
-                      : 'Default (Downloads / App Documents)',
+                      : (hintText ?? 'Default (Downloads / App Documents)'),
                   hintStyle:
                       AppTextStyles.small.copyWith(color: AppColors.slate400),
                   // Folder-picker icon — desktop only
@@ -1038,6 +1154,18 @@ class _PathRow extends StatelessWidget {
               style: AppTextStyles.small.copyWith(
                 fontSize: 11,
                 color: AppColors.slate500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        if (supportingText != null)
+          Padding(
+            padding: EdgeInsets.only(top: hasPath ? 2 : 4, left: 2),
+            child: Text(
+              supportingText!,
+              style: AppTextStyles.small.copyWith(
+                fontSize: 10.5,
+                color: AppColors.slate400,
               ),
               overflow: TextOverflow.ellipsis,
             ),

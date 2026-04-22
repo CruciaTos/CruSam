@@ -17,7 +17,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:screenshot/screenshot.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
@@ -68,6 +67,7 @@ class PdfExportService {
     required String       fileNameSlug,
     required String       filePrefix,
     required String       shareSubject,
+    ExportPathTarget?     outputTarget,
     List<String>?         assetPathsToPrecache,
   }) async {
     if (assetPathsToPrecache != null) {
@@ -79,6 +79,7 @@ class PdfExportService {
       billNo:     fileNameSlug,
       subject:    shareSubject,
       filePrefix: filePrefix,
+      outputTarget: outputTarget,
     );
   }
 
@@ -112,6 +113,7 @@ class PdfExportService {
       billNo:     voucher.billNo,
       subject:    'Tax Invoice & Voucher',
       filePrefix: 'tax_invoice_voucher',
+      outputTarget: ExportPathTarget.taxInvoiceVoucherPdf,
     );
   }
 
@@ -135,6 +137,7 @@ class PdfExportService {
       billNo:     voucher.billNo,
       subject:    'Bank Disbursement',
       filePrefix: 'bank_disbursement',
+      outputTarget: ExportPathTarget.bankDisbursementPdf,
     );
   }
 
@@ -146,6 +149,7 @@ class PdfExportService {
     required String        billNo,
     required String        subject,
     required String        filePrefix,
+    ExportPathTarget?      outputTarget,
   }) async {
     await WidgetsBinding.instance.endOfFrame;
     await _ensurePdfFontsLoaded();
@@ -185,21 +189,15 @@ class PdfExportService {
 
     final slug     = _slugify(billNo);
     final fileName = '${filePrefix}_$slug.pdf';
-    final dir      = await _resolveOutputDir();
+    final dir      = await _resolveOutputDir(outputTarget);
     final basePath = '${dir.path}${Platform.pathSeparator}$fileName';
     // Never overwrite: append (1), (2) … if file already exists
     final path     = await _uniquePath(basePath);
-    final finalName = File(path).uri.pathSegments.last;
     final file     = File(path);
     await file.writeAsBytes(bytes, flush: true);
 
     final written = await file.length();
     if (written == 0) throw Exception('File written but is empty: $path');
-
-    await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: finalName)],
-      subject: subject,
-    );
   }
 
   // ── Screenshot helper ─────────────────────────────────────────────────────
@@ -269,8 +267,10 @@ class PdfExportService {
       ? '${DateTime.now().millisecondsSinceEpoch}'
       : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
 
-  static Future<Directory> _resolveOutputDir() async {
-    final savedPath = ExportPreferencesNotifier.instance.pdfPath;
+  static Future<Directory> _resolveOutputDir([ExportPathTarget? target]) async {
+    final savedPath = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.pdfPath;
     if (savedPath.isNotEmpty) {
       final dir = Directory(savedPath);
       if (await dir.exists()) return dir;

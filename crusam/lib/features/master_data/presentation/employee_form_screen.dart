@@ -110,7 +110,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   @override
   void dispose() {
-    for (final c in _ctrl.values) c.dispose();
+    for (final c in _ctrl.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -243,7 +245,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _codeDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          value: _selectedCode,
+          initialValue: _selectedCode,
           decoration: const InputDecoration(labelText: 'Code'),
           items: _codeList
               .map((c) =>
@@ -264,7 +266,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _bankDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          value: _selectedBank,
+          initialValue: _selectedBank,
           decoration: const InputDecoration(labelText: 'Bank Details'),
           isExpanded: true,
           items: _bankOptions
@@ -282,7 +284,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _zoneDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          value: _selectedZone,
+          initialValue: _selectedZone,
           decoration: const InputDecoration(labelText: 'Zone'),
           items: _zoneOptions
               .map((z) =>

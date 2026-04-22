@@ -10,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
@@ -153,7 +152,11 @@ class SalaryPdfExportService {
     }
 
     await _saveAndShare(
-        doc, 'salary_slips_${monthName.toLowerCase()}_$year', 'Salary Slips');
+      doc,
+      'salary_slips_${monthName.toLowerCase()}_$year',
+      'Salary Slips',
+      ExportPathTarget.salarySlipsPdf,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -187,7 +190,12 @@ class SalaryPdfExportService {
         customerGst:     customerGst     ?? config.gstin,
       ),
     ));
-    await _saveAndShare(doc, 'attachment_a_${_slugify(billNo)}', 'Attachment A');
+    await _saveAndShare(
+      doc,
+      'attachment_a_${_slugify(billNo)}',
+      'Attachment A',
+      ExportPathTarget.attachmentAPdf,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -217,7 +225,12 @@ class SalaryPdfExportService {
         customerGst: customerGst,
       ),
     ));
-    await _saveAndShare(doc, 'attachment_b_${_slugify(billNo)}', 'Attachment B');
+    await _saveAndShare(
+      doc,
+      'attachment_b_${_slugify(billNo)}',
+      'Attachment B',
+      ExportPathTarget.attachmentBPdf,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -256,7 +269,11 @@ class SalaryPdfExportService {
       ),
     ));
     await _saveAndShare(
-        doc, 'salary_invoice_${_slugify(billNo)}', 'Salary Invoice');
+      doc,
+      'salary_invoice_${_slugify(billNo)}',
+      'Salary Invoice',
+      ExportPathTarget.salaryInvoicePdf,
+    );
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -748,8 +765,9 @@ class SalaryPdfExportService {
     if (female) {
       pt = eG < 25000 ? 0 : (isFeb ? 300 : 200);
     } else {
-      if (eG < 7500)       pt = 0;
-      else if (eG < 10000) pt = 175;
+      if (eG < 7500) {
+        pt = 0;
+      } else if (eG < 10000) pt = 175;
       else                  pt = isFeb ? 300 : 200;
     }
     return _SlipCalc(
@@ -773,8 +791,10 @@ class SalaryPdfExportService {
       };
 
   // ── Respects user-chosen PDF path ─────────────────────────────────────────
-  static Future<Directory> _outputDir() async {
-    final savedPath = ExportPreferencesNotifier.instance.pdfPath;
+  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
+    final savedPath = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.pdfPath;
     if (savedPath.isNotEmpty) {
       final dir = Directory(savedPath);
       if (await dir.exists()) return dir;
@@ -802,18 +822,13 @@ class SalaryPdfExportService {
   }
 
   static Future<void> _saveAndShare(
-      pw.Document doc, String slug, String subject) async {
+      pw.Document doc, String slug, String subject, ExportPathTarget target) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final dir      = await _outputDir();
+    final dir      = await _outputDir(target);
     final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path     = await _uniquePath(basePath);
-    final fileName = File(path).uri.pathSegments.last;
     await File(path).writeAsBytes(bytes, flush: true);
-    await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: fileName)],
-      subject: subject,
-    );
   }
 }
 

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
@@ -563,13 +562,15 @@ class VoucherPdfPreview extends StatelessWidget {
       autoFitColumns: autoFitColumns,
     );
 
+    for (final page in pages) {
+      doc.addPage(page);
+    }
+
     final bytes = await doc.save();
-    final dir = await _outputDir();
+    final dir = await _outputDir(ExportPathTarget.taxInvoiceVoucherPdf);
     final fileName = 'voucher_${voucher.id ?? DateTime.now().millisecondsSinceEpoch}.pdf';
     final path = '${dir.path}${Platform.pathSeparator}$fileName';
     await File(path).writeAsBytes(bytes);
-    await Share.shareXFiles([XFile(path)],
-        subject: 'Voucher ${voucher.title}');
   }
 
   static pw.Widget _buildPdfPage({
@@ -767,9 +768,11 @@ class VoucherPdfPreview extends StatelessWidget {
     );
   }
 
-  static Future<Directory> _outputDir() async {
+  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
     // 1. User-chosen path (set via Profile → Export Paths).
-    final savedPath = ExportPreferencesNotifier.instance.pdfPath;
+    final savedPath = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.pdfPath;
     if (savedPath.isNotEmpty) {
       final dir = Directory(savedPath);
       if (await dir.exists()) return dir;

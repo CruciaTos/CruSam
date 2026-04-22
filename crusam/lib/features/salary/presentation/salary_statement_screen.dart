@@ -253,12 +253,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
       if (!mounted) return;
       if (path != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Excel saved to $path'),
-            backgroundColor: Colors.green.shade700,
-          ),
-        );
       } else {
         throw Exception('Failed to save Excel file');
       }

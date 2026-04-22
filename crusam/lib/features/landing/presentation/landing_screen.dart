@@ -213,7 +213,6 @@ class _FadeInSection extends StatefulWidget {
   const _FadeInSection({
     required this.child,
     required this.scrollController,
-    this.delay = Duration.zero,
   });
 
   @override
@@ -1133,7 +1132,7 @@ class _ScrollDotState extends State<_ScrollDot>
         ),
         child: AnimatedBuilder(
           animation: _anim,
-          builder: (_, __) => Align(
+          builder: (_, _) => Align(
             alignment: Alignment.lerp(const Alignment(0, -0.5),
                 const Alignment(0, 0.5), _anim.value)!,
             child: Container(

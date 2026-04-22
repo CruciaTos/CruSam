@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
+import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/company_config_model.dart';
@@ -76,7 +77,11 @@ class ExcelExportService {
     VoucherModel voucher,
     CompanyConfigModel config,
   ) async {
-    final paths = await _runGenerator(voucher, config);
+    final paths = await _runGenerator(
+      voucher,
+      config,
+      outputTarget: ExportPathTarget.taxInvoiceExcel,
+    );
     return paths.invoicePath;
   }
 
@@ -93,7 +98,11 @@ class ExcelExportService {
   static Future<_ExportPaths> exportAll(
     VoucherModel voucher,
     CompanyConfigModel config,
-  ) => _runGenerator(voucher, config);
+  ) => _runGenerator(
+        voucher,
+        config,
+        outputTarget: ExportPathTarget.taxInvoiceExcel,
+      );
 
   // ── Bank Sheet ──────────────────────────────────────────────────────────────
 
@@ -158,7 +167,12 @@ class ExcelExportService {
     final List<int> bytes = workbook.saveAsStream();
     workbook.dispose();
 
-    return await _saveExcelFileWithIncrement(bytes, voucher, 'bank_disbursement');
+    return await _saveExcelFileWithIncrement(
+      bytes,
+      voucher,
+      'bank_disbursement',
+      outputTarget: ExportPathTarget.bankDisbursementExcel,
+    );
   }
 
   // ── Column widths ──────────────────────────────────────────────────────────
@@ -438,8 +452,12 @@ class ExcelExportService {
 
   // ── File saving with auto‑increment ───────────────────────────────────────
   static Future<String> _saveExcelFileWithIncrement(
-      List<int> bytes, VoucherModel voucher, String prefix) async {
-    final outDir = await _outputDir();
+    List<int> bytes,
+    VoucherModel voucher,
+    String prefix, {
+    ExportPathTarget? outputTarget,
+  }) async {
+    final outDir = await _outputDir(outputTarget);
     final safeTitle = (voucher.title.trim().isEmpty ? 'voucher' : voucher.title)
         .replaceAll(RegExp(r'[<>:"/\\|?*]'), '')
         .replaceAll(' ', '_');
@@ -466,9 +484,10 @@ class ExcelExportService {
   static Future<_ExportPaths> _runGenerator(
     VoucherModel voucher,
     CompanyConfigModel config,
+    {ExportPathTarget? outputTarget}
   ) async {
     final scriptPath = await _ensureScript();
-    final outDir = await _outputDir();
+    final outDir = await _outputDir(outputTarget);
     final tmpDir = await getTemporaryDirectory();
     final jsonFile = File('${tmpDir.path}/ae_export_${DateTime.now().millisecondsSinceEpoch}.json');
     await jsonFile.writeAsString(jsonEncode({
@@ -511,7 +530,15 @@ class ExcelExportService {
     return iso;
   }
 
-  static Future<String> _outputDir() async {
+  static Future<String> _outputDir([ExportPathTarget? target]) async {
+    final savedPath = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.excelPath;
+    if (savedPath.isNotEmpty) {
+      final dir = Directory(savedPath);
+      if (await dir.exists()) return dir.path;
+    }
+
     if (Platform.isWindows) {
       final home = Platform.environment['USERPROFILE'] ?? '.';
       final dl = Directory('$home\\Downloads');
@@ -528,18 +555,6 @@ class ExcelExportService {
   static String _pythonExe() {
     if (Platform.isWindows) return Platform.environment['PYTHON_EXE'] ?? 'python';
     return Platform.environment['PYTHON_EXE'] ?? 'python3';
-  }
-
-  static Future<void> openFile(String filePath) async {
-    try {
-      if (Platform.isWindows) {
-        await Process.run('cmd', ['/c', 'start', '', filePath]);
-      } else if (Platform.isMacOS) {
-        await Process.run('open', [filePath]);
-      } else if (Platform.isLinux) {
-        await Process.run('xdg-open', [filePath]);
-      }
-    } catch (_) {}
   }
 
   static Map<String, dynamic> _voucherToMap(VoucherModel v) => {

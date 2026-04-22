@@ -9,7 +9,6 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
@@ -227,6 +226,7 @@ class SalaryStatementPdfService {
       doc,
       'salary_statement_${monthName.toLowerCase()}_$year',
       'Salary Statement',
+      ExportPathTarget.salaryStatementPdf,
     );
   }
 
@@ -533,22 +533,20 @@ class SalaryStatementPdfService {
     pw.Document doc,
     String      slug,
     String      subject,
+    ExportPathTarget target,
   ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final dir      = await _outputDir();
+    final dir      = await _outputDir(target);
     final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path     = await _uniquePath(basePath);
-    final fileName = File(path).uri.pathSegments.last;
     await File(path).writeAsBytes(bytes, flush: true);
-    await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: fileName)],
-      subject: subject,
-    );
   }
 
-  static Future<Directory> _outputDir() async {
-    final saved = ExportPreferencesNotifier.instance.pdfPath;
+  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
+    final saved = target != null
+        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
+        : ExportPreferencesNotifier.instance.pdfPath;
     if (saved.isNotEmpty) {
       final dir = Directory(saved);
       if (await dir.exists()) return dir;

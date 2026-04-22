@@ -356,7 +356,7 @@ class _RecentVouchers extends StatelessWidget {
                     onTap: () => _openVoucherForEdit(context, v),
                   ),
                 );
-              }).toList(),
+              }),
           ],
         ),
       );

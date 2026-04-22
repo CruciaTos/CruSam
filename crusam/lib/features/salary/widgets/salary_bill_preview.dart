@@ -143,7 +143,7 @@ class SalaryBillPreview extends StatelessWidget {
     child: Image.asset(
       'assets/images/aarti_logo.png',
       fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => const _FallbackLogo(),
+      errorBuilder: (_, _, _) => const _FallbackLogo(),
     ),
   );
 
@@ -153,7 +153,7 @@ class SalaryBillPreview extends StatelessWidget {
       'assets/images/letterhead.png',
       fit: BoxFit.contain,
       alignment: Alignment.centerRight,
-      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      errorBuilder: (_, _, _) => const SizedBox.shrink(),
     ),
   );
 

@@ -90,6 +90,6 @@ factory VoucherRowModel.fromDbMap(Map<String, dynamic> m) => VoucherRowModel(
   debitAccountName:    (m['debit_account_name']   as String?) ?? '',
 );
 
-  get description => null;
+  Null get description => null;
 
 }

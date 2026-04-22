@@ -35,7 +35,6 @@ import '../widgets/calculations_card.dart';
 import '../widgets/bank_split_card.dart';
 import '../widgets/invoice_preview_dialog.dart';
 import '../widgets/item_description_field.dart';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
@@ -137,7 +136,7 @@ class _Tok {
 
 // ── Shared field decoration ──────────────────────────────────────────────────
 
-InputDecoration _inputDec({String? hint, Widget? suffix, bool mono = false}) =>
+InputDecoration _inputDec({String? hint, Widget? suffix}) =>
     InputDecoration(
       hintText      : hint,
       hintStyle     : const TextStyle(
@@ -664,8 +663,9 @@ class _DeptDropdown extends StatelessWidget {
             ),
           ),
           onSelected: (v) {
-            if (v != null)
+            if (v != null) {
               notifier.update((c) => c.copyWith(deptCode: v));
+            }
           },
           dropdownMenuEntries: AppConstants.deptCodes
               .map((d) => DropdownMenuEntry<String>(
@@ -750,20 +750,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         idbiToOther: _notifier.idbiToOther,
         idbiToIdbi : _notifier.idbiToIdbi,
       );
-      await ExcelExportService.openFile(path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Bank sheet saved: ${File(path).uri.pathSegments.last}',
-            ),
-            action: SnackBarAction(
-              label    : 'Open Folder',
-              onPressed: () => _openFolder(File(path).parent.path),
-            ),
-          ),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -801,27 +787,6 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
 
     setState(() => _exporting = true);
 
-    if (!mounted) return;
-    showDialog(
-      context          : context,
-      barrierDismissible: false,
-      builder          : (_) => const AlertDialog(
-        content: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child  : Row(
-            mainAxisSize: MainAxisSize.min,
-            children    : [
-              CircularProgressIndicator(),
-              SizedBox(width: 20),
-              Text('Generating files…'),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    String? errorMsg;
-
     try {
       final voucher = _notifier.enriched;
       final config  = _notifier.config;
@@ -843,104 +808,18 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         idbiToOther: _notifier.idbiToOther,
         idbiToIdbi : _notifier.idbiToIdbi,
       );
-    } catch (e, st) {
-      errorMsg = '$e\n\n$st';
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
-
-    // Dismiss progress dialog
-    if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-
-    if (errorMsg != null) {
-      await showDialog(
-        context: context,
-        builder: (dc) => AlertDialog(
-          title: Row(children: const [
-            Icon(Icons.error_outline, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Export Failed'),
-          ]),
-          content: SizedBox(
-            width: 560, height: 300,
-            child: SingleChildScrollView(
-              child: SelectableText(
-                errorMsg!,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dc),
-              child    : const Text('Close'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    if (mounted) _showInvoiceMadeOverlay();
-  }
-
-  void _showInvoiceMadeOverlay() {
-    final overlay = Overlay.of(context);
-    late OverlayEntry entry;
-    entry = OverlayEntry(
-      builder: (_) => Center(
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 22),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E293B),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.indigo600, width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 28,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  color: AppColors.emerald600,
-                  size: 30,
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  'Invoice Made',
-                  style: AppTextStyles.h4.copyWith(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    overlay.insert(entry);
-    Future.delayed(const Duration(seconds: 5), () {
-      entry.remove();
-    });
-  }
-
-  static void _openFolder(String folder) {
-    try {
-      if (Platform.isWindows)      Process.run('explorer', [folder]);
-      else if (Platform.isMacOS)   Process.run('open',     [folder]);
-      else if (Platform.isLinux)   Process.run('xdg-open', [folder]);
-    } catch (_) {}
   }
 
   @override
@@ -1037,7 +916,7 @@ class _RowsTable extends StatelessWidget {
           color : AppColors.slate50,
           border: Border(
             bottom: BorderSide(
-              color: const Color.fromARGB(255, 21, 39, 81),
+              color: Color.fromARGB(255, 21, 39, 81),
               width: 0.5,
             ),
           ),

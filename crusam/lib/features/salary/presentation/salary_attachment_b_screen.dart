@@ -211,7 +211,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                       constraints: const BoxConstraints(maxWidth: 820),
                       child: ListenableBuilder(
                         listenable: Listenable.merge([_billNoCtrl, _marginNotifier]),
-                        builder: (_, __) => AttachmentBPreview(
+                        builder: (_, _) => AttachmentBPreview(
                           config:          _config,
                           margins:         _margins,
                           itemDescription: _itemDescription,

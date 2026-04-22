@@ -213,16 +213,18 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   static void _openFile(String path) {
     try {
-      if (Platform.isWindows)    Process.run('cmd',    ['/c', 'start', '', path]);
-      else if (Platform.isMacOS) Process.run('open',   [path]);
+      if (Platform.isWindows) {
+        Process.run('cmd',    ['/c', 'start', '', path]);
+      } else if (Platform.isMacOS) Process.run('open',   [path]);
       else if (Platform.isLinux) Process.run('xdg-open', [path]);
     } catch (_) {}
   }
 
   static void _openFolder(String folder) {
     try {
-      if (Platform.isWindows)    Process.run('explorer', [folder]);
-      else if (Platform.isMacOS) Process.run('open',     [folder]);
+      if (Platform.isWindows) {
+        Process.run('explorer', [folder]);
+      } else if (Platform.isMacOS) Process.run('open',     [folder]);
       else if (Platform.isLinux) Process.run('xdg-open', [folder]);
     } catch (_) {}
   }
