@@ -89,6 +89,8 @@ class ExcelExportService {
   }) async {
     if (employees.isEmpty) return null;
 
+    final sorted = List<EmployeeModel>.from(employees)..sort(_deptThenName);
+
     final _ = columnWidths; // Unused for now
 
     final Workbook workbook = Workbook();
@@ -116,8 +118,8 @@ class ExcelExportService {
     int sumPt = 0;
     int sumTd = 0;
 
-    for (int idx = 0; idx < employees.length; idx++) {
-      final e = employees[idx];
+    for (int idx = 0; idx < sorted.length; idx++) {
+      final e = sorted[idx];
       final days = daysMap[e.id] ?? 0;
       final hasDays = days > 0;
 
@@ -337,5 +339,14 @@ class ExcelExportService {
       debugPrint('Error saving Excel file: $e');
       return null;
     }
+  }
+
+  // ── Sort: department code first, then alphabetically by name ───────────────
+  static int _deptThenName(EmployeeModel a, EmployeeModel b) {
+    final codeCompare = a.code.trim().toLowerCase()
+        .compareTo(b.code.trim().toLowerCase());
+    if (codeCompare != 0) return codeCompare;
+    return a.name.trim().toLowerCase()
+        .compareTo(b.name.trim().toLowerCase());
   }
 }

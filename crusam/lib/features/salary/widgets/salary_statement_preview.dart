@@ -84,6 +84,16 @@ class SalaryStatementPreview extends StatelessWidget {
     this.columnWidths = const {},
   });
 
+  // ── Sorting comparator ────────────────────────────────────────────────────
+
+  static int _deptThenName(EmployeeModel a, EmployeeModel b) {
+    final codeCompare = a.code.trim().toLowerCase()
+        .compareTo(b.code.trim().toLowerCase());
+    if (codeCompare != 0) return codeCompare;
+    return a.name.trim().toLowerCase()
+        .compareTo(b.name.trim().toLowerCase());
+  }
+
   // ── Per-employee helpers ──────────────────────────────────────────────────
 
   int _days(EmployeeModel e) => daysMap[e.id ?? -1] ?? 0;
@@ -153,10 +163,14 @@ class SalaryStatementPreview extends StatelessWidget {
     int                          daysInMonth  = 0,
     Map<int, double>             columnWidths = const {},
   }) {
+    // Sort by department code then name before rendering
+    final sorted = List<EmployeeModel>.from(employees)
+      ..sort(_deptThenName);
+
     final preview = SalaryStatementPreview(
       config:       config,
       margins:      margins,
-      employees:    employees,
+      employees:    sorted,
       monthName:    monthName,
       year:         year,
       isMsw:        isMsw,
@@ -165,16 +179,16 @@ class SalaryStatementPreview extends StatelessWidget {
       daysInMonth:  daysInMonth,
       columnWidths: columnWidths,
     );
-    if (employees.isEmpty) {
+    if (sorted.isEmpty) {
       return [preview._buildPage(slice: const [], startIndex: 0, showTotals: true)];
     }
     final pages = <Widget>[];
-    for (int i = 0; i < employees.length; i += _rowsPerPage) {
-      final end = (i + _rowsPerPage).clamp(0, employees.length);
+    for (int i = 0; i < sorted.length; i += _rowsPerPage) {
+      final end = (i + _rowsPerPage).clamp(0, sorted.length);
       pages.add(preview._buildPage(
-        slice:      employees.sublist(i, end),
+        slice:      sorted.sublist(i, end),
         startIndex: i,
-        showTotals: end >= employees.length,
+        showTotals: end >= sorted.length,
       ));
     }
     return pages;
@@ -184,10 +198,14 @@ class SalaryStatementPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sort by department code then name for the live preview too
+    final sorted = List<EmployeeModel>.from(employees)
+      ..sort(_deptThenName);
+
     final pages = buildPdfPages(
       config:       config,
       margins:      margins,
-      employees:    employees,
+      employees:    sorted,
       monthName:    monthName,
       year:         year,
       isMsw:        isMsw,
@@ -357,7 +375,7 @@ class _SalaryTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalWidth = _totalTableWidth();
 
-    // Grand totals
+    // Grand totals (computed over ALL employees, not just this page slice)
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     int    sumPf = 0, sumMsw = 0, sumEsicP = 0, sumPt = 0, sumTd = 0;
 
