@@ -8,6 +8,8 @@ import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 
+import 'package:crusam/features/profile/widgets/export_paths_card.dart';
+
 /// Service to export Salary Statement to Excel (.xlsx) format.
 class ExcelExportService {
   // --------------------------------------------------------------------------
@@ -321,27 +323,32 @@ class ExcelExportService {
     return isFeb ? 300 : 200;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Task 3: Wire the user-configured excelPath into BOTH Excel services.
+  // ═══════════════════════════════════════════════════════════════════════════
   static Future<String?> _saveExcelFile(List<int> bytes, String fileName) async {
     try {
+      final prefs = ExportPreferencesNotifier.instance;
       Directory? directory;
-      final savedPath = ExportPreferencesNotifier.instance
-          .resolvedPathForTarget(ExportPathTarget.salaryStatementExcel);
 
+      // Task 3: check user-configured Excel path first
+      final savedPath = prefs.resolvedPathForTarget(ExportPathTarget.salaryStatementExcel);
       if (savedPath.isNotEmpty) {
-        final customDir = Directory(savedPath);
-        if (await customDir.exists()) {
-          directory = customDir;
+        final d = Directory(savedPath);
+        if (await d.exists()) directory = d;
+      }
+
+      // Fall back to system default
+      if (directory == null) {
+        if (Platform.isAndroid || Platform.isIOS) {
+          directory = await getApplicationDocumentsDirectory();
+        } else {
+          directory = await getDownloadsDirectory();
+          directory ??= await getApplicationDocumentsDirectory();
         }
       }
 
-      if (directory == null && (Platform.isAndroid || Platform.isIOS)) {
-        directory = await getApplicationDocumentsDirectory();
-      } else if (directory == null) {
-        directory = await getDownloadsDirectory();
-        directory ??= await getApplicationDocumentsDirectory();
-      }
-
-      final String path = '${directory.path}/$fileName';
+      final String path = '${directory.path}${Platform.pathSeparator}$fileName';
       final File file = File(path);
       await file.writeAsBytes(bytes, flush: true);
       return path;

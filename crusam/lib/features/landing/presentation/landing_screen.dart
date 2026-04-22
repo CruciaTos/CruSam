@@ -213,6 +213,7 @@ class _FadeInSection extends StatefulWidget {
   const _FadeInSection({
     required this.child,
     required this.scrollController,
+    this.delay = Duration.zero,
   });
 
   @override

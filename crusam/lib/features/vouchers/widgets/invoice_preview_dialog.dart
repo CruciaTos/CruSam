@@ -100,12 +100,13 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
       setState(() => _activePanel = _activePanel == panel ? _ActivePanel.none : panel);
 
   // ── Exports ────────────────────────────────────────────────────────────────
+  // Task 4: file saved silently — no Share popup.
   Future<void> _exportExcel() async {
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
       final voucher = widget.notifier.enriched;
-      (widget.type == PreviewType.invoice
+      await (widget.type == PreviewType.invoice
           ? await ExcelExportService.exportTaxInvoice(voucher, widget.config)
           : await ExcelExportService.exportBankDisbursement(
               voucher,
@@ -217,7 +218,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                         if (_activePanel == _ActivePanel.margins)
                           ListenableBuilder(
                             listenable: _activeMarginNotifier,
-                            builder: (_, _) => _MarginPanel(
+                            builder: (_, __) => _MarginPanel(
                               notifier: _activeMarginNotifier,
                               showTargetSelector:
                                   widget.type == PreviewType.invoice,
@@ -233,7 +234,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                           widget.type == PreviewType.invoice
                               ? ListenableBuilder(
                                   listenable: _voucherColWidthsNotifier,
-                                  builder: (_, _) => _ColWidthPanel(
+                                  builder: (_, __) => _ColWidthPanel(
                                     entries: _voucherColWidthsNotifier.settings.entries,
                                     totalWidth: _voucherColWidthsNotifier.settings.totalWidth,
                                     onChanged: (i, v) => _updateVoucherColumnWidth(i, v),
@@ -244,7 +245,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                 )
                               : ListenableBuilder(
                                   listenable: _bankColWidthsNotifier,
-                                  builder: (_, _) => _ColWidthPanel(
+                                  builder: (_, __) => _ColWidthPanel(
                                     entries: _bankColWidthsNotifier.settings.entries,
                                     totalWidth: _bankColWidthsNotifier.settings.totalWidth,
                                     onChanged: (i, v) => _updateBankColumnWidth(i, v),
@@ -263,7 +264,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                               _voucherColWidthsNotifier,
                               _bankColWidthsNotifier,
                             ]),
-                            builder: (_, _) => SingleChildScrollView(
+                            builder: (_, __) => SingleChildScrollView(
                               padding: const EdgeInsets.all(AppSpacing.xxl),
                               child: Center(
                                 child: ConstrainedBox(
@@ -533,9 +534,7 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
     super.didUpdateWidget(old);
     // When entries count changes (switching invoice ↔ bank), rebuild controllers.
     if (old.entries.length != widget.entries.length) {
-      for (final c in _ctrls) {
-        c.dispose();
-      }
+      for (final c in _ctrls) c.dispose();
       _ctrls = _buildCtrls(widget.entries);
       return;
     }
@@ -548,9 +547,7 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
 
   @override
   void dispose() {
-    for (final c in _ctrls) {
-      c.dispose();
-    }
+    for (final c in _ctrls) c.dispose();
     super.dispose();
   }
 
@@ -607,7 +604,7 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                 itemCount: widget.entries.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 6),
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
                 itemBuilder: (_, i) {
                   final label = widget.entries[i].$1;
                   return Row(children: [
@@ -634,9 +631,8 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
                           ),
                           onChanged: (v) {
                             final val = double.tryParse(v);
-                            if (val != null && val >= 10) {
+                            if (val != null && val >= 10)
                               widget.onChanged(i, val);
-                            }
                           },
                         ),
                       ),
@@ -684,9 +680,7 @@ class _MarginPanelState extends State<_MarginPanel> {
         'right':  TextEditingController(text: s.right.toStringAsFixed(1)),
       };
 
-  void _disposeCtrls() { for (final c in _ctrls.values) {
-    c.dispose();
-  } }
+  void _disposeCtrls() { for (final c in _ctrls.values) c.dispose(); }
 
   @override
   void didUpdateWidget(covariant _MarginPanel old) {
@@ -820,7 +814,7 @@ class _MarginDiagram extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: notifier,
-        builder: (_, _) {
+        builder: (_, __) {
           final s = notifier.settings;
           const maxM = 80.0, boxW = 80.0, boxH = 100.0;
           return Center(

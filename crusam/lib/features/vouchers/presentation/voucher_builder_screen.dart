@@ -136,7 +136,7 @@ class _Tok {
 
 // ── Shared field decoration ──────────────────────────────────────────────────
 
-InputDecoration _inputDec({String? hint, Widget? suffix}) =>
+InputDecoration _inputDec({String? hint, Widget? suffix, bool mono = false}) =>
     InputDecoration(
       hintText      : hint,
       hintStyle     : const TextStyle(
@@ -663,9 +663,8 @@ class _DeptDropdown extends StatelessWidget {
             ),
           ),
           onSelected: (v) {
-            if (v != null) {
+            if (v != null)
               notifier.update((c) => c.copyWith(deptCode: v));
-            }
           },
           dropdownMenuEntries: AppConstants.deptCodes
               .map((d) => DropdownMenuEntry<String>(
@@ -750,6 +749,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         idbiToOther: _notifier.idbiToOther,
         idbiToIdbi : _notifier.idbiToIdbi,
       );
+      // Task 4: file saved silently — no snackbar.
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -916,7 +916,7 @@ class _RowsTable extends StatelessWidget {
           color : AppColors.slate50,
           border: Border(
             bottom: BorderSide(
-              color: Color.fromARGB(255, 21, 39, 81),
+              color: const Color.fromARGB(255, 21, 39, 81),
               width: 0.5,
             ),
           ),

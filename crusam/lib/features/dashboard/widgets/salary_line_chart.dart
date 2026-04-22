@@ -22,10 +22,10 @@ class SalaryLineChart extends StatelessWidget {
     final spots = <FlSpot>[];
     for (var i = 0; i < saved.length; i++) {
       final voucher = saved[i];
-      // Sum salary amounts (assuming row description contains "Salary" or you have a type field)
+      // Sum salary amounts (handle nullable description and amount)
       final salaryTotal = voucher.rows
-          .where((row) => row.description.toLowerCase().contains('salary'))
-          .fold(0.0, (sum, row) => sum + row.amount);
+          .where((row) => (row.description?.toLowerCase() ?? '').contains('salary'))
+          .fold(0.0, (sum, row) => sum + (row.amount ?? 0.0));
       if (salaryTotal > 0) {
         spots.add(FlSpot(i.toDouble(), salaryTotal));
       }

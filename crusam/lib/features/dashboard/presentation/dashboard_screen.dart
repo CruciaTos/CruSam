@@ -14,7 +14,7 @@ import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../master_data/presentation/employee_form_screen.dart';
 import '../notifiers/dashboard_notifier.dart';
-import '../widgets/salary_line_chart.dart';  // ← new import
+import '../widgets/salary_line_chart.dart';  // ← chart import
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -48,10 +48,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final totalInvoiced = _notifier.vouchers
               .fold(0.0, (acc, v) => acc + v.finalTotal);
 
-          // Check if we have any saved vouchers with salary data to show chart
+          // FIX: description field is always null, so we can't check .toLowerCase().
+          // Instead, show chart for any saved voucher that has at least one row.
           final hasChartData = _notifier.vouchers.any((v) =>
-              v.status == VoucherStatus.saved &&
-              v.rows.any((row) => row.description.toLowerCase().contains('salary')));
+              v.status == VoucherStatus.saved && v.rows.isNotEmpty);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(AppSpacing.pagePadding),

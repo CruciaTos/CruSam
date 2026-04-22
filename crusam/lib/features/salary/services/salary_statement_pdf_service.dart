@@ -222,11 +222,11 @@ class SalaryStatementPdfService {
       ));
     }
 
+    // Updated call – target parameter removed
     await _saveAndShare(
       doc,
       'salary_statement_${monthName.toLowerCase()}_$year',
       'Salary Statement',
-      ExportPathTarget.salaryStatementPdf,
     );
   }
 
@@ -515,7 +515,9 @@ class SalaryStatementPdfService {
 
   static String _n(double v) => v.toStringAsFixed(0);
 
-  // ── Save + Share ───────────────────────────────────────────────────────────
+  // ── Save + Share (PATCH APPLIED) ──────────────────────────────────────────
+
+  /// Prevents overwriting existing files.
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
     final dot  = basePath.lastIndexOf('.');
@@ -529,28 +531,42 @@ class SalaryStatementPdfService {
     }
   }
 
+  /// Saves the PDF silently to disk — no share popup.
   static Future<void> _saveAndShare(
     pw.Document doc,
     String      slug,
-    String      subject,
-    ExportPathTarget target,
+    String      subject,   // kept for API compatibility — unused
   ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final dir      = await _outputDir(target);
+    final dir      = await _outputDir();
     final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path     = await _uniquePath(basePath);
+    // Task 4: save silently — no Share.shareXFiles call
     await File(path).writeAsBytes(bytes, flush: true);
   }
 
-  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
-    final saved = target != null
-        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
-        : ExportPreferencesNotifier.instance.pdfPath;
-    if (saved.isNotEmpty) {
-      final dir = Directory(saved);
+  /// Determines the output directory:
+  /// 1. Salary-specific path (if set)
+  /// 2. General PDF path (if set)
+  /// 3. System Downloads folder
+  /// 4. Application documents directory
+  static Future<Directory> _outputDir() async {
+    final prefs = ExportPreferencesNotifier.instance;
+
+    // Task 3: check salary-specific path first
+    if (prefs.salaryPdfPath.isNotEmpty) {
+      final dir = Directory(prefs.salaryPdfPath);
       if (await dir.exists()) return dir;
     }
+
+    // Fall back to general PDF path
+    if (prefs.pdfPath.isNotEmpty) {
+      final dir = Directory(prefs.pdfPath);
+      if (await dir.exists()) return dir;
+    }
+
+    // System default
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ?? '.';
     final dl = Directory(

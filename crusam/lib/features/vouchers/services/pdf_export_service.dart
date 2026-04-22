@@ -1,12 +1,9 @@
 // lib/features/vouchers/services/pdf_export_service.dart
 //
-// Changes vs previous version
-// ────────────────────────────
-// • FIX 1: Added _uniquePath() so exports never overwrite an existing file.
-//   e.g. invoice.pdf → invoice(1).pdf → invoice(2).pdf …
-// • _exportPages now detects orientation from PNG IHDR dimensions (portrait vs
-//   landscape) so the exported PDF matches the on-screen preview exactly.
-// • All other logic, public API, and existing callers are unchanged.
+// Task 3: _resolveOutputDir now accepts a _PathType enum so each
+//         export flow uses its own configured save directory.
+// Task 4: Share.shareXFiles removed — files are saved silently to disk.
+// Fix  1: _uniquePath prevents overwriting existing files.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -25,8 +22,11 @@ import 'package:crusam/features/vouchers/widgets/tax_invoice_preview.dart';
 import 'package:crusam/features/vouchers/widgets/voucher_pdf_preview.dart';
 import 'package:crusam/features/vouchers/widgets/bank_disbursement_preview.dart';
 
+// ── Path type (Task 3) ────────────────────────────────────────────────────────
+enum _PdfPathType { taxInvoice, salary, general }
+
 class PdfExportService {
-  static const Duration _captureDelay    = Duration(milliseconds: 150);
+  static const Duration _captureDelay      = Duration(milliseconds: 150);
   static const double   _capturePixelRatio = 4.0;
 
   static pw.Font? _regularFont;
@@ -59,7 +59,7 @@ class PdfExportService {
         : PdfPageFormat.a4;
   }
 
-  // ── Generic export ────────────────────────────────────────────────────────
+  // ── Generic export (used by salary/attachment screens) ────────────────────
 
   static Future<void> exportWidgets({
     required BuildContext context,
@@ -67,19 +67,19 @@ class PdfExportService {
     required String       fileNameSlug,
     required String       filePrefix,
     required String       shareSubject,
-    ExportPathTarget?     outputTarget,
     List<String>?         assetPathsToPrecache,
   }) async {
     if (assetPathsToPrecache != null) {
       await _precacheAssets(context, assetPathsToPrecache);
     }
+    // Determine path type from prefix — salary documents use salaryPdfPath
+    final pathType = _prefixToPathType(filePrefix);
     await _exportPages(
       context:    context,
       pages:      pages,
       billNo:     fileNameSlug,
-      subject:    shareSubject,
       filePrefix: filePrefix,
-      outputTarget: outputTarget,
+      pathType:   pathType,
     );
   }
 
@@ -96,24 +96,17 @@ class PdfExportService {
 
     final pages = <Widget>[
       ...TaxInvoicePreview.buildPdfPages(
-        voucher: voucher,
-        config:  config,
-        margins: taxInvoiceMargins,
-      ),
+        voucher: voucher, config: config, margins: taxInvoiceMargins),
       ...VoucherPdfPreview.buildPdfPages(
-        voucher: voucher,
-        config:  config,
-        margins: voucherMargins,
-      ),
+        voucher: voucher, config: config, margins: voucherMargins),
     ];
 
     await _exportPages(
       context:    context,
       pages:      pages,
       billNo:     voucher.billNo,
-      subject:    'Tax Invoice & Voucher',
       filePrefix: 'tax_invoice_voucher',
-      outputTarget: ExportPathTarget.taxInvoiceVoucherPdf,
+      pathType:   _PdfPathType.taxInvoice,  // Task 3
     );
   }
 
@@ -126,30 +119,25 @@ class PdfExportService {
     required EdgeInsets          margins,
   }) async {
     final pages = BankDisbursementPreview.buildPdfPages(
-      voucher: voucher,
-      config:  config,
-      margins: margins,
-    );
+      voucher: voucher, config: config, margins: margins);
 
     await _exportPages(
       context:    context,
       pages:      pages,
       billNo:     voucher.billNo,
-      subject:    'Bank Disbursement',
       filePrefix: 'bank_disbursement',
-      outputTarget: ExportPathTarget.bankDisbursementPdf,
+      pathType:   _PdfPathType.general,   // uses general PDF path
     );
   }
 
-  // ── Core: capture pages → PDF ─────────────────────────────────────────────
+  // ── Core: capture pages → PDF → save ─────────────────────────────────────
 
   static Future<void> _exportPages({
-    required BuildContext  context,
-    required List<Widget>  pages,
-    required String        billNo,
-    required String        subject,
-    required String        filePrefix,
-    ExportPathTarget?      outputTarget,
+    required BuildContext    context,
+    required List<Widget>    pages,
+    required String          billNo,
+    required String          filePrefix,
+    _PdfPathType             pathType = _PdfPathType.general,
   }) async {
     await WidgetsBinding.instance.endOfFrame;
     await _ensurePdfFontsLoaded();
@@ -160,52 +148,37 @@ class PdfExportService {
       capturedPages.add(await _capturePage(context, page));
     }
 
-    // 2. Build the PDF.
+    // 2. Build the PDF, assigning correct page format from pixel dimensions.
     final pdf = pw.Document(
-      theme: pw.ThemeData.withFont(
-        base: _regularFont!,
-        bold: _boldFont!,
-      ),
+      theme: pw.ThemeData.withFont(base: _regularFont!, bold: _boldFont!),
     );
-
     for (final pageBytes in capturedPages) {
-      final pdfImage  = pw.MemoryImage(pageBytes);
-      final format    = _pageFormatForBytes(pageBytes);
-
-      pdf.addPage(
-        pw.Page(
-          pageFormat: format,
-          margin:     pw.EdgeInsets.zero,
-          build:      (_) => pw.SizedBox.expand(
-            child: pw.Image(pdfImage, fit: pw.BoxFit.contain),
-          ),
+      final pdfImage = pw.MemoryImage(pageBytes);
+      final format   = _pageFormatForBytes(pageBytes);
+      pdf.addPage(pw.Page(
+        pageFormat: format,
+        margin:     pw.EdgeInsets.zero,
+        build:      (_) => pw.SizedBox.expand(
+          child: pw.Image(pdfImage, fit: pw.BoxFit.contain),
         ),
-      );
+      ));
     }
 
-    // 3. Save and share — FIX 1: use _uniquePath to avoid overwriting.
+    // 3. Save to disk — Task 4: no Share popup.
     final bytes = await pdf.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
 
-    final slug     = _slugify(billNo);
-    final fileName = '${filePrefix}_$slug.pdf';
-    final dir      = await _resolveOutputDir(outputTarget);
-    final basePath = '${dir.path}${Platform.pathSeparator}$fileName';
-    // Never overwrite: append (1), (2) … if file already exists
-    final path     = await _uniquePath(basePath);
-    final file     = File(path);
-    await file.writeAsBytes(bytes, flush: true);
-
-    final written = await file.length();
-    if (written == 0) throw Exception('File written but is empty: $path');
+    final slug   = _slugify(billNo);
+    final dir    = await _resolveOutputDir(pathType);
+    final base   = '${dir.path}${Platform.pathSeparator}${filePrefix}_$slug.pdf';
+    final path   = await _uniquePath(base);   // Fix 1: no overwriting
+    await File(path).writeAsBytes(bytes, flush: true);
+    // Task 4: file saved silently — no Share.shareXFiles call.
   }
 
   // ── Screenshot helper ─────────────────────────────────────────────────────
 
-  static Future<Uint8List> _capturePage(
-    BuildContext context,
-    Widget       page,
-  ) async {
+  static Future<Uint8List> _capturePage(BuildContext context, Widget page) async {
     final controller    = ScreenshotController();
     final textDirection = Directionality.maybeOf(context) ?? TextDirection.ltr;
     final mediaQuery    = MediaQuery.maybeOf(context) ??
@@ -227,9 +200,9 @@ class PdfExportService {
 
     return controller.captureFromWidget(
       widget,
-      context:     context,
-      delay:       _captureDelay,
-      pixelRatio:  _capturePixelRatio,
+      context:    context,
+      delay:      _captureDelay,
+      pixelRatio: _capturePixelRatio,
     );
   }
 
@@ -244,58 +217,66 @@ class PdfExportService {
   }
 
   static Future<void> _precacheAssets(
-    BuildContext  context,
-    List<String>  assetPaths,
-  ) async {
+      BuildContext context, List<String> assetPaths) async {
     await Future.wait(
-      assetPaths.map((path) => _safePrecache(context, path)),
-    );
+        assetPaths.map((p) => _safePrecache(context, p)));
   }
 
-  static Future<void> _safePrecache(
-    BuildContext context,
-    String       assetPath,
-  ) async {
-    try {
-      await precacheImage(AssetImage(assetPath), context);
-    } catch (_) {}
+  static Future<void> _safePrecache(BuildContext context, String assetPath) async {
+    try { await precacheImage(AssetImage(assetPath), context); } catch (_) {}
   }
 
-  // ── Utilities ─────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // Task 3 — per-type output directory
+  // ══════════════════════════════════════════════════════════════════════════
 
-  static String _slugify(String billNo) => billNo.isEmpty
-      ? '${DateTime.now().millisecondsSinceEpoch}'
-      : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
+  /// Maps a file-prefix string to the appropriate [_PdfPathType].
+  static _PdfPathType _prefixToPathType(String prefix) {
+    if (prefix.contains('salary') || prefix.contains('attachment') ||
+        prefix.contains('final_invoice')) {
+      return _PdfPathType.salary;
+    }
+    if (prefix.contains('tax_invoice') || prefix.contains('voucher')) {
+      return _PdfPathType.taxInvoice;
+    }
+    return _PdfPathType.general;
+  }
 
-  static Future<Directory> _resolveOutputDir([ExportPathTarget? target]) async {
-    final savedPath = target != null
-        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
-        : ExportPreferencesNotifier.instance.pdfPath;
-    if (savedPath.isNotEmpty) {
-      final dir = Directory(savedPath);
+  /// Priority:  per-type path → general PDF path → system default.
+  static Future<Directory> _resolveOutputDir(_PdfPathType type) async {
+    final prefs = ExportPreferencesNotifier.instance;
+
+    String specific = '';
+    switch (type) {
+      case _PdfPathType.taxInvoice: specific = prefs.taxInvoicePdfPath; break;
+      case _PdfPathType.salary:     specific = prefs.salaryPdfPath;     break;
+      case _PdfPathType.general:    break;
+    }
+    if (specific.isNotEmpty) {
+      final dir = Directory(specific);
+      if (await dir.exists()) return dir;
+    }
+
+    if (prefs.pdfPath.isNotEmpty) {
+      final dir = Directory(prefs.pdfPath);
       if (await dir.exists()) return dir;
     }
 
     if (Platform.isAndroid || Platform.isIOS) {
       return getApplicationDocumentsDirectory();
     }
-
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ?? '.';
-    final downloads = Directory(
-      Platform.isWindows ? '$home\\Downloads' : '$home/Downloads',
-    );
-    if (await downloads.exists()) return downloads;
+    final dl = Directory(
+        Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
+    if (await dl.exists()) return dl;
     return getApplicationDocumentsDirectory();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // FIX 1 — unique path helper (prevents file overwriting)
+  // Fix 1 — unique path (no overwriting)
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Returns [basePath] unchanged if the file does not yet exist.
-  /// Otherwise appends an incrementing counter before the extension:
-  ///   invoice.pdf → invoice(1).pdf → invoice(2).pdf …
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
     final dot  = basePath.lastIndexOf('.');
@@ -308,6 +289,12 @@ class PdfExportService {
       counter++;
     }
   }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+
+  static String _slugify(String billNo) => billNo.isEmpty
+      ? '${DateTime.now().millisecondsSinceEpoch}'
+      : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
 
   // Kept for compatibility with legacy call sites.
   static Future<String> exportTaxInvoiceFromWidget() async => '';

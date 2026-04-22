@@ -567,7 +567,7 @@ class VoucherPdfPreview extends StatelessWidget {
     }
 
     final bytes = await doc.save();
-    final dir = await _outputDir(ExportPathTarget.taxInvoiceVoucherPdf);
+    final dir = await _outputDir(ExportPathTarget.taxInvoice);
     final fileName = 'voucher_${voucher.id ?? DateTime.now().millisecondsSinceEpoch}.pdf';
     final path = '${dir.path}${Platform.pathSeparator}$fileName';
     await File(path).writeAsBytes(bytes);

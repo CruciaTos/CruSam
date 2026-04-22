@@ -1,4 +1,4 @@
-// lib/features/salary/services/Salary_pdf_export_service.dart
+// lib/features/salary/services/salary_pdf_export_service.dart
 //
 // • 2 salary slips per A4 page (zero outer margin)
 // • Header: aarti_logo.png (left) + letterhead.png (right)
@@ -155,7 +155,6 @@ class SalaryPdfExportService {
       doc,
       'salary_slips_${monthName.toLowerCase()}_$year',
       'Salary Slips',
-      ExportPathTarget.salarySlipsPdf,
     );
   }
 
@@ -194,7 +193,6 @@ class SalaryPdfExportService {
       doc,
       'attachment_a_${_slugify(billNo)}',
       'Attachment A',
-      ExportPathTarget.attachmentAPdf,
     );
   }
 
@@ -229,7 +227,6 @@ class SalaryPdfExportService {
       doc,
       'attachment_b_${_slugify(billNo)}',
       'Attachment B',
-      ExportPathTarget.attachmentBPdf,
     );
   }
 
@@ -272,7 +269,6 @@ class SalaryPdfExportService {
       doc,
       'salary_invoice_${_slugify(billNo)}',
       'Salary Invoice',
-      ExportPathTarget.salaryInvoicePdf,
     );
   }
 
@@ -556,6 +552,7 @@ class SalaryPdfExportService {
   }
 
   // ── Attachment / Invoice stubs ────────────────────────────────────────────
+  // Replace these with your actual implementations.
 
   static pw.Widget _attachmentAPage({
     required CompanyConfigModel config,
@@ -566,7 +563,7 @@ class SalaryPdfExportService {
     required String customerName, required String customerAddress,
     required String customerGst,
   }) {
-    // Replace with your original _attachmentAPage implementation
+    // TODO: implement Attachment A page
     throw UnimplementedError('Replace with original _attachmentAPage implementation');
   }
 
@@ -577,7 +574,7 @@ class SalaryPdfExportService {
     required String customerName, required String customerAddress,
     required String customerGst,
   }) {
-    // Replace with your original _attachmentBPage implementation
+    // TODO: implement Attachment B page
     throw UnimplementedError('Replace with original _attachmentBPage implementation');
   }
 
@@ -590,7 +587,7 @@ class SalaryPdfExportService {
     required double baseAmount, required double cgst, required double sgst,
     required double totalTax, required double finalTotal, required double roundOff,
   }) {
-    // Replace with your original _salaryInvoicePage implementation
+    // TODO: implement Salary Invoice page
     throw UnimplementedError('Replace with original _salaryInvoicePage implementation');
   }
 
@@ -765,9 +762,8 @@ class SalaryPdfExportService {
     if (female) {
       pt = eG < 25000 ? 0 : (isFeb ? 300 : 200);
     } else {
-      if (eG < 7500) {
-        pt = 0;
-      } else if (eG < 10000) pt = 175;
+      if (eG < 7500)       pt = 0;
+      else if (eG < 10000) pt = 175;
       else                  pt = isFeb ? 300 : 200;
     }
     return _SlipCalc(
@@ -790,24 +786,11 @@ class SalaryPdfExportService {
         _     => code,
       };
 
-  // ── Respects user-chosen PDF path ─────────────────────────────────────────
-  static Future<Directory> _outputDir([ExportPathTarget? target]) async {
-    final savedPath = target != null
-        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
-        : ExportPreferencesNotifier.instance.pdfPath;
-    if (savedPath.isNotEmpty) {
-      final dir = Directory(savedPath);
-      if (await dir.exists()) return dir;
-    }
-    final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'] ?? '.';
-    final dl = Directory(
-        Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
-    if (await dl.exists()) return dl;
-    return getApplicationDocumentsDirectory();
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PDF OUTPUT & SAVING (no Enum targets – uses salaryPdfPath automatically)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── Save + Share (with unique file name to avoid overwrites) ───────────────
+  /// Prevents overwriting existing files.
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
     final dot  = basePath.lastIndexOf('.');
@@ -821,14 +804,47 @@ class SalaryPdfExportService {
     }
   }
 
+  /// Saves the PDF silently to disk – no share popup.
   static Future<void> _saveAndShare(
-      pw.Document doc, String slug, String subject, ExportPathTarget target) async {
+    pw.Document doc,
+    String      slug,
+    String      subject,   // kept for API compatibility — unused
+  ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final dir      = await _outputDir(target);
+    final dir      = await _outputDir();
     final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path     = await _uniquePath(basePath);
     await File(path).writeAsBytes(bytes, flush: true);
+  }
+
+  /// Determines the output directory:
+  /// 1. Salary-specific path (if set)
+  /// 2. General PDF path (if set)
+  /// 3. System Downloads folder
+  /// 4. Application documents directory
+  static Future<Directory> _outputDir() async {
+    final prefs = ExportPreferencesNotifier.instance;
+
+    // Task 3: check salary-specific path first
+    if (prefs.salaryPdfPath.isNotEmpty) {
+      final dir = Directory(prefs.salaryPdfPath);
+      if (await dir.exists()) return dir;
+    }
+
+    // Fall back to general PDF path
+    if (prefs.pdfPath.isNotEmpty) {
+      final dir = Directory(prefs.pdfPath);
+      if (await dir.exists()) return dir;
+    }
+
+    // System default
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ?? '.';
+    final dl = Directory(
+        Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
+    if (await dl.exists()) return dl;
+    return getApplicationDocumentsDirectory();
   }
 }
 

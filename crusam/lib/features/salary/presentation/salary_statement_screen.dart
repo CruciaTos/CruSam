@@ -252,8 +252,8 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       );
 
       if (!mounted) return;
-      if (path != null) {
-      } else {
+      // Task 4: file saved silently — no snackbar on success.
+      if (path == null) {
         throw Exception('Failed to save Excel file');
       }
     } catch (e) {

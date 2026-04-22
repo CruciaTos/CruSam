@@ -10,6 +10,8 @@ import '../../../shared/utils/format_utils.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/company_config_model.dart';
 
+import 'package:crusam/features/profile/widgets/export_paths_card.dart';
+
 /// Excel export helper. Uses Syncfusion XlsIO for bank disbursement sheets,
 /// and a Python script for tax invoices (legacy).
 class ExcelExportService {
@@ -530,24 +532,29 @@ class ExcelExportService {
     return iso;
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // 🔧 FIXED: _outputDir now accepts an optional ExportPathTarget parameter
+  // ───────────────────────────────────────────────────────────────────────────
   static Future<String> _outputDir([ExportPathTarget? target]) async {
+    final prefs = ExportPreferencesNotifier.instance;
     final savedPath = target != null
-        ? ExportPreferencesNotifier.instance.resolvedPathForTarget(target)
-        : ExportPreferencesNotifier.instance.excelPath;
+        ? prefs.resolvedPathForTarget(target)
+        : prefs.excelPath;
+
+    // Use user‑configured path if it exists and is valid
     if (savedPath.isNotEmpty) {
       final dir = Directory(savedPath);
       if (await dir.exists()) return dir.path;
     }
 
-    if (Platform.isWindows) {
-      final home = Platform.environment['USERPROFILE'] ?? '.';
-      final dl = Directory('$home\\Downloads');
-      if (await dl.exists()) return dl.path;
-    } else if (Platform.isMacOS || Platform.isLinux) {
-      final home = Platform.environment['HOME'] ?? '.';
-      final dl = Directory('$home/Downloads');
-      if (await dl.exists()) return dl.path;
-    }
+    // Fallback to system Downloads folder
+    final home = Platform.environment['HOME'] ??
+        Platform.environment['USERPROFILE'] ?? '.';
+    final dl = Directory(
+        Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
+    if (await dl.exists()) return dl.path;
+
+    // Last resort: app documents directory
     final docs = await getApplicationDocumentsDirectory();
     return docs.path;
   }
