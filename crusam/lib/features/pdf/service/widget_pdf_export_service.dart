@@ -155,14 +155,6 @@ class WidgetPdfExportService {
     final fromDate = sorted.isNotEmpty ? _fmtDate(sorted.first.fromDate) : '-';
     final toDate   = sorted.isNotEmpty ? _fmtDate(sorted.last.toDate)   : '-';
 
-    // Column widths for PDF A4 content.
-    // A4 content = 595.28 - 2x24 margin = 547.28pt.
-    // Outer container uses Border.all(0.9) in border-box sizing,
-    // so usable inner width = 547.28 - 2x0.9 = 545.48pt.
-    //
-    // rateW widened 37->52 so taxLblW=78pt fits "Total amount before Tax"
-    // on one line (matches Flutter TaxInvoicePreview). descW absorbs the
-    // 15pt reduction.
     const outerBorder = 0.9;
     const usableW = 547.28 - 2 * outerBorder; // 545.48
 
@@ -170,7 +162,7 @@ class WidgetPdfExportService {
     const frW   = 47.0;
     const toW   = 47.0;
     const qtyW  = 26.0;
-    const rateW = 60.0; // widened from 37 -> taxLblW=86, single-line tax labels
+    const rateW = 60.0;
     const amtW  = 66.0;
     const fixedSum = srW + frW + toW + qtyW + rateW + amtW; // 258
     const descW = usableW - fixedSum;                        // ~287.48
@@ -350,16 +342,10 @@ class WidgetPdfExportService {
   }
 
   // ── Invoice header ─────────────────────────────────────────────────────────
-  // FIX: Now mirrors TaxInvoicePreview._buildHeader() exactly:
-  //   • Left  → logo image (fixed width, _headerHeightPt tall)
-  //   • Right → letterhead.png (Expanded, right-aligned, contain fit)
-  //             Falls back to text-based company info only when the image
-  //             asset is missing, keeping parity with the Flutter widget.
   static pw.Widget _invoiceHeader(CompanyConfigModel config) {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        // ── Logo (left) ──────────────────────────────────────────────────
         if (_logo != null)
           pw.SizedBox(
             width: 100,
@@ -371,10 +357,6 @@ class WidgetPdfExportService {
 
         pw.SizedBox(width: 12),
 
-        // ── Letterhead image (right, Expanded) ───────────────────────────
-        // Mirrors: Expanded(child: Image.asset('letterhead.png',
-        //            fit: BoxFit.contain,
-        //            alignment: Alignment.centerRight))
         pw.Expanded(
           child: pw.SizedBox(
             height: _headerHeightPt,
@@ -384,13 +366,10 @@ class WidgetPdfExportService {
                     child: pw.Image(
                       _letterhead!,
                       fit: pw.BoxFit.contain,
-                      // Constrain to full available width so it scales like
-                      // BoxFit.contain with Alignment.centerRight in Flutter.
                       width: double.infinity,
                       height: _headerHeightPt,
                     ),
                   )
-                // ── Text fallback (only when letterhead.png is missing) ───
                 : pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     mainAxisAlignment: pw.MainAxisAlignment.center,
@@ -416,7 +395,7 @@ class WidgetPdfExportService {
     );
   }
 
-  // ── Bill To (mirrors TaxInvoicePreview._buildBillToSection) ──────────────
+  // ── Bill To ──────────────────────────────────────────────────────────────
   static pw.Widget _billToSection(VoucherModel voucher) => pw.Container(
         decoration: pw.BoxDecoration(
             border: pw.Border.all(color: _black, width: 0.75)),
@@ -427,7 +406,6 @@ class WidgetPdfExportService {
             pw.Text('BILL To,', style: _ts(size: 8, bold: true)),
             pw.SizedBox(height: 2),
 
-            // Row 1: client name | Bill No
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -442,7 +420,6 @@ class WidgetPdfExportService {
               ],
             ),
 
-            // Row 2: client address | Date
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -458,7 +435,6 @@ class WidgetPdfExportService {
 
             pw.SizedBox(height: 2),
 
-            // Row 3: GST No | PO No
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
@@ -604,9 +580,6 @@ class WidgetPdfExportService {
     PdfColor? bg,
     bool last     = false,
   }) {
-    // The right-border on the label container is drawn inside its width
-    // (border-box), so subtract border thickness to keep labelW + amtW
-    // exactly equal to taxW and prevent any overflow.
     const borderThickness = 0.75;
     return pw.Container(
       decoration: pw.BoxDecoration(
@@ -615,7 +588,6 @@ class WidgetPdfExportService {
       ),
       child: pw.Row(
         children: [
-          // Label: fixed width, right-aligned text, right-border divider
           pw.Container(
             width: labelW - borderThickness,
             decoration:
@@ -629,8 +601,6 @@ class WidgetPdfExportService {
               style: _ts(size: 7.5, bold: bold),
             ),
           ),
-          // Amount: use Expanded so it fills the remaining space exactly,
-          // eliminating any accumulation of sub-pixel rounding errors.
           pw.Expanded(
             child: pw.Container(
               padding:
@@ -649,7 +619,7 @@ class WidgetPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // VOUCHER PAGE (LANDSCAPE) — UNTOUCHED
+  // VOUCHER PAGE (LANDSCAPE)
   // ══════════════════════════════════════════════════════════════════════════
 
   static const double _defaultTotalPx = 693.0;
@@ -920,6 +890,26 @@ class WidgetPdfExportService {
     return getApplicationDocumentsDirectory();
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // FIX 1 — unique path helper (prevents file overwriting)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Returns [basePath] unchanged if the file does not yet exist.
+  /// Otherwise appends an incrementing counter before the extension:
+  ///   invoice.pdf → invoice(1).pdf → invoice(2).pdf …
+  static Future<String> _uniquePath(String basePath) async {
+    if (!await File(basePath).exists()) return basePath;
+    final dot  = basePath.lastIndexOf('.');
+    final base = dot == -1 ? basePath : basePath.substring(0, dot);
+    final ext  = dot == -1 ? '' : basePath.substring(dot);
+    var counter = 1;
+    while (true) {
+      final candidate = '$base($counter)$ext';
+      if (!await File(candidate).exists()) return candidate;
+      counter++;
+    }
+  }
+
   static Future<void> _saveAndShare(
       pw.Document doc, String billNo, String prefix, String subject) async {
     final bytes = await doc.save();
@@ -927,11 +917,14 @@ class WidgetPdfExportService {
     final slug = billNo.isEmpty
         ? '${DateTime.now().millisecondsSinceEpoch}'
         : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
-    final dir  = await _outputDir();
-    final path = '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
+    final dir      = await _outputDir();
+    final basePath = '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
+    // FIX 1: never overwrite — auto-increment filename if file already exists
+    final path     = await _uniquePath(basePath);
+    final fileName = File(path).uri.pathSegments.last;
     await File(path).writeAsBytes(bytes, flush: true);
     await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: '${prefix}_$slug.pdf')],
+      [XFile(path, mimeType: 'application/pdf', name: fileName)],
       subject: subject,
     );
   }

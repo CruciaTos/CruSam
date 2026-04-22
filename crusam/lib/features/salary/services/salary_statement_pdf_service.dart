@@ -516,6 +516,19 @@ class SalaryStatementPdfService {
   static String _n(double v) => v.toStringAsFixed(0);
 
   // ── Save + Share ───────────────────────────────────────────────────────────
+  static Future<String> _uniquePath(String basePath) async {
+    if (!await File(basePath).exists()) return basePath;
+    final dot  = basePath.lastIndexOf('.');
+    final base = dot == -1 ? basePath : basePath.substring(0, dot);
+    final ext  = dot == -1 ? '' : basePath.substring(dot);
+    var counter = 1;
+    while (true) {
+      final candidate = '$base($counter)$ext';
+      if (!await File(candidate).exists()) return candidate;
+      counter++;
+    }
+  }
+
   static Future<void> _saveAndShare(
     pw.Document doc,
     String      slug,
@@ -523,11 +536,13 @@ class SalaryStatementPdfService {
   ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final dir  = await _outputDir();
-    final path = '${dir.path}${Platform.pathSeparator}$slug.pdf';
+    final dir      = await _outputDir();
+    final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
+    final path     = await _uniquePath(basePath);
+    final fileName = File(path).uri.pathSegments.last;
     await File(path).writeAsBytes(bytes, flush: true);
     await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: '$slug.pdf')],
+      [XFile(path, mimeType: 'application/pdf', name: fileName)],
       subject: subject,
     );
   }

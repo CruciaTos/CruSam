@@ -827,7 +827,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       final config  = _notifier.config;
 
       // 1. Save as draft
-      await _notifier.saveVoucher();
+      await _notifier.saveVoucherNoReset();
 
       // 2. Export PDF bundle (tax invoice portrait + voucher landscape)
       //    using the new WidgetPdfExportService — margins default to 24pt.

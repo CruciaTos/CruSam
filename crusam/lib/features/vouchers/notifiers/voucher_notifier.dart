@@ -78,17 +78,8 @@ class VoucherNotifier extends ChangeNotifier {
   }
 
   // ── Load ───────────────────────────────────────────────────────────────────
-  /// Call once per screen mount.
-  ///
-  /// SINGLETON SAFETY: Because this notifier lives for the app's lifetime,
-  /// stale [VoidCallback] listener references can accumulate across Flutter
-  /// hot-reloads (the widget disposes but the singleton keeps the old
-  /// closure). We cannot clear *all* listeners here (that would break
-  /// widgets that haven't re-registered yet), so instead we rely on each
-  /// widget calling [removeListener] before [addListener] in its own
-  /// [initState]. See _MetadataCardState for the pattern.
   Future<void> loadDependencies() async {
-    if (isLoading) return;           // prevent concurrent double-load
+    if (isLoading) return;
     isLoading = true;
     notifyListeners();
     try {
@@ -177,6 +168,7 @@ class VoucherNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── FIX 2: saveVoucher — saves and RESETS the form (used by Save as Draft)
   Future<bool> saveVoucher() async {
     if (current.title.trim().isEmpty) return false;
     try {
@@ -189,6 +181,29 @@ class VoucherNotifier extends ChangeNotifier {
         ...savedVouchers,
       ];
       _resetCurrent();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── FIX 2: saveVoucherNoReset — saves WITHOUT clearing the form.
+  //           Used by Finalise & Export so the user can export multiple times
+  //           without re-entering all the voucher data.
+  Future<bool> saveVoucherNoReset() async {
+    if (current.title.trim().isEmpty) return false;
+    try {
+      final vid = await DatabaseHelper.instance.insertVoucher(enriched.toDbMap());
+      for (final row in current.rows) {
+        await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(vid));
+      }
+      savedVouchers = [
+        enriched.copyWith(id: vid, status: VoucherStatus.saved),
+        ...savedVouchers,
+      ];
+      // NOTE: _resetCurrent() is intentionally NOT called here.
+      // The form stays intact so the user can export again immediately.
       notifyListeners();
       return true;
     } catch (_) {

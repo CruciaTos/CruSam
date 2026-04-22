@@ -2,15 +2,11 @@
 //
 // Changes vs previous version
 // ────────────────────────────
-// • _exportPages now detects the orientation of every captured page from the
-//   PNG image dimensions stored in the IHDR chunk (bytes 16-23, big-endian).
-//   Portrait  images  (width ≤ height) → PdfPageFormat.a4
-//   Landscape images  (width  > height) → PdfPageFormat.a4.landscape
-//   This makes the exported PDF match the on-screen preview exactly for any
-//   mix of portrait and landscape pages, including the voucher bundle where
-//   page 1 is portrait and pages 2+ are landscape.
+// • FIX 1: Added _uniquePath() so exports never overwrite an existing file.
+//   e.g. invoice.pdf → invoice(1).pdf → invoice(2).pdf …
+// • _exportPages now detects orientation from PNG IHDR dimensions (portrait vs
+//   landscape) so the exported PDF matches the on-screen preview exactly.
 // • All other logic, public API, and existing callers are unchanged.
-// • Added 'letterhead.png' to asset precache list for invoice bundle.
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -30,13 +26,6 @@ import 'package:crusam/features/vouchers/widgets/tax_invoice_preview.dart';
 import 'package:crusam/features/vouchers/widgets/voucher_pdf_preview.dart';
 import 'package:crusam/features/vouchers/widgets/bank_disbursement_preview.dart';
 
-// NOTE: The import paths above assume this file lives at
-//   lib/features/vouchers/services/pdf_export_service.dart
-// which is the existing location.  The relative widget imports therefore
-// need to go up one level, e.g.:
-//   import '../widgets/bank_disbursement_preview.dart';
-// Adjust if your folder layout differs.
-
 class PdfExportService {
   static const Duration _captureDelay    = Duration(milliseconds: 150);
   static const double   _capturePixelRatio = 4.0;
@@ -53,20 +42,7 @@ class PdfExportService {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // PNG dimension reader
-  //
-  // A valid PNG file starts with an 8-byte signature followed immediately by
-  // the IHDR chunk:
-  //   bytes  0– 7  PNG signature
-  //   bytes  8–11  IHDR chunk length (4 bytes, big-endian) — always 13
-  //   bytes 12–15  "IHDR"
-  //   bytes 16–19  image width  (4 bytes, big-endian)
-  //   bytes 20–23  image height (4 bytes, big-endian)
-  //
-  // Reading these 8 bytes lets us determine orientation without decoding the
-  // full image, and without any additional package dependency.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── PNG dimension reader ──────────────────────────────────────────────────
 
   static ({int width, int height}) _pngDimensions(Uint8List bytes) {
     if (bytes.length < 24) return (width: 0, height: 0);
@@ -77,10 +53,6 @@ class PdfExportService {
     );
   }
 
-  /// Returns the correct [PdfPageFormat] for a captured PNG page.
-  ///
-  /// Landscape images (pixel width > pixel height) → A4 landscape.
-  /// Portrait  images (pixel width ≤ pixel height) → A4 portrait.
   static PdfPageFormat _pageFormatForBytes(Uint8List bytes) {
     final dim = _pngDimensions(bytes);
     return dim.width > dim.height
@@ -88,9 +60,7 @@ class PdfExportService {
         : PdfPageFormat.a4;
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Generic export – used by salary/attachment screens
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Generic export ────────────────────────────────────────────────────────
 
   static Future<void> exportWidgets({
     required BuildContext context,
@@ -112,9 +82,7 @@ class PdfExportService {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Invoice bundle (Tax Invoice + Voucher PDF) – mixed orientation
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Invoice bundle ────────────────────────────────────────────────────────
 
   static Future<void> exportInvoiceBundle({
     required BuildContext        context,
@@ -147,9 +115,7 @@ class PdfExportService {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Bank disbursement export (all portrait)
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Bank disbursement export ──────────────────────────────────────────────
 
   static Future<void> exportBankDisbursement({
     required BuildContext        context,
@@ -172,14 +138,7 @@ class PdfExportService {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Core: capture every page widget → PNG bytes → PDF
-  //
-  // Each page is screenshotted at its *actual* Container size
-  // (portrait or landscape), then inserted into a PDF page whose format is
-  // derived from the captured image's pixel dimensions.  This guarantees that
-  // the on-screen preview and the saved PDF are pixel-perfect identical.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Core: capture pages → PDF ─────────────────────────────────────────────
 
   static Future<void> _exportPages({
     required BuildContext  context,
@@ -197,7 +156,7 @@ class PdfExportService {
       capturedPages.add(await _capturePage(context, page));
     }
 
-    // 2. Build the PDF, assigning the correct page format to each page.
+    // 2. Build the PDF.
     final pdf = pw.Document(
       theme: pw.ThemeData.withFont(
         base: _regularFont!,
@@ -207,7 +166,6 @@ class PdfExportService {
 
     for (final pageBytes in capturedPages) {
       final pdfImage  = pw.MemoryImage(pageBytes);
-      // Derive orientation from the screenshot's pixel dimensions.
       final format    = _pageFormatForBytes(pageBytes);
 
       pdf.addPage(
@@ -221,14 +179,17 @@ class PdfExportService {
       );
     }
 
-    // 3. Save and share.
+    // 3. Save and share — FIX 1: use _uniquePath to avoid overwriting.
     final bytes = await pdf.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
 
     final slug     = _slugify(billNo);
     final fileName = '${filePrefix}_$slug.pdf';
     final dir      = await _resolveOutputDir();
-    final path     = '${dir.path}${Platform.pathSeparator}$fileName';
+    final basePath = '${dir.path}${Platform.pathSeparator}$fileName';
+    // Never overwrite: append (1), (2) … if file already exists
+    final path     = await _uniquePath(basePath);
+    final finalName = File(path).uri.pathSegments.last;
     final file     = File(path);
     await file.writeAsBytes(bytes, flush: true);
 
@@ -236,18 +197,12 @@ class PdfExportService {
     if (written == 0) throw Exception('File written but is empty: $path');
 
     await Share.shareXFiles(
-      [XFile(path, mimeType: 'application/pdf', name: fileName)],
+      [XFile(path, mimeType: 'application/pdf', name: finalName)],
       subject: subject,
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Screenshot helper
-  //
-  // The widget is rendered at its *intrinsic* size — i.e. the Container
-  // dimensions set by VoucherPdfPreview._buildPage (portrait: 793.7 × 1122.5,
-  // landscape: 1122.5 × 793.7).  No rotation, no forced size override.
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Screenshot helper ─────────────────────────────────────────────────────
 
   static Future<Uint8List> _capturePage(
     BuildContext context,
@@ -280,14 +235,12 @@ class PdfExportService {
     );
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Asset pre-caching
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Asset pre-caching ─────────────────────────────────────────────────────
 
   static Future<void> _precacheInvoiceAssets(BuildContext context) async {
     await _precacheAssets(context, [
       'assets/images/aarti_logo.png',
-      'assets/images/letterhead.png',     // ← added for new letterhead image
+      'assets/images/letterhead.png',
       'assets/images/aarti_signature.png',
     ]);
   }
@@ -310,17 +263,12 @@ class PdfExportService {
     } catch (_) {}
   }
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Utilities
-  // ──────────────────────────────────────────────────────────────────────────
+  // ── Utilities ─────────────────────────────────────────────────────────────
 
   static String _slugify(String billNo) => billNo.isEmpty
       ? '${DateTime.now().millisecondsSinceEpoch}'
       : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
 
-  /// Resolves the output directory:
-  ///   1. User-chosen path (set via Profile → Export Paths).
-  ///   2. Platform default: Downloads on desktop, app documents on mobile.
   static Future<Directory> _resolveOutputDir() async {
     final savedPath = ExportPreferencesNotifier.instance.pdfPath;
     if (savedPath.isNotEmpty) {
@@ -341,6 +289,26 @@ class PdfExportService {
     return getApplicationDocumentsDirectory();
   }
 
-  // Kept for compatibility with any legacy call sites.
+  // ══════════════════════════════════════════════════════════════════════════
+  // FIX 1 — unique path helper (prevents file overwriting)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Returns [basePath] unchanged if the file does not yet exist.
+  /// Otherwise appends an incrementing counter before the extension:
+  ///   invoice.pdf → invoice(1).pdf → invoice(2).pdf …
+  static Future<String> _uniquePath(String basePath) async {
+    if (!await File(basePath).exists()) return basePath;
+    final dot  = basePath.lastIndexOf('.');
+    final base = dot == -1 ? basePath : basePath.substring(0, dot);
+    final ext  = dot == -1 ? '' : basePath.substring(dot);
+    var counter = 1;
+    while (true) {
+      final candidate = '$base($counter)$ext';
+      if (!await File(candidate).exists()) return candidate;
+      counter++;
+    }
+  }
+
+  // Kept for compatibility with legacy call sites.
   static Future<String> exportTaxInvoiceFromWidget() async => '';
 }
