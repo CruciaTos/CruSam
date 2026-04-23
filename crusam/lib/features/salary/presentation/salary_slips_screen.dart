@@ -6,6 +6,7 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
+import '../../../shared/widgets/full_screen_loader.dart'; // Added
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_pdf_export_service.dart';
@@ -108,6 +109,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
       return;
     }
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating salary slips…'); // Added
     try {
       final n = SalaryDataNotifier.instance;
       await SalaryPdfExportService.exportSalarySlips(
@@ -125,6 +127,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           content: Text('Export failed: $e'),
           backgroundColor: Colors.red.shade700));
     } finally {
+      hideLoader(context); // Added
       if (mounted) setState(() => _exporting = false);
     }
   }

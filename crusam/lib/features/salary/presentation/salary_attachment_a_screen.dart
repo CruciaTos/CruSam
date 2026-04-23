@@ -7,6 +7,7 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/margin_settings_model.dart';
 import '../../../shared/utils/title_utils.dart';
+import '../../../shared/widgets/full_screen_loader.dart';
 import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
 import '../../vouchers/services/pdf_export_service.dart';
@@ -93,6 +94,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating Attachment A…');
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
@@ -130,6 +132,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
         ),
       );
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }

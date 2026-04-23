@@ -14,6 +14,7 @@ import '../../vouchers/widgets/item_description_field.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/attachment_b_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
+import '../../../shared/widgets/full_screen_loader.dart';
 
 class SalaryAttachmentBScreen extends StatefulWidget {
   const SalaryAttachmentBScreen({super.key});
@@ -95,6 +96,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating Attachment B…');
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
@@ -129,6 +131,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
         ),
       );
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }

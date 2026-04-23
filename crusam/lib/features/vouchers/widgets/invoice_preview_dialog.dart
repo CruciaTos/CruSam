@@ -18,6 +18,7 @@ import 'package:crusam/data/models/bank_column_widths_model.dart';
 import 'package:crusam/data/models/voucher_column_widths_model.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../../core/preferences/export_preferences_notifier.dart';
+import '../../../shared/widgets/full_screen_loader.dart'; // <-- added import
 
 export 'voucher_pdf_preview.dart'     show VoucherColWidths;
 export 'bank_disbursement_preview.dart' show BankColWidths;
@@ -104,6 +105,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   Future<void> _exportExcel() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    showLoader(context, message: 'Exporting Excel…');  // <-- added
     try {
       final voucher = widget.notifier.enriched;
       await (widget.type == PreviewType.invoice
@@ -120,6 +122,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
         SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700),
       );
     } finally {
+      hideLoader(context);  // <-- added as first line of finally
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -127,6 +130,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
  Future<void> _exportPdf() async {
   if (_exporting) return;
   setState(() => _exporting = true);
+  showLoader(context, message: 'Saving PDF…');   // <-- added
   try {
     final voucher = widget.notifier.enriched;
     if (widget.type == PreviewType.invoice) {
@@ -177,6 +181,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
           backgroundColor: Colors.red.shade700),
     );
   } finally {
+    hideLoader(context);   // <-- added as first line of finally
     if (mounted) setState(() => _exporting = false);
   }
 }

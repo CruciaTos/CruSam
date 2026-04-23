@@ -27,7 +27,18 @@ class UpdateService {
     final message =
         (data['message'] as String?) ?? 'A new version is available.';
     final force = (data['force'] as bool?) ?? false;
-    final downloadUrl = data['download_url'] as String;
+    final downloadUrl = (data['download_url'] as String).trim();
+
+    // Validate the URL looks sane before we store it — catches truncated or
+    // malformed values in latest.json early, with a clear error message.
+    if (!downloadUrl.startsWith('https://') &&
+        !downloadUrl.startsWith('http://')) {
+      throw Exception(
+          'Invalid download_url in latest.json: "$downloadUrl"\n'
+          'It must start with https:// and point to the actual .zip asset.\n'
+          'Example: https://github.com/CruciaTos/Crusam_RELEASE-VERSION'
+          '/releases/download/v$latestVersion/crusam_v$latestVersion.zip');
+    }
 
     return UpdateInfo(
       currentVersion: kAppVersion,

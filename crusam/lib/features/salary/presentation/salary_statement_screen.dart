@@ -10,10 +10,11 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
+import '../../../shared/widgets/full_screen_loader.dart'; // ← added
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_statement_excel_export_service.dart';
-import '../services/salary_statement_pdf_service.dart'; // ← new pw-based service
+import '../services/salary_statement_pdf_service.dart';
 import '../widgets/salary_statement_preview.dart';
 
 class SalaryStatementScreen extends StatefulWidget {
@@ -189,6 +190,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
 
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating salary statement PDF…');   // ← added
     try {
       final daysMap = <int, int>{};
       for (final e in employees) {
@@ -215,6 +217,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
+      if (mounted) hideLoader(context);   // ← added as first line
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -233,6 +236,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
 
     setState(() => _exportingExcel = true);
+    showLoader(context, message: 'Exporting salary statement Excel…');   // ← added
     try {
       final daysMap = <int, int>{};
       for (final e in employees) {
@@ -265,6 +269,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
+      if (mounted) hideLoader(context);   // ← added as first line
       if (mounted) setState(() => _exportingExcel = false);
     }
   }

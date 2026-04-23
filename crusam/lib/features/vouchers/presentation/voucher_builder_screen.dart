@@ -47,7 +47,7 @@ import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
 import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
-
+import 'package:crusam/shared/widgets/full_screen_loader.dart';
 
 // ────────────────────────────────────────────────────────────────────────────
 //  Design tokens  (private to this file)
@@ -719,15 +719,20 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       );
       return;
     }
-    final ok = await _notifier.saveVoucher();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ok ? 'Invoice saved successfully' : 'Error saving invoice',
+    showLoader(context, message: 'Saving voucher…');
+    try {
+      final ok = await _notifier.saveVoucher();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              ok ? 'Invoice saved successfully' : 'Error saving invoice',
+            ),
           ),
-        ),
-      );
+        );
+      }
+    } finally {
+      hideLoader(context);
     }
   }
 
@@ -743,6 +748,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
       return;
     }
     setState(() => _exportingBankSheet = true);
+    showLoader(context, message: 'Exporting bank sheet…');
     try {
       final path = await ExcelExportService.exportBankDisbursement(
         _notifier.enriched, _notifier.config,
@@ -760,6 +766,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         );
       }
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _exportingBankSheet = false);
     }
   }
@@ -786,6 +793,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
     }
 
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating PDF & Excel…');
 
     try {
       final voucher = _notifier.enriched;
@@ -818,6 +826,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         );
       }
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }

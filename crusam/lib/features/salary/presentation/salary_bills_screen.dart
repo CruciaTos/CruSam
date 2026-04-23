@@ -17,6 +17,7 @@ import '../widgets/attachment_b_preview.dart';
 import '../widgets/salary_bill_preview.dart';
 import '../widgets/salary_statement_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
+import '../../../shared/widgets/full_screen_loader.dart';
 
 class SalaryBillsScreen extends StatefulWidget {
   const SalaryBillsScreen({super.key});
@@ -151,6 +152,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
+    showLoader(context, message: 'Generating salary invoice PDF…');
     try {
       final sc = SalaryStateController.instance;
       await PdfExportService.exportWidgets(
@@ -186,6 +188,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         ),
       );
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -193,6 +196,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   Future<void> _finaliseInvoice() async {
     if (_finalisingInvoice) return;
     setState(() => _finalisingInvoice = true);
+    showLoader(context, message: 'Finalising invoice bundle…');
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
@@ -279,6 +283,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         ),
       );
     } finally {
+      hideLoader(context);
       if (mounted) setState(() => _finalisingInvoice = false);
     }
   }
