@@ -245,7 +245,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _codeDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          initialValue: _selectedCode,
+          value: _selectedCode,
           decoration: const InputDecoration(labelText: 'Code'),
           items: _codeList
               .map((c) =>
@@ -266,7 +266,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _bankDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          initialValue: _selectedBank,
+          value: _selectedBank,
           decoration: const InputDecoration(labelText: 'Bank Details'),
           isExpanded: true,
           items: _bankOptions
@@ -284,7 +284,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _zoneDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          initialValue: _selectedZone,
+          value: _selectedZone,
           decoration: const InputDecoration(labelText: 'Zone'),
           items: _zoneOptions
               .map((z) =>

@@ -39,13 +39,20 @@ class EmployeeModel {
     this.gender = 'M',
   });
 
+  static String _normalizeCode(String code) {
+    final trimmed = code.trim();
+    final upper = trimmed.toUpperCase();
+    if (upper == 'AP' || upper == 'A&P') return 'A&P';
+    return trimmed;
+  }
+
   factory EmployeeModel.fromMap(Map<String, dynamic> m) => EmployeeModel(
     id:            m['id'] as int?,
     srNo:          (m['sr_no']          as int?)    ?? 0,
     name:          (m['name']           as String?) ?? '',
     pfNo:          (m['pf_no']          as String?) ?? '',
     uanNo:         (m['uan_no']         as String?) ?? '',
-    code:          (m['code']           as String?) ?? '',
+    code:          _normalizeCode((m['code'] as String?) ?? ''),
     ifscCode:      (m['ifsc_code']      as String?) ?? '',
     accountNumber: (m['account_number'] as String?) ?? '',
     aartiAcNo:     (m['aarti_ac_no']    as String?) ?? '',
@@ -65,7 +72,7 @@ class EmployeeModel {
     'name':           name,
     'pf_no':          pfNo,
     'uan_no':         uanNo,
-    'code':           code,
+    'code':           _normalizeCode(code),
     'ifsc_code':      ifscCode,
     'account_number': accountNumber,
     'aarti_ac_no':    aartiAcNo,
@@ -87,7 +94,9 @@ class EmployeeModel {
     String? dateOfJoining, double? basicCharges, double? otherCharges, String? gender,
   }) => EmployeeModel(
     id: id ?? this.id, srNo: srNo ?? this.srNo, name: name ?? this.name,
-    pfNo: pfNo ?? this.pfNo, uanNo: uanNo ?? this.uanNo, code: code ?? this.code,
+    pfNo: pfNo ?? this.pfNo,
+    uanNo: uanNo ?? this.uanNo,
+    code: _normalizeCode(code ?? this.code),
     ifscCode: ifscCode ?? this.ifscCode, accountNumber: accountNumber ?? this.accountNumber,
     aartiAcNo: aartiAcNo ?? this.aartiAcNo, sbCode: sbCode ?? this.sbCode,
     bankDetails: bankDetails ?? this.bankDetails, branch: branch ?? this.branch,

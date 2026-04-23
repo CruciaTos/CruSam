@@ -69,7 +69,7 @@ class EmployeeExcelImportService {
       final rawPfNo = readAt(map['pfNo']);
       final rawUanNo = readAt(map['uanNo']);
       final rawAccountNo = readAt(map['accountNumber']);
-      final rawCode = readAt(map['code']);
+      final rawCode = _normalizeEmployeeCode(readAt(map['code']));
       final rawIfsc = readAt(map['ifscCode']).toUpperCase();
       final rawBank = readAt(map['bankDetails']);
       final rawBranch = readAt(map['branch']);
@@ -191,6 +191,13 @@ class EmployeeExcelImportService {
   static int _parseInt(String value) {
     final clean = value.replaceAll(RegExp(r'[^0-9-]'), '');
     return int.tryParse(clean) ?? 0;
+  }
+
+  static String _normalizeEmployeeCode(String raw) {
+    final code = _normalize(raw);
+    final upper = code.toUpperCase();
+    if (upper == 'AP' || upper == 'A&P') return 'A&P';
+    return code;
   }
 
   static String _normalize(String text) {

@@ -49,8 +49,31 @@ class DatabaseHelper {
     await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
 
+    await _normalizeEmployeeCodes(db);
+
     // Backfill charges for existing employees that have 0 values
     await _backfillEmployeeCharges(db);
+  }
+
+  String _normalizeEmployeeCodeValue(dynamic value) {
+    final code = (value?.toString() ?? '').trim();
+    final upper = code.toUpperCase();
+    if (upper == 'AP' || upper == 'A&P') return 'A&P';
+    return code;
+  }
+
+  Map<String, dynamic> _normalizeEmployeeData(Map<String, dynamic> data) {
+    final normalized = Map<String, dynamic>.from(data);
+    if (normalized.containsKey('code')) {
+      normalized['code'] = _normalizeEmployeeCodeValue(normalized['code']);
+    }
+    return normalized;
+  }
+
+  Future<void> _normalizeEmployeeCodes(Database db) async {
+    await db.rawUpdate(
+      "UPDATE employees SET code = 'A&P' WHERE UPPER(TRIM(code)) IN ('AP', 'A&P')",
+    );
   }
 
   String _employeeSeedKey(Map<String, dynamic> employee) {
@@ -286,7 +309,7 @@ class DatabaseHelper {
 
   // --- Employees ---
   Future<int> insertEmployee(Map<String, dynamic> data) async =>
-      (await database).insert('employees', data);
+      (await database).insert('employees', _normalizeEmployeeData(data));
 
   Future<void> insertEmployeesBulk(List<EmployeeModel> employees) async {
     final db = await database;
@@ -294,7 +317,7 @@ class DatabaseHelper {
       for (final e in employees) {
         await txn.insert(
           'employees',
-          e.toMap(),
+          _normalizeEmployeeData(e.toMap()),
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
       }
@@ -312,10 +335,11 @@ class DatabaseHelper {
       );
 
   Future<int> updateEmployee(int id, Map<String, dynamic> data) async {
-    data['updated_at'] = DateTime.now().toIso8601String();
+    final normalized = _normalizeEmployeeData(data);
+    normalized['updated_at'] = DateTime.now().toIso8601String();
     return (await database).update(
       'employees',
-      data,
+      normalized,
       where: 'id=?',
       whereArgs: [id],
     );
