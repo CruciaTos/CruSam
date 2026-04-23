@@ -39,9 +39,10 @@ class UpdateService {
     );
   }
 
-  /// Returns the local zip path on success, null on failure.
-  /// Always closes the http client.
-  static Future<String?> downloadUpdate(
+  /// Returns the local zip path on success.
+  /// Throws a descriptive [Exception] on any failure so the notifier can
+  /// surface the real reason to the user instead of a generic message.
+  static Future<String> downloadUpdate(
     String downloadUrl,
     void Function(double progress) onProgress,
   ) async {
@@ -54,7 +55,10 @@ class UpdateService {
       final request = http.Request('GET', Uri.parse(downloadUrl));
       final streamedResponse = await client.send(request);
 
-      if (streamedResponse.statusCode != 200) return null;
+      if (streamedResponse.statusCode != 200) {
+        throw Exception(
+            'Download server returned ${streamedResponse.statusCode}');
+      }
 
       final contentLength = streamedResponse.contentLength ?? 0;
       var received = 0;
@@ -74,36 +78,61 @@ class UpdateService {
         await sink.close();
       }
 
+      // Sanity-check: make sure we actually wrote something.
+      final written = await file.length();
+      if (written == 0) {
+        throw Exception('Downloaded file is empty — the URL may be invalid.');
+      }
+
       return zipPath;
-    } catch (_) {
-      return null;
+    } catch (e) {
+      // Re-throw with a clean message; don't swallow.
+      throw Exception('Download failed: $e');
     } finally {
       client.close();
     }
   }
 
-  static Future<bool> launchUpdaterAndExit(String zipPath) async {
+  /// Launches updater.exe and exits the main process.
+  ///
+  /// Returns `null` on success (process calls exit(0) so we never return).
+  /// Returns a non-null error string that the UI can display on any failure.
+  static Future<String?> launchUpdaterAndExit(String zipPath) async {
     try {
       if (!Platform.isWindows) {
-        throw Exception('Auto-update is only supported on Windows.');
+        return 'Auto-update is only supported on Windows.';
       }
 
       final appDir = File(Platform.resolvedExecutable).parent.path;
       final updaterPath = '$appDir${Platform.pathSeparator}updater.exe';
 
-      if (!File(updaterPath).existsSync()) return false;
+      if (!File(updaterPath).existsSync()) {
+        return 'updater.exe not found in $appDir. '
+            'Please reinstall the application or update manually.';
+      }
+
+      // Verify the zip we're about to hand off still exists and is non-empty.
+      final zipFile = File(zipPath);
+      if (!zipFile.existsSync() || zipFile.lengthSync() == 0) {
+        return 'Update package is missing or empty ($zipPath).';
+      }
 
       await Process.start(
         updaterPath,
         [zipPath, Platform.resolvedExecutable],
+        // workingDirectory ensures updater.exe can resolve relative paths
+        // (DLLs, config files, etc.) sitting next to it.
+        workingDirectory: appDir,
         mode: ProcessStartMode.detached,
         runInShell: false,
       );
 
-      await Future<void>.delayed(const Duration(milliseconds: 500));
+      // Give the updater enough time to open and lock the zip before we exit.
+      // 500 ms was a race condition on slower machines.
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
       exit(0);
-    } catch (_) {
-      return false;
+    } catch (e) {
+      return 'Failed to launch updater: $e';
     }
   }
 

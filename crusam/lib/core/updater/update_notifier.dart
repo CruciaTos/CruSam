@@ -36,7 +36,6 @@ class UpdateNotifier extends ChangeNotifier {
     _setState(UpdateState.checking);
 
     try {
-      // checkForUpdate now throws on any failure — caught below.
       _info = await UpdateService.checkForUpdate();
       _setState(UpdateState.idle);
     } catch (e) {
@@ -57,30 +56,32 @@ class UpdateNotifier extends ChangeNotifier {
     _downloadProgress = 0;
     _setState(UpdateState.downloading);
 
-    final zipPath = await UpdateService.downloadUpdate(
-      info.downloadUrl,
-      (progress) {
-        _downloadProgress = progress;
-        notifyListeners();
-      },
-    );
+    try {
+      // downloadUpdate now throws with a descriptive message on failure.
+      final zipPath = await UpdateService.downloadUpdate(
+        info.downloadUrl,
+        (progress) {
+          _downloadProgress = progress;
+          notifyListeners();
+        },
+      );
 
-    if (zipPath == null) {
-      _errorMessage = 'Download failed. Please check your internet connection.';
+      // Set launching state BEFORE attempting launch so the UI reflects it.
+      _setState(UpdateState.launching);
+
+      // launchUpdaterAndExit returns null on success (exit(0) is called) or
+      // a human-readable error string on failure.
+      final launchError = await UpdateService.launchUpdaterAndExit(zipPath);
+      if (launchError != null) {
+        _errorMessage = launchError;
+        _setState(UpdateState.error);
+      }
+      // If launchError == null the process called exit(0); we never reach here.
+    } catch (e) {
+      // Catches anything thrown by downloadUpdate or unexpected errors.
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _setState(UpdateState.error);
-      return;
     }
-
-    // Set launching state THEN attempt launch, so errors revert to error state.
-    _setState(UpdateState.launching);
-
-    final launched = await UpdateService.launchUpdaterAndExit(zipPath);
-    if (!launched) {
-      _errorMessage =
-          'updater.exe not found. Please reinstall the application or update manually.';
-      _setState(UpdateState.error);
-    }
-    // If launched == true the process called exit(0), so we never reach here.
   }
 
   void clearError() {

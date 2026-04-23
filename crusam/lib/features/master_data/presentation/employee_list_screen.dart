@@ -645,16 +645,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             ),
           ),
           // Import button
-          _HeaderButton(
-            icon: _isImporting
-                ? Icons.hourglass_top
-                : Icons.upload_file_outlined,
-            label: 'Import Excel',
-            active: false,
-            onTap: _onImportExcel,
-          ),
-          const SizedBox(width: 8),
-          // Columns button
+          
           _HeaderButton(
             icon: Icons.tune,
             label: 'Columns',
