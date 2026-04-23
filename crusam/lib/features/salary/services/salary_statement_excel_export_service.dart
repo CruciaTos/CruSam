@@ -8,97 +8,69 @@ import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 
-import 'package:crusam/features/profile/widgets/export_paths_card.dart';
-
 /// Service to export Salary Statement to Excel (.xlsx) format.
 class ExcelExportService {
   // --------------------------------------------------------------------------
   // Column Widths (in Excel units)
   // --------------------------------------------------------------------------
-  static const double _colWidthSrNo = 6.0;
-  static const double _colWidthName = 24.0;
-  static const double _colWidthPfNo = 14.0;
-  static const double _colWidthUanNo = 16.0;
-  static const double _colWidthCode = 8.0;
-  static const double _colWidthZone = 8.0;
-  static const double _colWidthIfsc = 14.0;
-  static const double _colWidthAccountNo = 18.0;
-  static const double _colWidthBasic = 12.0;
-  static const double _colWidthOther = 12.0;
-  static const double _colWidthArrears = 10.0;
-  static const double _colWidthGross = 12.0;
-  static const double _colWidthPf = 10.0;
-  static const double _colWidthMsw = 8.0;
-  static const double _colWidthEsicP = 8.0;
-  static const double _colWidthPTax = 8.0;
-  static const double _colWidthTotalDed = 12.0;
-  static const double _colWidthNetSalary = 12.0;
+  static const double _colWidthSrNo       = 6.0;
+  static const double _colWidthName       = 24.0;
+  static const double _colWidthPfNo       = 14.0;
+  static const double _colWidthUanNo      = 16.0;
+  static const double _colWidthCode       = 8.0;
+  static const double _colWidthZone       = 8.0;
+  static const double _colWidthIfsc       = 14.0;
+  static const double _colWidthAccountNo  = 18.0;
+  static const double _colWidthBasic      = 12.0;
+  static const double _colWidthOther      = 12.0;
+  static const double _colWidthArrears    = 10.0;
+  static const double _colWidthGross      = 12.0;
+  static const double _colWidthPf         = 10.0;
+  static const double _colWidthMsw        = 8.0;
+  static const double _colWidthEsicP      = 8.0;
+  static const double _colWidthPTax       = 8.0;
+  static const double _colWidthTotalDed   = 12.0;
+  static const double _colWidthNetSalary  = 12.0;
 
   static const List<double> _columnWidths = [
-    _colWidthSrNo,
-    _colWidthName,
-    _colWidthPfNo,
-    _colWidthUanNo,
-    _colWidthCode,
-    _colWidthZone,
-    _colWidthIfsc,
-    _colWidthAccountNo,
-    _colWidthBasic,
-    _colWidthOther,
-    _colWidthArrears,
-    _colWidthGross,
-    _colWidthPf,
-    _colWidthMsw,
-    _colWidthEsicP,
-    _colWidthPTax,
-    _colWidthTotalDed,
-    _colWidthNetSalary,
+    _colWidthSrNo,   _colWidthName,    _colWidthPfNo,    _colWidthUanNo,
+    _colWidthCode,   _colWidthZone,    _colWidthIfsc,    _colWidthAccountNo,
+    _colWidthBasic,  _colWidthOther,   _colWidthArrears, _colWidthGross,
+    _colWidthPf,     _colWidthMsw,     _colWidthEsicP,   _colWidthPTax,
+    _colWidthTotalDed, _colWidthNetSalary,
   ];
 
   static const List<String> _headers = [
-    'Sr. No',
-    'Name',
-    'PF No.',
-    'UAN No.',
-    'Code',
-    'Zone',
-    'IFSC',
-    'Account No.',
-    'Basic',
-    'Other',
-    'Arrears',
-    'Gross',
-    'PF',
-    'MSW',
-    'ESIC P',
-    'P Tax',
-    'Total Ded.',
-    'Net Salary',
+    'Sr. No', 'Name', 'PF No.', 'UAN No.', 'Code', 'Zone',
+    'IFSC', 'Account No.', 'Basic', 'Other', 'Arrears', 'Gross',
+    'PF', 'MSW', 'ESIC P', 'P Tax', 'Total Ded.', 'Net Salary',
   ];
 
   // --------------------------------------------------------------------------
   // Public Export Method
   // --------------------------------------------------------------------------
   static Future<String?> exportSalaryStatement({
-    required CompanyConfigModel config,
+    required CompanyConfigModel  config,
     required List<EmployeeModel> employees,
-    required String monthName,
-    required int year,
-    required bool isMsw,
-    required bool isFeb,
-    required Map<int, int> daysMap,
-    required int daysInMonth,
-    Map<int, double>? columnWidths,
+    required String              monthName,
+    required int                 year,
+    required bool                isMsw,
+    required bool                isFeb,
+    required Map<int, int>       daysMap,
+    required int                 daysInMonth,
+    Map<int, double>?            columnWidths,
   }) async {
     if (employees.isEmpty) return null;
 
-    final sorted = List<EmployeeModel>.from(employees)..sort(_deptThenName);
+    final sorted = List<EmployeeModel>.from(employees)
+      ..sort(_deptThenName);
 
-    final _ = columnWidths; // Unused for now
+    final _ = columnWidths; // reserved for future per-column sizing
 
     final Workbook workbook = Workbook();
     workbook.worksheets.clear();
-    final Worksheet sheet = workbook.worksheets.addWithName('Salary Statement');
+    final Worksheet sheet =
+        workbook.worksheets.addWithName('Salary Statement');
 
     for (int i = 0; i < _columnWidths.length; i++) {
       sheet.getRangeByIndex(1, i + 1).columnWidth = _columnWidths[i];
@@ -107,74 +79,92 @@ class ExcelExportService {
     int currentRow = 1;
 
     final String title =
-        '${config.companyName}\nSALARY STATEMENT FOR THE MONTH OF ${monthName.toUpperCase()} $year';
+        '${config.companyName}\nSALARY STATEMENT FOR THE MONTH OF '
+        '${monthName.toUpperCase()} $year';
     _writeTitleRow(sheet, currentRow++, title, _headers.length);
     _writeHeaderRow(sheet, currentRow++);
 
-    double sumBasic = 0;
-    double sumOther = 0;
-    double sumGross = 0;
-    double sumNet = 0;
-    int sumPf = 0;
-    int sumMsw = 0;
-    int sumEsicP = 0;
-    int sumPt = 0;
-    int sumTd = 0;
+    double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
+    int sumPf = 0, sumMsw = 0, sumEsicP = 0, sumPt = 0, sumTd = 0;
 
     for (int idx = 0; idx < sorted.length; idx++) {
-      final e = sorted[idx];
-      final days = daysMap[e.id] ?? 0;
+      final e       = sorted[idx];
+      final days    = daysMap[e.id] ?? 0;
       final hasDays = days > 0;
 
-      final earnedBasic =
-          hasDays && daysInMonth > 0 ? e.basicCharges * days / daysInMonth : 0.0;
-      final earnedGross =
-          hasDays && daysInMonth > 0 ? e.grossSalary * days / daysInMonth : 0.0;
-      final pf = hasDays ? (earnedBasic * 0.12).round() : 0;
-      final esicInt =
-          e.grossSalary >= 21000 ? 0 : (hasDays ? (earnedGross * 0.0075).ceil() : 0);
-      final msw = isMsw ? 6 : 0;
+      final earnedBasic = hasDays && daysInMonth > 0
+          ? e.basicCharges * days / daysInMonth
+          : 0.0;
+      final earnedGross = hasDays && daysInMonth > 0
+          ? e.grossSalary * days / daysInMonth
+          : 0.0;
+      final pf    = hasDays ? (earnedBasic * 0.12).round() : 0;
+      final esicInt = e.grossSalary >= 21000
+          ? 0
+          : (hasDays ? (earnedGross * 0.0075).ceil() : 0);
+      final msw         = isMsw ? 6 : 0;
       final displayedMsw = hasDays ? msw : 0;
-      final pt = _calculatePT(earnedGross, e.gender, isFeb);
-      final totalDed = pf + esicInt + msw + pt;
+      final pt          = _calculatePT(earnedGross, e.gender, isFeb);
+      final totalDed    = pf + esicInt + msw + pt;
       final displayedTotalDed = hasDays ? totalDed : 0;
-      final net = hasDays ? earnedGross - totalDed : 0.0;
+      final net         = hasDays ? earnedGross - totalDed : 0.0;
 
-      sumBasic += e.basicCharges;
-      sumOther += e.otherCharges;
-      sumGross += e.grossSalary;
-      sumPf += pf;
-      sumMsw += msw;
-      sumEsicP += esicInt;
-      sumPt += pt;
-      sumTd += totalDed;
-      sumNet += net;
+      sumBasic  += e.basicCharges;
+      sumOther  += e.otherCharges;
+      sumGross  += e.grossSalary;
+      sumPf     += pf;
+      sumMsw    += msw;
+      sumEsicP  += esicInt;
+      sumPt     += pt;
+      sumTd     += totalDed;
+      sumNet    += net;
 
       int col = 1;
-      _setCellValue(sheet, currentRow, col++, '${idx + 1}', hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, e.name, hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.pfNo, hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.uanNo, hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.code, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, e.zone, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, e.ifscCode, hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.accountNumber, hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.basicCharges, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, e.otherCharges, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, 0, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, e.grossSalary, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, hasDays ? pf : 0, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, displayedMsw, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, hasDays ? esicInt : 0, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, hasDays ? pt : 0, isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, displayedTotalDed, isNumber: true);
-      _setCellValue(sheet, currentRow, col++, net, isNumber: true, decimalPlaces: 0);
+      _setCellValue(sheet, currentRow, col++, '${idx + 1}',
+          hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++, e.name,
+          hAlign: HAlignType.left);
+      _setCellValue(sheet, currentRow, col++, e.pfNo,
+          hAlign: HAlignType.left);
+      _setCellValue(sheet, currentRow, col++, e.uanNo,
+          hAlign: HAlignType.left);
+      _setCellValue(sheet, currentRow, col++, e.code,
+          hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++, e.zone,
+          hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++, e.ifscCode,
+          hAlign: HAlignType.left);
+      _setCellValue(sheet, currentRow, col++, e.accountNumber,
+          hAlign: HAlignType.left);
+      _setCellValue(sheet, currentRow, col++, e.basicCharges,
+          isNumber: true);
+      _setCellValue(sheet, currentRow, col++, e.otherCharges,
+          isNumber: true);
+      _setCellValue(sheet, currentRow, col++, 0,
+          isNumber: true, hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++, e.grossSalary,
+          isNumber: true);
+      _setCellValue(sheet, currentRow, col++,
+          hasDays ? pf : 0, isNumber: true);
+      _setCellValue(sheet, currentRow, col++, displayedMsw,
+          isNumber: true, hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++,
+          hasDays ? esicInt : 0,
+          isNumber: true, hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++,
+          hasDays ? pt : 0,
+          isNumber: true, hAlign: HAlignType.center);
+      _setCellValue(sheet, currentRow, col++, displayedTotalDed,
+          isNumber: true);
+      _setCellValue(sheet, currentRow, col++, net,
+          isNumber: true, decimalPlaces: 0);
 
-      // Gray out deduction columns and net salary if no days (columns 13 to 18 in 1‑based index)
       if (!hasDays) {
         for (int c = 13; c <= 18; c++) {
-          final cell = sheet.getRangeByIndex(currentRow, c);
-          cell.cellStyle.fontColor = '#BBBBBB';
+          sheet
+              .getRangeByIndex(currentRow, c)
+              .cellStyle
+              .fontColor = '#BBBBBB';
         }
       }
 
@@ -184,33 +174,35 @@ class ExcelExportService {
     _writeTotalRow(
       sheet,
       currentRow++,
-      sumBasic: sumBasic,
-      sumOther: sumOther,
-      sumGross: sumGross,
-      sumPf: sumPf,
-      sumMsw: sumMsw,
-      sumEsicP: sumEsicP,
-      sumPt: sumPt,
-      sumTd: sumTd,
-      sumNet: sumNet,
+      sumBasic:  sumBasic,
+      sumOther:  sumOther,
+      sumGross:  sumGross,
+      sumPf:     sumPf,
+      sumMsw:    sumMsw,
+      sumEsicP:  sumEsicP,
+      sumPt:     sumPt,
+      sumTd:     sumTd,
+      sumNet:    sumNet,
     );
 
-    final Range tableRange =
-        sheet.getRangeByIndex(2, 1, currentRow - 1, _headers.length);
+    final Range tableRange = sheet.getRangeByIndex(
+        2, 1, currentRow - 1, _headers.length);
     _applyBorder(tableRange);
 
-    final Range headerRange = sheet.getRangeByIndex(2, 1, 2, _headers.length);
+    final Range headerRange =
+        sheet.getRangeByIndex(2, 1, 2, _headers.length);
     headerRange.cellStyle.bold = true;
 
-    final Range totalRange =
-        sheet.getRangeByIndex(currentRow - 1, 1, currentRow - 1, _headers.length);
+    final Range totalRange = sheet.getRangeByIndex(
+        currentRow - 1, 1, currentRow - 1, _headers.length);
     totalRange.cellStyle.bold = true;
     totalRange.cellStyle.backColor = '#D6DCF5';
 
     final List<int> bytes = workbook.saveAsStream();
     workbook.dispose();
 
-    final fileName = 'Salary_Statement_${monthName}_$year.xlsx';
+    final fileName =
+        'Salary_Statement_${monthName}_$year.xlsx';
     return _saveExcelFile(bytes, fileName);
   }
 
@@ -223,7 +215,8 @@ class ExcelExportService {
     String title,
     int columnCount,
   ) {
-    final Range range = sheet.getRangeByIndex(row, 1, row, columnCount);
+    final Range range =
+        sheet.getRangeByIndex(row, 1, row, columnCount);
     range.merge();
     range.setText(title);
     range.cellStyle.bold = true;
@@ -243,7 +236,9 @@ class ExcelExportService {
       cell.cellStyle.backColor = '#E3E8F4';
       cell.cellStyle.wrapText = true;
     }
-    sheet.getRangeByIndex(row, 1, row, _headers.length).rowHeight = 36;
+    sheet
+        .getRangeByIndex(row, 1, row, _headers.length)
+        .rowHeight = 36;
   }
 
   static void _writeTotalRow(
@@ -252,32 +247,34 @@ class ExcelExportService {
     required double sumBasic,
     required double sumOther,
     required double sumGross,
-    required int sumPf,
-    required int sumMsw,
-    required int sumEsicP,
-    required int sumPt,
-    required int sumTd,
+    required int    sumPf,
+    required int    sumMsw,
+    required int    sumEsicP,
+    required int    sumPt,
+    required int    sumTd,
     required double sumNet,
   }) {
     int col = 1;
-    _setCellValue(sheet, row, col++, 'TOTAL :-', hAlign: HAlignType.left);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.left);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.left);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.left);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.left);
-    _setCellValue(sheet, row, col++, '', hAlign: HAlignType.left);
+    _setCellValue(sheet, row, col++, 'TOTAL :-',
+        hAlign: HAlignType.left);
+    for (int i = 0; i < 7; i++) {
+      _setCellValue(sheet, row, col++, '',
+          hAlign: HAlignType.left);
+    }
     _setCellValue(sheet, row, col++, sumBasic, isNumber: true);
     _setCellValue(sheet, row, col++, sumOther, isNumber: true);
-    _setCellValue(sheet, row, col++, 0, isNumber: true, hAlign: HAlignType.center);
+    _setCellValue(sheet, row, col++, 0,
+        isNumber: true, hAlign: HAlignType.center);
     _setCellValue(sheet, row, col++, sumGross, isNumber: true);
-    _setCellValue(sheet, row, col++, sumPf, isNumber: true);
-    _setCellValue(sheet, row, col++, sumMsw, isNumber: true, hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, sumEsicP, isNumber: true, hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, sumPt, isNumber: true, hAlign: HAlignType.center);
-    _setCellValue(sheet, row, col++, sumTd, isNumber: true);
-    _setCellValue(sheet, row, col++, sumNet, isNumber: true);
+    _setCellValue(sheet, row, col++, sumPf,    isNumber: true);
+    _setCellValue(sheet, row, col++, sumMsw,
+        isNumber: true, hAlign: HAlignType.center);
+    _setCellValue(sheet, row, col++, sumEsicP,
+        isNumber: true, hAlign: HAlignType.center);
+    _setCellValue(sheet, row, col++, sumPt,
+        isNumber: true, hAlign: HAlignType.center);
+    _setCellValue(sheet, row, col++, sumTd,    isNumber: true);
+    _setCellValue(sheet, row, col++, sumNet,   isNumber: true);
   }
 
   static void _setCellValue(
@@ -296,8 +293,9 @@ class ExcelExportService {
       cell.setText('');
     } else if (isNumber) {
       cell.setNumber((value as num).toDouble());
-      cell.numberFormat =
-          decimalPlaces > 0 ? '#,##0.${'0' * decimalPlaces}' : '#,##0';
+      cell.numberFormat = decimalPlaces > 0
+          ? '#,##0.${'0' * decimalPlaces}'
+          : '#,##0';
     } else {
       cell.setText(value.toString());
     }
@@ -311,34 +309,31 @@ class ExcelExportService {
     range.cellStyle.borders.all.color = '#000000';
   }
 
-  static int _calculatePT(double earnedGross, String gender, bool isFeb) {
+  static int _calculatePT(
+      double earnedGross, String gender, bool isFeb) {
     if (earnedGross == 0) return 0;
-
     final isFemale = gender.toUpperCase() == 'F';
     if (isFemale) {
       return earnedGross < 25000 ? 0 : (isFeb ? 300 : 200);
     }
-    if (earnedGross < 7500) return 0;
+    if (earnedGross < 7500)  return 0;
     if (earnedGross < 10000) return 175;
     return isFeb ? 300 : 200;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Task 3: Wire the user-configured excelPath into BOTH Excel services.
-  // ═══════════════════════════════════════════════════════════════════════════
-  static Future<String?> _saveExcelFile(List<int> bytes, String fileName) async {
+  static Future<String?> _saveExcelFile(
+      List<int> bytes, String fileName) async {
     try {
       final prefs = ExportPreferencesNotifier.instance;
       Directory? directory;
 
-      // Task 3: check user-configured Excel path first
-      final savedPath = prefs.resolvedPathForTarget(ExportPathTarget.salaryStatementExcel);
+      final savedPath = prefs.resolvedPathForTarget(
+          ExportPathTarget.salaryStatementExcel);
       if (savedPath.isNotEmpty) {
         final d = Directory(savedPath);
         if (await d.exists()) directory = d;
       }
 
-      // Fall back to system default
       if (directory == null) {
         if (Platform.isAndroid || Platform.isIOS) {
           directory = await getApplicationDocumentsDirectory();
@@ -348,9 +343,9 @@ class ExcelExportService {
         }
       }
 
-      final String path = '${directory.path}${Platform.pathSeparator}$fileName';
-      final File file = File(path);
-      await file.writeAsBytes(bytes, flush: true);
+      final String path =
+          '${directory!.path}${Platform.pathSeparator}$fileName';
+      await File(path).writeAsBytes(bytes, flush: true);
       return path;
     } catch (e) {
       debugPrint('Error saving Excel file: $e');
@@ -358,7 +353,7 @@ class ExcelExportService {
     }
   }
 
-  // ── Sort: department code first, then alphabetically by name ───────────────
+  // ── Sort: department code first, then alphabetically by name ──────────────
   static int _deptThenName(EmployeeModel a, EmployeeModel b) {
     final codeCompare = a.code.trim().toLowerCase()
         .compareTo(b.code.trim().toLowerCase());

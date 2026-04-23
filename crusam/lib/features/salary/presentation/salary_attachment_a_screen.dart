@@ -13,11 +13,13 @@ import '../../vouchers/services/pdf_export_service.dart';
 import '../../vouchers/widgets/item_description_field.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/attachment_a_preview.dart';
+import '../widgets/shared_salary_widgets.dart';
 
 class SalaryAttachmentAScreen extends StatefulWidget {
   const SalaryAttachmentAScreen({super.key});
   @override
-  State<SalaryAttachmentAScreen> createState() => _SalaryAttachmentAScreenState();
+  State<SalaryAttachmentAScreen> createState() =>
+      _SalaryAttachmentAScreenState();
 }
 
 class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
@@ -57,14 +59,16 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
       SalaryStateController.instance.loadEmployees();
     }
     _syncBillNoFromSalaryData();
-    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance
+        .removeListener(_syncBillNoFromSalaryData);
     SalaryDataNotifier.instance.addListener(_syncBillNoFromSalaryData);
     _billNoCtrl.addListener(_onBillNoChanged);
   }
 
   @override
   void dispose() {
-    SalaryDataNotifier.instance.removeListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance
+        .removeListener(_syncBillNoFromSalaryData);
     _billNoCtrl.removeListener(_onBillNoChanged);
     _descNotifier.dispose();
     _marginNotifier.dispose();
@@ -80,11 +84,11 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   }
 
   EdgeInsets get _margins => EdgeInsets.fromLTRB(
-    _marginNotifier.settings.left,
-    _marginNotifier.settings.top,
-    _marginNotifier.settings.right,
-    _marginNotifier.settings.bottom,
-  );
+        _marginNotifier.settings.left,
+        _marginNotifier.settings.top,
+        _marginNotifier.settings.right,
+        _marginNotifier.settings.bottom,
+      );
 
   Future<void> _exportPdf() async {
     if (_exporting) return;
@@ -132,172 +136,129 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([
-      SalaryStateController.instance,
-      SalaryDataNotifier.instance,
-      _marginNotifier,
-    ]),
-    builder: (context, _) {
-      final sc   = SalaryStateController.instance;
-      final n    = SalaryDataNotifier.instance;
-      final code = sc.selectedCompanyCode;
-      final title = getTitle('Attachment A', code == 'All' ? null : code);
-      final date  = n.dateDisplay;
+        listenable: Listenable.merge([
+          SalaryStateController.instance,
+          SalaryDataNotifier.instance,
+          _marginNotifier,
+        ]),
+        builder: (context, _) {
+          final sc    = SalaryStateController.instance;
+          final n     = SalaryDataNotifier.instance;
+          final code  = sc.selectedCompanyCode;
+          final title = getTitle('Attachment A', code == 'All' ? null : code);
+          final date  = n.dateDisplay;
 
-      return Padding(
-        padding: const EdgeInsets.all(AppSpacing.pagePadding),
-        child: Column(children: [
-          // ── Toolbar ───────────────────────────────────────────────────────
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Text(title, style: AppTextStyles.h3),
-                const SizedBox(width: AppSpacing.md),
-                _MonthBadge(monthName: n.monthName, year: n.year),
-                const Spacer(),
-                if (_exporting)
-                  const SizedBox(
-                    width: 24, height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else
-                  OutlinedButton.icon(
-                    onPressed: _exportPdf,
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                    label: const Text('Download PDF'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                      side: BorderSide(color: Colors.red.shade400),
+          return Padding(
+            padding: const EdgeInsets.all(AppSpacing.pagePadding),
+            child: Column(children: [
+              // ── Toolbar ─────────────────────────────────────────────────
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text(title, style: AppTextStyles.h3),
+                    const SizedBox(width: AppSpacing.md),
+                    SalaryMonthBadge(
+                        monthName: n.monthName, year: n.year),
+                    const Spacer(),
+                    if (_exporting)
+                      const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child:
+                            CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      OutlinedButton.icon(
+                        onPressed: _exportPdf,
+                        icon: const Icon(
+                            Icons.picture_as_pdf_outlined,
+                            size: 16),
+                        label: const Text('Download PDF'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red.shade700,
+                          side: BorderSide(color: Colors.red.shade400),
+                        ),
+                      ),
+                  ]),
+                  const SizedBox(height: AppSpacing.sm),
+                  SalaryCodeFilter(
+                    codes:     _allCodes,
+                    selected:  code,
+                    onChanged: (c) =>
+                        sc.setCompanyCode(c ?? 'All'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Expanded(
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  // ── Left pane ──────────────────────────────────────────
+                  Container(
+                    width: 272,
+                    color: Colors.grey[200],
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    child: _LeftPane(
+                      descNotifier:    _descNotifier,
+                      itemDescription: _itemDescription,
+                      billNoCtrl:      _billNoCtrl,
+                      sc:              sc,
+                      marginNotifier:  _marginNotifier,
+                      onDescChanged:
+                          (v) => setState(() => _itemDescription = v),
                     ),
                   ),
-              ]),
-              const SizedBox(height: AppSpacing.sm),
-              _CodeFilter(
-                codes:     _allCodes,
-                selected:  code,
-                onChanged: (c) => sc.setCompanyCode(c ?? 'All'),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Expanded(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // ── Left pane ─────────────────────────────────────────────────
-              Container(
-                width: 272,
-                color: Colors.grey[200],
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: _LeftPane(
-                  descNotifier:    _descNotifier,
-                  itemDescription: _itemDescription,
-                  billNoCtrl:      _billNoCtrl,
-                  sc:              sc,
-                  marginNotifier:  _marginNotifier,
-                  onDescChanged:   (v) => setState(() => _itemDescription = v),
-                ),
-              ),
-              Container(
-                width: 1,
-                margin: const EdgeInsets.symmetric(horizontal: 16),
-                color: AppColors.slate200,
-              ),
-              // ── Preview pane ──────────────────────────────────────────────
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.md,
-                    vertical: AppSpacing.sm,
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    color: AppColors.slate200,
                   ),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 820),
-                      child: ListenableBuilder(
-                        listenable: Listenable.merge([_billNoCtrl, _marginNotifier]),
-                        builder: (_, _) => AttachmentAPreview(
-                          config:          _config,
-                          margins:         _margins,
-                          itemDescription: _itemDescription,
-                          billNo:          n.billNo,
-                          poNo:            n.poNo,
-                          date:            date,
-                          itemAmount:      sc.totalGrossFull,
-                          pfAmount:        sc.attachmentAPf,
-                          esicAmount:      sc.attachmentAEsic,
-                          totalAfterTax:   sc.attachmentATotal,
-                          customerName:    n.clientName,
-                          customerAddress: n.clientAddr,
-                          customerGst:     n.clientGstin,
+                  // ── Preview pane ───────────────────────────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxWidth: 820),
+                          child: ListenableBuilder(
+                            listenable: Listenable.merge(
+                                [_billNoCtrl, _marginNotifier]),
+                            builder: (_, _) => AttachmentAPreview(
+                              config:          _config,
+                              margins:         _margins,
+                              itemDescription: _itemDescription,
+                              billNo:          n.billNo,
+                              poNo:            n.poNo,
+                              date:            date,
+                              itemAmount:      sc.totalGrossFull,
+                              pfAmount:        sc.attachmentAPf,
+                              esicAmount:      sc.attachmentAEsic,
+                              totalAfterTax:   sc.attachmentATotal,
+                              customerName:    n.clientName,
+                              customerAddress: n.clientAddr,
+                              customerGst:     n.clientGstin,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
+                ]),
               ),
             ]),
-          ),
-        ]),
+          );
+        },
       );
-    },
-  );
-}
-
-// ── Code filter ───────────────────────────────────────────────────────────────
-class _CodeFilter extends StatelessWidget {
-  final List<String> codes;
-  final String       selected;
-  final void Function(String?) onChanged;
-  const _CodeFilter({
-    required this.codes,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(children: [
-      _chip('All', null, selected, onChanged),
-      ...codes.map((c) => _chip(c, c, selected, onChanged)),
-    ]),
-  );
-
-  static Widget _chip(
-    String label,
-    String? value,
-    String selected,
-    void Function(String?) onTap,
-  ) {
-    final active = selected == (value ?? 'All');
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: GestureDetector(
-        onTap: () => onTap(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: active ? AppColors.indigo600 : AppColors.slate800,
-            border: Border.all(
-              color: active ? AppColors.indigo600 : AppColors.slate600,
-            ),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: active ? Colors.white : AppColors.slate400,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 // ── Left pane ─────────────────────────────────────────────────────────────────
+
 class _LeftPane extends StatelessWidget {
   final ItemDescriptionNotifier descNotifier;
   final String                  itemDescription;
@@ -317,68 +278,73 @@ class _LeftPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListView(
-    children: [
-      Text('Document Details', style: AppTextStyles.h4),
-      const SizedBox(height: AppSpacing.lg),
-      _label('Bill No.'),
-      const SizedBox(height: 4),
-      _field(billNoCtrl),
-      const SizedBox(height: AppSpacing.md),
-      _label('Item Description'),
-      const SizedBox(height: 4),
-      ItemDescriptionField(
-        value:     itemDescription,
-        onChanged: onDescChanged,
-        notifier:  descNotifier,
-      ),
-      const SizedBox(height: AppSpacing.xl),
-      const Divider(),
-      const SizedBox(height: AppSpacing.sm),
-      Text('Salary Aggregates',
-          style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
-      const SizedBox(height: AppSpacing.sm),
-      _row('Total Gross Salary',
-          '₹${sc.totalGrossFull.toStringAsFixed(2)}', AppColors.indigo600),
-      _row('PF (13.61% basic)',
-          '₹${sc.attachmentAPf.toStringAsFixed(2)}', AppColors.slate600),
-      _row('ESIC (3.25% eligible)',
-          '₹${sc.attachmentAEsic.toStringAsFixed(2)}', AppColors.slate600),
-      _row(
-        'Round Off',
-        '${sc.attachmentARoundOff >= 0 ? "+" : ""}${sc.attachmentARoundOff.toStringAsFixed(2)}',
-        AppColors.slate500,
-      ),
-      const Divider(height: AppSpacing.lg),
-      _row('Grand Total',
-          '₹${sc.attachmentATotal.toStringAsFixed(0)}',
-          AppColors.emerald700,
-          bold: true),
-      const SizedBox(height: AppSpacing.xl),
-      const Divider(),
-      const SizedBox(height: AppSpacing.sm),
-      _MarginSection(notifier: marginNotifier),
-    ],
-  );
+        children: [
+          Text('Document Details', style: AppTextStyles.h4),
+          const SizedBox(height: AppSpacing.lg),
+          _label('Bill No.'),
+          const SizedBox(height: 4),
+          _field(billNoCtrl),
+          const SizedBox(height: AppSpacing.md),
+          _label('Item Description'),
+          const SizedBox(height: 4),
+          ItemDescriptionField(
+            value:     itemDescription,
+            onChanged: onDescChanged,
+            notifier:  descNotifier,
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          const Divider(),
+          const SizedBox(height: AppSpacing.sm),
+          Text('Salary Aggregates',
+              style: AppTextStyles.label
+                  .copyWith(color: AppColors.slate500)),
+          const SizedBox(height: AppSpacing.sm),
+          _row('Total Gross Salary',
+              '₹${sc.totalGrossFull.toStringAsFixed(2)}',
+              AppColors.indigo600),
+          _row('PF (13.61% basic)',
+              '₹${sc.attachmentAPf.toStringAsFixed(2)}',
+              AppColors.slate600),
+          _row('ESIC (3.25% eligible)',
+              '₹${sc.attachmentAEsic.toStringAsFixed(2)}',
+              AppColors.slate600),
+          _row(
+            'Round Off',
+            '${sc.attachmentARoundOff >= 0 ? "+" : ""}${sc.attachmentARoundOff.toStringAsFixed(2)}',
+            AppColors.slate500,
+          ),
+          const Divider(height: AppSpacing.lg),
+          _row('Grand Total',
+              '₹${sc.attachmentATotal.toStringAsFixed(0)}',
+              AppColors.emerald700,
+              bold: true),
+          const SizedBox(height: AppSpacing.xl),
+          const Divider(),
+          const SizedBox(height: AppSpacing.sm),
+          SalaryMarginSection(notifier: marginNotifier),
+        ],
+      );
 
   static Widget _label(String t) => Text(
-    t,
-    style: AppTextStyles.smallMedium.copyWith(
-      color: AppColors.slate600,
-      fontWeight: FontWeight.w600,
-    ),
-  );
+        t,
+        style: AppTextStyles.smallMedium.copyWith(
+          color: AppColors.slate600,
+          fontWeight: FontWeight.w600,
+        ),
+      );
 
   static Widget _field(TextEditingController ctrl) => SizedBox(
-    height: 38,
-    child: TextField(
-      controller: ctrl,
-      style: AppTextStyles.input,
-      decoration: const InputDecoration(
-        isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      ),
-    ),
-  );
+        height: 38,
+        child: TextField(
+          controller: ctrl,
+          style: AppTextStyles.input,
+          decoration: const InputDecoration(
+            isDense: true,
+            contentPadding:
+                EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+        ),
+      );
 
   static Widget _row(
     String label,
@@ -396,135 +362,12 @@ class _LeftPane extends StatelessWidget {
               value,
               style: AppTextStyles.small.copyWith(
                 color: color,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+                fontWeight:
+                    bold ? FontWeight.w700 : FontWeight.w600,
                 fontSize: bold ? 13 : 12,
               ),
             ),
           ],
         ),
       );
-}
-
-// ── Month badge ───────────────────────────────────────────────────────────────
-class _MonthBadge extends StatelessWidget {
-  final String monthName;
-  final int    year;
-  const _MonthBadge({required this.monthName, required this.year});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    decoration: BoxDecoration(
-      color: AppColors.slate800,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: AppColors.slate700, width: 0.5),
-    ),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.calendar_month_outlined, size: 13, color: AppColors.slate400),
-      const SizedBox(width: 5),
-      Text(
-        '$monthName $year',
-        style: AppTextStyles.small.copyWith(
-          color: AppColors.slate300,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    ]),
-  );
-}
-
-// ── Margin section ────────────────────────────────────────────────────────────
-class _MarginSection extends StatefulWidget {
-  final MarginSettingsNotifier notifier;
-  const _MarginSection({required this.notifier});
-  @override
-  State<_MarginSection> createState() => _MarginSectionState();
-}
-
-class _MarginSectionState extends State<_MarginSection> {
-  late final TextEditingController _top;
-  late final TextEditingController _bottom;
-  late final TextEditingController _left;
-  late final TextEditingController _right;
-
-  @override
-  void initState() {
-    super.initState();
-    final s = widget.notifier.settings;
-    _top    = TextEditingController(text: s.top.toStringAsFixed(0));
-    _bottom = TextEditingController(text: s.bottom.toStringAsFixed(0));
-    _left   = TextEditingController(text: s.left.toStringAsFixed(0));
-    _right  = TextEditingController(text: s.right.toStringAsFixed(0));
-    widget.notifier.addListener(_sync);
-  }
-
-  void _sync() {
-    final s = widget.notifier.settings;
-    if (mounted) {
-      _top.text    = s.top.toStringAsFixed(0);
-      _bottom.text = s.bottom.toStringAsFixed(0);
-      _left.text   = s.left.toStringAsFixed(0);
-      _right.text  = s.right.toStringAsFixed(0);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.notifier.removeListener(_sync);
-    _top.dispose();
-    _bottom.dispose();
-    _left.dispose();
-    _right.dispose();
-    super.dispose();
-  }
-
-  void _apply() => widget.notifier.update(MarginSettings(
-    top:    double.tryParse(_top.text)    ?? 24,
-    bottom: double.tryParse(_bottom.text) ?? 24,
-    left:   double.tryParse(_left.text)   ?? 24,
-    right:  double.tryParse(_right.text)  ?? 24,
-  ));
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('PDF Margins (px)',
-          style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
-      const SizedBox(height: 8),
-      Row(children: [
-        Expanded(child: _mf('Top', _top)),
-        const SizedBox(width: 6),
-        Expanded(child: _mf('Bottom', _bottom)),
-      ]),
-      const SizedBox(height: 6),
-      Row(children: [
-        Expanded(child: _mf('Left', _left)),
-        const SizedBox(width: 6),
-        Expanded(child: _mf('Right', _right)),
-      ]),
-    ],
-  );
-
-  Widget _mf(String label, TextEditingController ctrl) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: AppTextStyles.small),
-      const SizedBox(height: 3),
-      SizedBox(
-        height: 32,
-        child: TextField(
-          controller: ctrl,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          style: AppTextStyles.input,
-          decoration: const InputDecoration(
-            isDense: true,
-            suffixText: 'px',
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-          ),
-          onChanged: (_) => _apply(),
-        ),
-      ),
-    ],
-  );
 }
