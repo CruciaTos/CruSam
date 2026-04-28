@@ -50,6 +50,7 @@ dependencies:
   provider: ^6.1.5+1
 
   intl: any
+  collection: ^1.19.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

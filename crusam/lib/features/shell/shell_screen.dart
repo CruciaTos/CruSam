@@ -8,26 +8,32 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
 
+// ── AI chat integration imports ───────────────────────────────────────────
+import '../../core/ai/presentation/ai_context_builder.dart';
+import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
+import '../../shared/widgets/ai_chat_panel.dart';
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Dark Slate Color Scheme – Minimal & Eye‑Friendly
 // ─────────────────────────────────────────────────────────────────────────────
 class _ShellColors {
-  static const background = Color(0xFF0B1120);       // deep slate
-  static const surface = Color(0xFF1E293B);          // slate-800
-  static const surfaceGlass = Color(0xE61E293B);     // slate-800 @ 90%
-  static const border = Color(0xFF334155);           // slate-700
-  static const primary = Color(0xFF3B82F6);          // blue-500
-  static const primaryLight = Color(0xFF60A5FA);     // blue-400
-  static const primaryMuted = Color(0x1A3B82F6);     // blue-500 @ 10%
-  static const textPrimary = Color(0xFFF8FAFC);      // slate-50
-  static const textSecondary = Color(0xFF94A3B8);    // slate-400
-  static const textDisabled = Color(0xFF64748B);     // slate-500
-  static const iconDefault = Color(0xFF94A3B8);      // slate-400
+  static const background = Color(0xFF0B1120);
+  static const surface = Color(0xFF1E293B);
+  static const surfaceGlass = Color(0xE61E293B);
+  static const border = Color(0xFF334155);
+  static const primary = Color(0xFF3B82F6);
+  static const primaryLight = Color(0xFF60A5FA);
+  static const primaryMuted = Color(0x1A3B82F6);
+  static const textPrimary = Color(0xFFF8FAFC);
+  static const textSecondary = Color(0xFF94A3B8);
+  static const textDisabled = Color(0xFF64748B);
+  static const iconDefault = Color(0xFF94A3B8);
   static const iconActive = Color(0xFFFFFFFF);
-  static const divider = Color(0xFF334155);          // slate-700
-  static const hoverOverlay = Color(0x1AF8FAFC);     // slate-50 @ 10%
-  static const selectedOverlay = Color(0x261E3A8A);  // blue-900 @ 15%
-  static const sectionHeader = Color(0xFF475569);    // slate-600
+  static const divider = Color(0xFF334155);
+  static const hoverOverlay = Color(0x1AF8FAFC);
+  static const selectedOverlay = Color(0x261E3A8A);
+  static const sectionHeader = Color(0xFF475569);
 }
 
 // ── Nav model ──────────────────────────────────────────────────────────────
@@ -68,7 +74,6 @@ const _kNav = <_NavItem>[
   ]),
 ];
 
-// ── Tree helpers (memoized inside state) ───────────────────────────────────
 String? _findActiveStatic(List<_NavItem> items, String loc) {
   for (final item in items) {
     if (item is _Route && (loc == item.path || loc.startsWith('${item.path}/'))) return item.path;
@@ -136,77 +141,152 @@ class _ShellScreenState extends State<ShellScreen> {
     final w = _expanded ? AppSpacing.sidebarExpanded : AppSpacing.sidebarCollapsed;
 
     return Scaffold(
-      body: Stack(children: [
-        // ── Background + Particle layer (untouched) ────────────────────────
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: Container(
-              color: _ShellColors.background,
-              child: const ParticleNetwork(
-                particleColor: Color(0x3394A3B8),   // slate-400 @ 20%
-                lineColor: Color(0x1A3B82F6),       // primary @ 10%
-                particleCount: 80,
-                maxSpeed: 0.8,
-                maxSize: 2.2,
-                lineDistance: 120,
-                drawNetwork: true,
-                touchActivation: false,
-                gravityType: GravityType.none,
-                gravityStrength: 0.08,
-              ),
-            ),
-          ),
-        ),
-        Row(children: [
-          // ── Sidebar ────────────────────────────────────────────────────
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: w,
-            decoration: BoxDecoration(
-              color: _ShellColors.surfaceGlass,
-              border: Border(right: BorderSide(color: _ShellColors.border)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 12,
-                  offset: const Offset(2, 0),
+      body: AiChatPanelOverlay(
+        notifier: AiChatNotifier.instance,
+        child: Stack(children: [
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: Container(
+                color: _ShellColors.background,
+                child: const ParticleNetwork(
+                  particleColor: Color(0x3394A3B8),
+                  lineColor: Color(0x1A3B82F6),
+                  particleCount: 80,
+                  maxSpeed: 0.8,
+                  maxSize: 2.2,
+                  lineDistance: 120,
+                  drawNetwork: true,
+                  touchActivation: false,
+                  gravityType: GravityType.none,
+                  gravityStrength: 0.08,
                 ),
-              ],
-            ),
-            child: ClipRect(
-              child: _expanded
-                  ? _ExpandedSidebar(
-                      active: _activePath,
-                      openGroups: _open,
-                      onNavigate: (p) => context.go(p),
-                      onToggle: _toggle,
-                    )
-                  : _CollapsedSidebar(
-                      active: _activePath,
-                      onNavigate: (p) => context.go(p),
-                    ),
-            ),
-          ),
-          // ── Content ────────────────────────────────────────────────────
-          Expanded(
-            child: Column(children: [
-              _Header(
-                expanded: _expanded,
-                onToggle: () => setState(() => _expanded = !_expanded),
-                title: _pageTitle,
               ),
-              Expanded(child: widget.child),
-            ]),
+            ),
           ),
+          Row(children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: w,
+              decoration: BoxDecoration(
+                color: _ShellColors.surfaceGlass,
+                border: Border(right: BorderSide(color: _ShellColors.border)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 12,
+                    offset: const Offset(2, 0),
+                  ),
+                ],
+              ),
+              child: ClipRect(
+                child: _expanded
+                    ? _ExpandedSidebar(
+                        active: _activePath,
+                        openGroups: _open,
+                        onNavigate: (p) => context.go(p),
+                        onToggle: _toggle,
+                      )
+                    : _CollapsedSidebar(
+                        active: _activePath,
+                        onNavigate: (p) => context.go(p),
+                      ),
+              ),
+            ),
+            Expanded(
+              child: Column(children: [
+                _Header(
+                  expanded: _expanded,
+                  onToggle: () => setState(() => _expanded = !_expanded),
+                  title: _pageTitle,
+                ),
+                Expanded(child: widget.child),
+              ]),
+            ),
+          ]),
         ]),
-      ]),
+      ),
     );
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// Expanded Sidebar – Reduced padding and tighter spacing
-// ══════════════════════════════════════════════════════════════════════════
+// ───── AI chat overlay ───────────────────────────────────────────────────────
+class AiChatPanelOverlay extends StatelessWidget {
+  final AiChatNotifier notifier;
+  final Widget child;
+
+  const AiChatPanelOverlay({
+    super.key,
+    required this.notifier,
+    required this.child,
+  });
+
+  static const double _panelWidth = 420;
+  static const Duration _animationDuration = Duration(milliseconds: 220);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: notifier,
+      builder: (context, _) {
+        final isOpen = notifier.panelOpen;
+
+        return Stack(
+          children: [
+            child,
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !isOpen,
+                child: AnimatedOpacity(
+                  opacity: isOpen ? 1 : 0,
+                  duration: _animationDuration,
+                  curve: Curves.easeOut,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: notifier.closePanel,
+                    child: Container(
+                      color: Colors.black.withOpacity(0.18),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: _animationDuration,
+              curve: Curves.easeOutCubic,
+              top: 0,
+              right: isOpen ? 0 : -_panelWidth,
+              bottom: 0,
+              width: _panelWidth,
+              child: IgnorePointer(
+                ignoring: !isOpen,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border(
+                      left: BorderSide(color: _ShellColors.border),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.30),
+                        blurRadius: 24,
+                        offset: const Offset(-6, 0),
+                      ),
+                    ],
+                  ),
+                  child: const ClipRect(
+                    child: AiChatScreen(),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ───── Expanded Sidebar (unchanged) ─────────────────────────────────────────
 class _ExpandedSidebar extends StatelessWidget {
   final String active;
   final Set<String> openGroups;
@@ -223,17 +303,15 @@ class _ExpandedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: true),
-    const SizedBox(height: 4), // reduced from 8
-    // Main navigation section
+    const SizedBox(height: 4),
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 10), // reduced from 12
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         children: _buildItems(_kNav, 0),
       ),
     ),
-    // Bottom section with subtle top border
     Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), // reduced
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
       ),
@@ -255,7 +333,6 @@ class _ExpandedSidebar extends StatelessWidget {
       } else if (item is _Group) {
         final isOpen = openGroups.contains(item.label);
         final hasActive = _groupContainsActiveStatic(item.children, active);
-        // Add a subtle separator before groups (except first) with minimal padding
         if (out.isNotEmpty) {
           out.add(const SizedBox(height: 1));
           out.add(Divider(
@@ -287,9 +364,9 @@ class _ExpandedSidebar extends StatelessWidget {
         _NavTile(
           icon: Icons.settings_outlined,
           label: 'Settings',
-          selected: active == '/profile', // Update selection highlight for profile
+          selected: active == '/profile',
           depth: 0,
-          onTap: () => onNavigate('/profile'), // Changed from '/settings' to '/profile'
+          onTap: () => onNavigate('/profile'),
         ),
         const SizedBox(height: 2),
         _NavTile(
@@ -298,7 +375,6 @@ class _ExpandedSidebar extends StatelessWidget {
           selected: false,
           depth: 0,
           onTap: () async {
-            // Perform logout and redirect to login
             await AuthNotifier.instance.logout();
             if (context.mounted) {
               context.go('/login');
@@ -310,9 +386,7 @@ class _ExpandedSidebar extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// Collapsed Sidebar – tighter spacing
-// ══════════════════════════════════════════════════════════════════════════
+// ───── Collapsed Sidebar (unchanged) ────────────────────────────────────────
 class _CollapsedSidebar extends StatelessWidget {
   final String active;
   final void Function(String) onNavigate;
@@ -322,10 +396,10 @@ class _CollapsedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: false),
-    const SizedBox(height: 4), // reduced from 8
+    const SizedBox(height: 4),
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 6), // reduced from 8
+        padding: const EdgeInsets.symmetric(horizontal: 6),
         children: _kNav.map((item) {
           if (item is _Route) {
             return _CollapsedTile(
@@ -346,7 +420,7 @@ class _CollapsedSidebar extends StatelessWidget {
       ),
     ),
     Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), // reduced
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
       ),
@@ -355,16 +429,15 @@ class _CollapsedSidebar extends StatelessWidget {
           _CollapsedTile(
             icon: Icons.settings_outlined,
             label: 'Settings',
-            selected: active == '/profile', // Update selection highlight for profile
-            onTap: () => onNavigate('/profile'), // Changed from '/settings' to '/profile'
+            selected: active == '/profile',
+            onTap: () => onNavigate('/profile'),
           ),
-          const SizedBox(height: 2), // reduced from 4
+          const SizedBox(height: 2),
           _CollapsedTile(
             icon: Icons.logout_outlined,
             label: 'Logout',
             selected: false,
             onTap: () async {
-              // Perform logout and redirect to login
               await AuthNotifier.instance.logout();
               if (context.mounted) {
                 context.go('/login');
@@ -377,9 +450,7 @@ class _CollapsedSidebar extends StatelessWidget {
   ]);
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _NavTile – Reduced heights and padding
-// ══════════════════════════════════════════════════════════════════════════
+// ───── Navigation tiles (unchanged) ──────────────────────────────────────────
 class _NavTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -397,17 +468,17 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0; // reduced multiplier
+    final indent = depth == 0 ? 0.0 : depth * 14.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1), // reduced from 2
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8), // smaller radius
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            height: depth == 0 ? 40 : 32, // reduced heights: 44→40, 36→32
-            padding: EdgeInsets.only(left: 6 + indent, right: 6), // reduced
+            height: depth == 0 ? 40 : 32,
+            padding: EdgeInsets.only(left: 6 + indent, right: 6),
             decoration: BoxDecoration(
               color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
@@ -469,9 +540,6 @@ class _NavTile extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _GroupTile – Reduced heights and tighter layout
-// ══════════════════════════════════════════════════════════════════════════
 class _GroupTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -491,16 +559,16 @@ class _GroupTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0; // reduced multiplier
+    final indent = depth == 0 ? 0.0 : depth * 14.0;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1), // reduced from 2
+      padding: const EdgeInsets.symmetric(vertical: 1),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            height: depth == 0 ? 40 : 32, // reduced heights
+            height: depth == 0 ? 40 : 32,
             padding: EdgeInsets.only(left: 6 + indent, right: 6),
             decoration: BoxDecoration(
               color: hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
@@ -572,9 +640,6 @@ class _GroupTile extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _CollapsedTile – Reduced icon container size
-// ══════════════════════════════════════════════════════════════════════════
 class _CollapsedTile extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -590,7 +655,7 @@ class _CollapsedTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2), // reduced from 3
+        padding: const EdgeInsets.symmetric(vertical: 2),
         child: Tooltip(
           message: label,
           preferBelow: false,
@@ -600,7 +665,7 @@ class _CollapsedTile extends StatelessWidget {
               onTap: onTap,
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                height: 40, // reduced from 44
+                height: 40,
                 decoration: BoxDecoration(
                   color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
@@ -632,9 +697,6 @@ class _CollapsedTile extends StatelessWidget {
       );
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _CollapsedGroupTile (updated popup style)
-// ══════════════════════════════════════════════════════════════════════════
 class _CollapsedGroupTile extends StatefulWidget {
   final _Group group;
   final String active;
@@ -710,14 +772,14 @@ class _CollapsedGroupTileState extends State<_CollapsedGroupTile> {
         onEnter: (_) => _show(),
         onExit: (_) => _scheduleHide(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2), // reduced from 3
+          padding: const EdgeInsets.symmetric(vertical: 2),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: () {},
               borderRadius: BorderRadius.circular(10),
               child: Container(
-                height: 40, // reduced from 44
+                height: 40,
                 decoration: BoxDecoration(
                   color: _hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
@@ -746,9 +808,6 @@ class _CollapsedGroupTileState extends State<_CollapsedGroupTile> {
       );
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _GroupPopup – Slightly more compact
-// ══════════════════════════════════════════════════════════════════════════
 class _GroupPopup extends StatelessWidget {
   final _Group group;
   final String active;
@@ -867,9 +926,7 @@ class _GroupPopup extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _SidebarHeader – Clean brand area
-// ══════════════════════════════════════════════════════════════════════════
+// ───── Sidebar header (unchanged) ────────────────────────────────────────────
 class _SidebarHeader extends StatelessWidget {
   final bool expanded;
   const _SidebarHeader({required this.expanded});
@@ -926,9 +983,9 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _Header (top bar) – toggle button animation removed
+// _Header – now StatefulWidget to handle AI button hover
 // ══════════════════════════════════════════════════════════════════════════
-class _Header extends StatelessWidget {
+class _Header extends StatefulWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final String title;
@@ -940,76 +997,112 @@ class _Header extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => Container(
-        height: AppSpacing.headerHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        decoration: BoxDecoration(
-          color: _ShellColors.surfaceGlass,
-          border: Border(bottom: BorderSide(color: _ShellColors.border)),
-        ),
-        child: Row(children: [
-          IconButton(
-            onPressed: onToggle,
-            icon: Icon(
-              expanded ? Icons.chevron_left : Icons.chevron_right,
-              color: _ShellColors.iconDefault,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(title,
-              style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
-          const Spacer(),
+  State<_Header> createState() => _HeaderState();
+}
 
-          // ── Dynamic user info section ────────────────────────────────────
-          ListenableBuilder(
-            listenable: AuthNotifier.instance,
-            builder: (ctx, _) {
-              final user = AuthNotifier.instance.user;
-              final name = user?.displayName ?? 'Admin User';
-              final email = user?.email ?? '';
-              final initials = user?.initials ?? 'AU';
-              return Row(
-                children: [
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(name,
-                          style: AppTextStyles.bodyMedium.copyWith(
-                              color: _ShellColors.textPrimary)),
-                      if (email.isNotEmpty)
-                        Text(email,
-                            style: AppTextStyles.small.copyWith(
-                                color: _ShellColors.textSecondary)),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () => context.go('/profile'),
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: _ShellColors.primary,
-                        child: Text(initials,
-                            style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white)),
-                      ),
-                    ),
-                  ),
-                ],
+class _HeaderState extends State<_Header> {
+  bool _isHoveredAI = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
+    return Container(
+      height: AppSpacing.headerHeight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: _ShellColors.surfaceGlass,
+        border: Border(bottom: BorderSide(color: _ShellColors.border)),
+      ),
+      child: Row(children: [
+        IconButton(
+          onPressed: widget.onToggle,
+          icon: Icon(
+            widget.expanded ? Icons.chevron_left : Icons.chevron_right,
+            color: _ShellColors.iconDefault,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(widget.title,
+            style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
+        const Spacer(),
+
+        // AI Assistant toggle with hover glow
+        MouseRegion(
+          onEnter: (_) => setState(() => _isHoveredAI = true),
+          onExit: (_) => setState(() => _isHoveredAI = false),
+          child: ListenableBuilder(
+            listenable: AiChatNotifier.instance,
+            builder: (context, _) {
+              final panelOpen = AiChatNotifier.instance.panelOpen;
+              final iconColor = panelOpen || _isHoveredAI ? primaryColor : null;
+
+              return IconButton(
+                icon: Icon(Icons.auto_awesome, color: iconColor),
+                tooltip: 'AI Assistant',
+                onPressed: () {
+                  final ctx = AiContextBuilder.build(
+                    // salaryController: SalaryStateController.instance,
+                    // voucherNotifier:  VoucherNotifier.instance,
+                    // dashboardNotifier: DashboardNotifier.instance,
+                    // employeeNotifier: EmployeeNotifier.instance,
+                  );
+                  AiChatNotifier.instance.updateContext(ctx);
+                  AiChatNotifier.instance.togglePanel();
+                },
               );
             },
           ),
-        ]),
-      );
+        ),
+        const SizedBox(width: 12), // padding between AI button and user info
+
+        // User info – only name and avatar, centered vertically & horizontally
+        ListenableBuilder(
+          listenable: AuthNotifier.instance,
+          builder: (ctx, _) {
+            final user = AuthNotifier.instance.user;
+            final name = user?.displayName ?? 'Admin User';
+            final initials = user?.initials ?? 'AU';
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Name only – email removed
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center, // horizontally centered
+                  children: [
+                    Text(name,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                            color: _ShellColors.textPrimary)),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => context.go('/profile'),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: _ShellColors.primary,
+                      child: Text(initials,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ]),
+    );
+  }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// _MobileShell
-// ══════════════════════════════════════════════════════════════════════════
+// ───── Mobile shell (unchanged) ──────────────────────────────────────────────
 class _MobileShell extends StatelessWidget {
   final Widget child;
   const _MobileShell({required this.child});
