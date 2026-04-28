@@ -83,11 +83,24 @@ class VoucherModel {
   'status':           status.name,
 };
 
+  static String _dateOnlyFromDb(dynamic value) {
+    final raw = (value?.toString() ?? '').trim();
+    if (raw.isEmpty) return '';
+
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) {
+      return parsed.toIso8601String().split('T').first;
+    }
+
+    final match = RegExp(r'^(\d{4}-\d{2}-\d{2})').firstMatch(raw);
+    return match?.group(1) ?? raw;
+  }
+
   factory VoucherModel.fromDbMap(Map<String, dynamic> m, List<VoucherRowModel> rows) => VoucherModel(
   id:              m['id'] as int?,
   title:           (m['title']           as String?) ?? '',
   deptCode:        (m['dept_code']        as String?) ?? '',
-  date:            (m['created_at']       as String?) ?? '',
+  date:            _dateOnlyFromDb(m['created_at']),
   rows:            rows,
   baseTotal:       (m['base_total']       as num?)?.toDouble() ?? 0,
   cgst:            (m['cgst']             as num?)?.toDouble() ?? 0,

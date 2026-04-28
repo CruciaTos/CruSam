@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'update_model.dart';
@@ -12,8 +13,17 @@ import 'version_constants.dart';
 class UpdateService {
   UpdateService._();
 
+  /// Returns the current app version from the compiled binary at runtime.
+  /// Always accurate even after updater.exe replaces the binary.
+  static Future<String> getCurrentVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    return info.version;
+  }
+
   /// Throws on any network / parse error so the notifier's catch block fires.
   static Future<UpdateInfo> checkForUpdate() async {
+    final currentVersion = await getCurrentVersion();
+
     final response = await http
         .get(Uri.parse(kLatestJsonUrl))
         .timeout(const Duration(seconds: 15));
@@ -29,8 +39,6 @@ class UpdateService {
     final force = (data['force'] as bool?) ?? false;
     final downloadUrl = (data['download_url'] as String).trim();
 
-    // Validate the URL looks sane before we store it — catches truncated or
-    // malformed values in latest.json early, with a clear error message.
     if (!downloadUrl.startsWith('https://') &&
         !downloadUrl.startsWith('http://')) {
       throw Exception(
@@ -41,9 +49,9 @@ class UpdateService {
     }
 
     return UpdateInfo(
-      currentVersion: kAppVersion,
+      currentVersion: currentVersion,
       latestVersion: latestVersion,
-      updateAvailable: _isNewer(latestVersion, kAppVersion),
+      updateAvailable: _isNewer(latestVersion, currentVersion),
       message: message,
       force: force,
       downloadUrl: downloadUrl,
@@ -89,7 +97,6 @@ class UpdateService {
         await sink.close();
       }
 
-      // Sanity-check: make sure we actually wrote something.
       final written = await file.length();
       if (written == 0) {
         throw Exception('Downloaded file is empty — the URL may be invalid.');
@@ -97,7 +104,6 @@ class UpdateService {
 
       return zipPath;
     } catch (e) {
-      // Re-throw with a clean message; don't swallow.
       throw Exception('Download failed: $e');
     } finally {
       client.close();
@@ -122,7 +128,6 @@ class UpdateService {
             'Please reinstall the application or update manually.';
       }
 
-      // Verify the zip we're about to hand off still exists and is non-empty.
       final zipFile = File(zipPath);
       if (!zipFile.existsSync() || zipFile.lengthSync() == 0) {
         return 'Update package is missing or empty ($zipPath).';
@@ -131,15 +136,11 @@ class UpdateService {
       await Process.start(
         updaterPath,
         [zipPath, Platform.resolvedExecutable],
-        // workingDirectory ensures updater.exe can resolve relative paths
-        // (DLLs, config files, etc.) sitting next to it.
         workingDirectory: appDir,
         mode: ProcessStartMode.detached,
         runInShell: false,
       );
 
-      // Give the updater enough time to open and lock the zip before we exit.
-      // 500 ms was a race condition on slower machines.
       await Future<void>.delayed(const Duration(milliseconds: 1500));
       exit(0);
     } catch (e) {

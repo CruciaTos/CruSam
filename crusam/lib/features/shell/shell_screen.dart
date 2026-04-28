@@ -7,7 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
-
+import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 // ── AI chat integration imports ───────────────────────────────────────────
 import '../../core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';

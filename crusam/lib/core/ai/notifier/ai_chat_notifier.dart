@@ -1,11 +1,14 @@
 import 'dart:async';
 
+import 'package:crusam/core/ai/models/ai_provider.dart';
+import 'package:crusam/core/ai/services/ai_service.dart';
+import 'package:crusam/core/ai/services/gemini_service.dart';
+import 'package:crusam/core/ai/services/ollama_service.dart';
 import 'package:flutter/foundation.dart';
 
-import '../models/ai_provider.dart';
-import '../services/ai_service.dart';
-import '../services/ollama_service.dart';
-import '../services/gemini_service.dart';
+// Keep this notifier feature-agnostic. Employee or other module-specific
+// notifiers should be transformed into [AppContext] elsewhere and injected
+// through [updateContext] instead of being imported here directly.
 
 // ---------------------------------------------------------------------------
 // NEW: Granular loading phases for richer UI feedback.

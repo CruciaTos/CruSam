@@ -168,48 +168,68 @@ class VoucherNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── FIX 2: saveVoucher — saves and RESETS the form (used by Save as Draft)
-  Future<bool> saveVoucher() async {
+  void _upsertSavedVoucher(VoucherModel voucher) {
+    final idx = savedVouchers.indexWhere((v) => v.id == voucher.id);
+    if (idx == -1) {
+      savedVouchers = [voucher, ...savedVouchers];
+      return;
+    }
+
+    final updated = [...savedVouchers];
+    updated[idx] = voucher;
+    savedVouchers = updated;
+  }
+
+  Future<bool> _persistCurrentVoucher() async {
     if (current.title.trim().isEmpty) return false;
+
+    final voucherToSave = enriched.copyWith(status: VoucherStatus.saved);
+
     try {
-      final vid = await DatabaseHelper.instance.insertVoucher(enriched.toDbMap());
-      for (final row in current.rows) {
-        await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(vid));
+      late final int voucherId;
+
+      if (current.id == null) {
+        voucherId = await DatabaseHelper.instance.insertVoucher(
+          voucherToSave.toDbMap(),
+        );
+        for (final row in current.rows) {
+          await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(voucherId));
+        }
+      } else {
+        voucherId = current.id!;
+        await DatabaseHelper.instance.updateVoucherWithRows(
+          voucherId,
+          voucherToSave.toDbMap(),
+          current.rows
+              .map((row) => row.toDbMap(voucherId))
+              .toList(growable: false),
+        );
       }
-      savedVouchers = [
-        enriched.copyWith(id: vid, status: VoucherStatus.saved),
-        ...savedVouchers,
-      ];
-      _resetCurrent();
+
+      final savedVoucher = voucherToSave.copyWith(
+        id: voucherId,
+        status: VoucherStatus.saved,
+      );
+
+      current = savedVoucher;
+      _upsertSavedVoucher(savedVoucher);
+      _syncSalaryMetadata();
       notifyListeners();
       return true;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('Failed to save voucher: $e\n$st');
       return false;
     }
   }
 
-  // ── FIX 2: saveVoucherNoReset — saves WITHOUT clearing the form.
+  // ── saveVoucher — now saves WITHOUT resetting the form.
+  //           The form stays intact so the invoice can be saved multiple times.
+  Future<bool> saveVoucher() => _persistCurrentVoucher();
+
+  // ── saveVoucherNoReset — saves WITHOUT clearing the form.
   //           Used by Finalise & Export so the user can export multiple times
-  //           without re-entering all the voucher data.
-  Future<bool> saveVoucherNoReset() async {
-    if (current.title.trim().isEmpty) return false;
-    try {
-      final vid = await DatabaseHelper.instance.insertVoucher(enriched.toDbMap());
-      for (final row in current.rows) {
-        await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(vid));
-      }
-      savedVouchers = [
-        enriched.copyWith(id: vid, status: VoucherStatus.saved),
-        ...savedVouchers,
-      ];
-      // NOTE: _resetCurrent() is intentionally NOT called here.
-      // The form stays intact so the user can export again immediately.
-      notifyListeners();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
+  //           without re-entering all the voucher data. (kept for clarity)
+  Future<bool> saveVoucherNoReset() => _persistCurrentVoucher();
 
   void _resetCurrent() {
     current = VoucherModel(

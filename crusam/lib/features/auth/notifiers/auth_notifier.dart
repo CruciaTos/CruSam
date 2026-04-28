@@ -3,19 +3,26 @@ import '../data/models/user_model.dart';
 import '../data/repositories/auth_repository_impl.dart';
 
 class AuthNotifier extends ChangeNotifier {
-  AuthNotifier._();
+  AuthNotifier._() {
+    // Immediately restore session on first access so the router never
+    // sees isLoggedIn == false before the DB has been checked.
+    checkSession();
+  }
+
   static final instance = AuthNotifier._();
 
   final _repo = AuthRepositoryImpl();
 
   UserModel? _user;
+  // Starts true so any router guard waits for checkSession() to complete
+  // before deciding whether to show login or dashboard.
   bool _isLoading = true;
   String? _error;
 
-  UserModel? get user     => _user;
+  UserModel? get user      => _user;
   bool       get isLoading => _isLoading;
   bool       get isLoggedIn => _user != null;
-  String?    get error    => _error;
+  String?    get error     => _error;
 
   void clearError() {
     _error = null;

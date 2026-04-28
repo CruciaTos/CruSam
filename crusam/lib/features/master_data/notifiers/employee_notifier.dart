@@ -3,6 +3,11 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/employee_model.dart';
 
 class EmployeeNotifier extends ChangeNotifier {
+  // ----- singleton pattern -----
+  EmployeeNotifier._();                                 // private constructor
+  static final EmployeeNotifier instance = EmployeeNotifier._();
+  // -----------------------------
+
   List<EmployeeModel> employees = [];
   List<EmployeeModel> filtered  = [];
   bool isLoading = false;
@@ -33,7 +38,6 @@ class EmployeeNotifier extends ChangeNotifier {
       filtered = employees.where((e) =>
         e.name.toLowerCase().contains(lower) ||
         e.pfNo.toLowerCase().contains(lower)).toList();
-      // already sorted since employees is sorted
     }
     notifyListeners();
   }

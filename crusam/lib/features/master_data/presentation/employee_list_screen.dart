@@ -34,7 +34,10 @@ class EmployeeListScreen extends StatefulWidget {
 }
 
 class _EmployeeListScreenState extends State<EmployeeListScreen> {
-  final _notifier = EmployeeNotifier();
+  // ───────────── USE SINGLETON ─────────────
+  final _notifier = EmployeeNotifier.instance;
+  // ─────────────────────────────────────────
+
   final _searchController = TextEditingController();
   final _verticalScrollController = ScrollController();
   final _horizontalScrollController = ScrollController();
@@ -132,7 +135,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     _debounceTimer?.cancel();
     _searchController.dispose();
     _notifier.removeListener(_onModelChanged);
-    _notifier.dispose();
+    // NOTE: Do NOT dispose the singleton notifier
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();
     _marginHCtrl.dispose();

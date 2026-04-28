@@ -1,28 +1,14 @@
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
+import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
+import '../../../data/models/employee_model.dart';
 
-
-// ---------------------------------------------------------------------------
-// Replace these imports with your actual notifier paths.
-// The build() method below shows the pattern – adapt field names to match
-// whatever your SalaryStateController / VoucherNotifier / DashboardNotifier
-// actually expose.
-// ---------------------------------------------------------------------------
-//
-// import '../../features/salary/salary_state_controller.dart';
-// import '../../features/voucher/voucher_notifier.dart';
-// import '../../features/dashboard/dashboard_notifier.dart';
-// import '../../features/employee/employee_notifier.dart';
-
-/// Stateless helper that reads live data from your existing notifiers and
-/// produces an [AppContext] ready to inject into [AiChatNotifier].
+/// Builds a rich [AppContext] from live notifier state for injection into
+/// [AiChatNotifier] before every message.
 ///
-/// Usage (call this right before or inside your send-message handler):
+/// Usage — call right before sending a message:
 ///
 /// ```dart
 /// final ctx = AiContextBuilder.build(
-///   salaryController: SalaryStateController.instance,
-///   voucherNotifier: VoucherNotifier.instance,
-///   dashboardNotifier: DashboardNotifier.instance,
 ///   employeeNotifier: EmployeeNotifier.instance,
 /// );
 /// AiChatNotifier.instance.updateContext(ctx);
@@ -31,63 +17,84 @@ import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
 class AiContextBuilder {
   AiContextBuilder._();
 
-  /// Builds an [AppContext] from your live notifier instances.
+  /// Serialises all live employee data into an [AppContext].
   ///
-  /// All parameters are optional – pass only the notifiers you actually have.
-  /// Any null parameter is silently skipped.
+  /// [employeeNotifier] is optional. When omitted the context will still
+  /// contain any [extras] but no employee roster or salary aggregates.
   static AppContext build({
-    // Uncomment and type-annotate once you wire up real imports:
-    // SalaryStateController? salaryController,
-    // VoucherNotifier? voucherNotifier,
-    // DashboardNotifier? dashboardNotifier,
-    // EmployeeNotifier? employeeNotifier,
-
-    // Generic escape-hatch: pass arbitrary key→value pairs.
+    EmployeeNotifier? employeeNotifier,
     Map<String, String>? extras,
   }) {
-    // ---- Employee data ----
-    int? employeeCount;
-    // if (employeeNotifier != null) {
-    //   employeeCount = employeeNotifier.employees.length;
-    // }
+    if (employeeNotifier == null) {
+      return AppContext(extra: extras);
+    }
 
-    // ---- Salary data ----
-    double? totalSalary;
-    // if (salaryController != null) {
-    //   totalSalary = salaryController.totalDisbursed;   // ← your field name
-    // }
+    final employees = employeeNotifier.employees;
 
-    // ---- Voucher data ----
-    int? pendingVouchers;
-    // if (voucherNotifier != null) {
-    //   pendingVouchers = voucherNotifier.pendingCount;  // ← your field name
-    // }
+    // ── Aggregates ────────────────────────────────────────────────────────────
+    final int employeeCount = employees.length;
 
-    // ---- Dashboard summary ----
-    String? dashboardSummary;
-    // if (dashboardNotifier != null) {
-    //   dashboardSummary = _buildDashboardLines(dashboardNotifier);
-    // }
+    double totalBasic = 0;
+    double totalOther = 0;
+    for (final e in employees) {
+      totalBasic += e.basicCharges;
+      totalOther += e.otherCharges;
+    }
+    final double totalSalary = totalBasic + totalOther;
+
+    // ── Zone breakdown ────────────────────────────────────────────────────────
+    final Map<String, int> zoneMap = {};
+    for (final e in employees) {
+      final z = e.zone.trim().isEmpty ? 'Unknown' : e.zone.trim();
+      zoneMap[z] = (zoneMap[z] ?? 0) + 1;
+    }
+    final zoneLines = zoneMap.entries
+        .map((en) => '  ${en.key}: ${en.value} employees')
+        .join('\n');
+
+    // ── Code (department) breakdown ───────────────────────────────────────────
+    final Map<String, int> codeMap = {};
+    for (final e in employees) {
+      final c = e.code.trim().isEmpty ? 'Unknown' : e.code.trim();
+      codeMap[c] = (codeMap[c] ?? 0) + 1;
+    }
+    final codeLines = codeMap.entries
+        .map((en) => '  ${en.key}: ${en.value} employees')
+        .join('\n');
+
+    // ── Full employee roster ──────────────────────────────────────────────────
+    // Serialise every employee so the LLM can answer detailed per-person queries
+    // and generate precise ACTION blocks for mutations.
+    final rosterLines = employees.map((e) => _employeeToLine(e)).join('\n');
+
+    final dashboardSummary = '''
+--- Zone Breakdown ---
+$zoneLines
+
+--- Department (Code) Breakdown ---
+$codeLines
+
+--- Total Basic: ₹${totalBasic.toStringAsFixed(2)} | Total Other: ₹${totalOther.toStringAsFixed(2)} ---
+
+--- Employee Roster ---
+$rosterLines
+''';
 
     return AppContext(
       employeeCount: employeeCount,
       totalSalary: totalSalary,
-      pendingVouchers: pendingVouchers,
       dashboardSummary: dashboardSummary,
       extra: extras,
     );
   }
 
-  // ---- Private helpers (expand as needed) ----------------------------------
-
-  // static String _buildDashboardLines(DashboardNotifier n) {
-  //   final lines = <String>[];
-  //   if (n.currentMonthRevenue != null) {
-  //     lines.add('Current month revenue: ₹${n.currentMonthRevenue}');
-  //   }
-  //   if (n.openTickets != null) {
-  //     lines.add('Open support tickets: ${n.openTickets}');
-  //   }
-  //   return lines.join('\n');
-  // }
+  /// Compact single-line representation of one employee for the prompt.
+  static String _employeeToLine(EmployeeModel e) {
+    final gross = (e.basicCharges + e.otherCharges).toStringAsFixed(2);
+    return '[${e.srNo}] ${e.name} | Code:${e.code} | Zone:${e.zone} '
+        '| Gender:${e.gender} | Basic:₹${e.basicCharges.toStringAsFixed(2)} '
+        '| Other:₹${e.otherCharges.toStringAsFixed(2)} | Gross:₹$gross '
+        '| Bank:${e.bankDetails} | Branch:${e.branch} '
+        '| PF:${e.pfNo} | UAN:${e.uanNo} | DOJ:${e.dateOfJoining}';
+  }
 }

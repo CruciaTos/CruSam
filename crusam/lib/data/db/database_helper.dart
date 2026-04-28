@@ -352,6 +352,39 @@ class DatabaseHelper {
   Future<int> insertVoucher(Map<String, dynamic> data) async =>
       (await database).insert('vouchers', data);
 
+  Future<void> updateVoucherWithRows(
+    int voucherId,
+    Map<String, dynamic> voucherData,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    final db = await database;
+    final payload = Map<String, dynamic>.from(voucherData)
+      ..remove('id')
+      ..['updated_at'] = DateTime.now().toIso8601String();
+
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+        'vouchers',
+        payload,
+        where: 'id=?',
+        whereArgs: [voucherId],
+      );
+      if (updated == 0) {
+        throw StateError('Voucher $voucherId not found');
+      }
+
+      await txn.delete(
+        'voucher_rows',
+        where: 'voucher_id=?',
+        whereArgs: [voucherId],
+      );
+
+      for (final row in rows) {
+        await txn.insert('voucher_rows', row);
+      }
+    });
+  }
+
   Future<List<Map<String, dynamic>>> getAllVouchers() async =>
       (await database).query('vouchers', orderBy: 'id DESC');
 

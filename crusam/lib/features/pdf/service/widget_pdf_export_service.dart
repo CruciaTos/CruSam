@@ -142,18 +142,21 @@ class WidgetPdfExportService {
     final toDate   = sorted.isNotEmpty ? _fmtDate(sorted.last.toDate)   : '-';
 
     const outerBorder = 0.9;
-    const usableW = 547.28 - 2 * outerBorder;
+    const usableW = 547.28 - 2 * outerBorder;   // ≈ 545.48
+
+    // ── Column widths (adjusted to match preview layout) ────────
     const srW   = 20.0;
-    const frW   = 47.0;
-    const toW   = 47.0;
+    const frW   = 60.0;   // ← was 47.0 → now fits dd/mm/yyyy in one line
+    const toW   = 60.0;   // ← was 47.0
     const qtyW  = 26.0;
     const rateW = 60.0;
     const amtW  = 66.0;
-    const fixedSum = srW + frW + toW + qtyW + rateW + amtW;
-    const descW = usableW - fixedSum;
-    const bankW   = srW + frW + toW + descW;
-    const taxW    = qtyW + rateW + amtW;
-    const taxLblW = taxW - amtW;
+
+    const fixedSum = srW + frW + toW + qtyW + rateW + amtW; // 292.0
+    const descW = usableW - fixedSum;   // ≈ 253.48
+    const bankW   = srW + frW + toW + descW;   // ≈ 393.48
+    const taxW    = qtyW + rateW + amtW;        // = 152.0
+    const taxLblW = taxW - amtW;                // = 86.0
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -210,8 +213,9 @@ class WidgetPdfExportService {
               children: [
                 pw.TableRow(children: [
                   _tblDataCell('1', centered: true),
-                  _tblDataCell(fromDate, centered: true, size: 8),
-                  _tblDataCell(toDate, centered: true, size: 8),
+                  // Date cells now prevent line‑break and use the correct format
+                  _tblDataCell(fromDate, centered: true, size: 8, maxLines: 1),
+                  _tblDataCell(toDate, centered: true, size: 8, maxLines: 1),
                   _tblDescCell(voucher.itemDescription),
                   _tblDataCell('', centered: true),
                   _tblDataCell('', centered: true),
@@ -335,7 +339,8 @@ class WidgetPdfExportService {
                   child: pw.Text(_multiline(voucher.clientAddress),
                       style: _ts(size: 8)),
                 ),
-                _kvRight('Date :-', voucher.date),
+                // ✅ Date now formatted as dd/mm/yyyy
+                _kvRight('Date :-', _fmtDate(voucher.date)),
               ],
             ),
             pw.SizedBox(height: 2),
@@ -369,9 +374,10 @@ class WidgetPdfExportService {
         ),
       );
 
+  // ── Data cell now supports limiting to a single line ────────
   static pw.Widget _tblDataCell(String text,
       {bool centered = false, bool right = false,
-       bool bold = false, double size = 8.0}) =>
+       bool bold = false, double size = 8.0, int? maxLines}) =>
       pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: pw.Align(
@@ -380,7 +386,8 @@ class WidgetPdfExportService {
               : right
                   ? pw.Alignment.centerRight
                   : pw.Alignment.centerLeft,
-          child: pw.Text(text, style: _ts(size: size, bold: bold)),
+          child: pw.Text(text, style: _ts(size: size, bold: bold),
+              maxLines: maxLines),
         ),
       );
 
@@ -439,7 +446,7 @@ class WidgetPdfExportService {
       _taxRow('Round Up',
           '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
           labelW, amtW),
-      _taxRow('Total Amount after Tax',
+      _taxRow('Total amount after Tax',
           '₹ ${voucher.finalTotal.toStringAsFixed(0)}',
           labelW, amtW, bold: true, bg: _grandBg, last: true),
     ]);

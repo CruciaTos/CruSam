@@ -7,10 +7,35 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/updater/update_dialog.dart';
 import '../../../core/updater/update_notifier.dart';
+import '../../../core/updater/update_service.dart'; // added import
 import '../../../core/updater/version_constants.dart';
 
-class UpdateCard extends StatelessWidget {
+class UpdateCard extends StatefulWidget {
   const UpdateCard({super.key});
+
+  @override
+  State<UpdateCard> createState() => _UpdateCardState();
+}
+
+class _UpdateCardState extends State<UpdateCard> {
+  String _currentVersion = '...';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchCurrentVersion();
+  }
+
+  Future<void> _fetchCurrentVersion() async {
+    try {
+      final version = await UpdateService.getCurrentVersion();
+      if (mounted) {
+        setState(() => _currentVersion = version);
+      }
+    } catch (_) {
+      // Leave the placeholder; the user can tap "Check" to get the full info.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +46,9 @@ class UpdateCard extends StatelessWidget {
         final info = notifier.info;
         final hasUpdate = notifier.hasUpdate;
         final isBusy = notifier.isBusy;
+
+        // Use the notifier's currentVersion if available, else our local fetch
+        final displayVersion = info?.currentVersion ?? _currentVersion;
 
         return Container(
           padding: const EdgeInsets.all(24),
@@ -47,7 +75,7 @@ class UpdateCard extends StatelessWidget {
               _infoRow(
                 Icons.tag_outlined,
                 'Current version',
-                'v$kAppVersion',
+                'v$displayVersion',
               ),
               if (info != null)
                 _infoRow(
@@ -90,6 +118,14 @@ class UpdateCard extends StatelessWidget {
                           ? null
                           : () async {
                               await notifier.checkForUpdate();
+                              // After check, the notifier.info will have the
+                              // correct currentVersion – update our local copy.
+                              if (mounted && notifier.info != null) {
+                                setState(() {
+                                  _currentVersion =
+                                      notifier.info!.currentVersion;
+                                });
+                              }
                             },
                       icon: isBusy && notifier.state == UpdateState.checking
                           ? const SizedBox(
