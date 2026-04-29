@@ -9,8 +9,6 @@ class TaxInvoicePreview extends StatelessWidget {
   static const double a4Height = 1122.5;
 
   // ---------- Configurable Header Height ----------
-  // Change this value to adjust both logo and letterhead image heights.
-  // The divider and all content below will automatically shift.
   static const double headerHeight = 140.0;
   // ------------------------------------------------
 
@@ -25,13 +23,11 @@ class TaxInvoicePreview extends StatelessWidget {
     this.margins = const EdgeInsets.all(24),
   });
 
-  // ── Design Constants ───────────────────────────────────────────────────────
   static const _black = Color(0xFF000000);
-  static const _green = Color(0xFF1A6B2F);
-  static const _headerBg = Color(0xFFE3E8F4);
-  static const _grandTotalBg = Color(0xFFD6DCF5);
-  static const _borderSide = BorderSide(color: _black, width: 0.75);
-  static const _thinBorderSide = BorderSide(color: _black, width: 0.5);
+  static const _headerBg = Color.fromARGB(255, 255, 255, 255);
+  static const _grandTotalBg = Color.fromARGB(255, 255, 255, 255);
+  static const _borderSide = BorderSide(color: _black, width: 1.25);   // was 1.75
+  static const _thinBorderSide = BorderSide(color: _black, width: 1.0); // was 1.5
 
   static const _bodyStyle = TextStyle(fontSize: 10, color: _black, height: 1.85);
 
@@ -42,11 +38,9 @@ class TaxInvoicePreview extends StatelessWidget {
   static const _colRate = 50.0;
   static const _colAmount = 90.0;
 
-  // ── Helper: // or legacy /n → newline for multi-line display in previews ───
   static String _multiline(String text) =>
       text.replaceAll('//', '\n').replaceAll('/n', '\n');
 
-  // ── Static method for PDF generation ──────────────────────────────────────
   static List<Widget> buildPdfPages({
     required VoucherModel voucher,
     required CompanyConfigModel config,
@@ -88,7 +82,7 @@ class TaxInvoicePreview extends StatelessWidget {
             children: [
               _buildHeader(),
               const SizedBox(height: 2),
-              _buildDivider(0.8),
+              _buildDivider(1.3),   // was 1.8
               const SizedBox(height: 8),
               _buildTaxInvoiceLabel(),
               const SizedBox(height: 6),
@@ -104,7 +98,6 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ── Header Section ─────────────────────────────────────────────────────────
   Widget _buildHeader() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,7 +151,6 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ── Bill To Section ────────────────────────────────────────────────────────
   Widget _buildBillToSection() {
     return Container(
       decoration: const BoxDecoration(border: Border.fromBorderSide(_borderSide)),
@@ -181,7 +173,6 @@ class TaxInvoicePreview extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Client name — commas become newlines
         Expanded(
           child: Text(
             _multiline(voucher.clientName),
@@ -200,7 +191,6 @@ class TaxInvoicePreview extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Client address — commas become newlines
         Expanded(
           child: Text(
             _multiline(voucher.clientAddress),
@@ -229,26 +219,30 @@ class TaxInvoicePreview extends StatelessWidget {
       ],
     );
   }
-
-  // ── Item Table ─────────────────────────────────────────────────────────────
   Widget _buildItemTable() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fixedWidth =
-            _colSr + _colDateFrom + _colDateTo + _colQty + _colRate + _colAmount;
-        final descriptionWidth =
-            (constraints.maxWidth - fixedWidth - 2.0).clamp(0.0, double.infinity);
+        final fixedWidth = _colSr + _colDateFrom + _colDateTo + _colQty + _colRate + _colAmount;
+
+        final outerBorder = _borderSide.width;          // now 1.25
+        final innerWidth = constraints.maxWidth - 2 * outerBorder;
+
+        // 7 columns ⇒ 6 internal vertical borders
+        final internalBorders = 6 * _borderSide.width;  // 7.5
+
+        final descriptionWidth = (innerWidth - fixedWidth - internalBorders)
+            .clamp(0.0, double.infinity);
 
         return Container(
           decoration: const BoxDecoration(
-            border: Border.fromBorderSide(BorderSide(color: _black, width: 0.9)),
+            border: Border.fromBorderSide(_borderSide),
           ),
           child: Column(
             children: [
               _buildTableHeader(descriptionWidth),
               _buildTableDataRow(descriptionWidth),
               _buildTableBottom(descriptionWidth),
-              _buildDeclarationRow(),
+              _buildAmountInWordsRow(),
             ],
           ),
         );
@@ -299,7 +293,7 @@ class TaxInvoicePreview extends StatelessWidget {
             _DataCell(
               voucher.baseTotal.toStringAsFixed(2),
               _colAmount,
-              rightAligned: true,
+              centered: true,
               bold: true,
               isLast: true,
             ),
@@ -310,8 +304,7 @@ class TaxInvoicePreview extends StatelessWidget {
   }
 
   Widget _buildTableBottom(double descriptionWidth) {
-    final bankInfoWidth =
-        _colSr + _colDateFrom + _colDateTo + descriptionWidth;
+    final bankInfoWidth = _colSr + _colDateFrom + _colDateTo + descriptionWidth;
     final taxLabelWidth = _colQty + _colRate;
 
     return IntrinsicHeight(
@@ -319,29 +312,36 @@ class TaxInvoicePreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _BankInfoPanel(width: bankInfoWidth, config: config),
-          _TaxSummaryPanel(
-            taxLabelWidth: taxLabelWidth,
-            amountWidth: _colAmount,
-            voucher: voucher,
+          Expanded(
+            child: _TaxSummaryPanel(
+              taxLabelWidth: taxLabelWidth,
+              amountWidth: _colAmount,
+              voucher: voucher,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDeclarationRow() {
+  Widget _buildAmountInWordsRow() {
+    final amountText = _convertNumberToWords(voucher.finalTotal);
     return Container(
-      decoration: const BoxDecoration(border: Border(top: _borderSide)),
+      decoration: const BoxDecoration(
+        border: Border(top: _borderSide),
+      ),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       child: Text(
-        config.declarationText,
-        style: _bodyStyle.copyWith(fontStyle: FontStyle.italic, fontSize: 8.5),
+        amountText,
+        style: _bodyStyle.copyWith(
+          fontWeight: FontWeight.w900,
+          fontSize: 11.5,
+        ),
       ),
     );
   }
 
-  // ── Below Table Section ────────────────────────────────────────────────────
   Widget _buildBelowTableSection() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -357,8 +357,8 @@ class TaxInvoicePreview extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '',
-          style: _bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 9),
+          config.declarationText,
+          style: _bodyStyle.copyWith(fontStyle: FontStyle.italic, fontSize: 8.5),
         ),
         const SizedBox(height: 2),
         Text(
@@ -387,7 +387,6 @@ class TaxInvoicePreview extends StatelessWidget {
     );
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
   static String _formatDate(String iso) {
     if (iso.isEmpty) return '-';
     if (iso.contains('-') && iso.length == 10) {
@@ -407,6 +406,54 @@ class TaxInvoicePreview extends StatelessWidget {
     });
     return copy;
   }
+
+  static String _convertNumberToWords(double amount) {
+    if (amount == 0) return 'Zero Only';
+    int rupees = amount.toInt();
+    int paise = ((amount - rupees) * 100).round();
+    String words = _numberToWordsIndian(rupees) + ' Rupees';
+    if (paise > 0) {
+      words += ' and ' + _numberToWordsIndian(paise) + ' Paise';
+    }
+    words += ' Only';
+    return words;
+  }
+
+  static String _numberToWordsIndian(int n) {
+    if (n == 0) return 'Zero';
+    const ones = [
+      '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+      'Seventeen', 'Eighteen', 'Nineteen'
+    ];
+    const tens = [
+      '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'
+    ];
+    String convertLessThanThousand(int num) {
+      if (num == 0) return '';
+      if (num < 20) return ones[num];
+      if (num < 100) {
+        return tens[num ~/ 10] + (num % 10 != 0 ? ' ' + ones[num % 10] : '');
+      }
+      return ones[num ~/ 100] + ' Hundred' + (num % 100 != 0 ? ' ' + convertLessThanThousand(num % 100) : '');
+    }
+    if (n < 1000) return convertLessThanThousand(n);
+    List<String> parts = [];
+    if (n >= 10000000) {
+      parts.add(convertLessThanThousand(n ~/ 10000000) + ' Crore');
+      n %= 10000000;
+    }
+    if (n >= 100000) {
+      parts.add(convertLessThanThousand(n ~/ 100000) + ' Lakh');
+      n %= 100000;
+    }
+    if (n >= 1000) {
+      parts.add(convertLessThanThousand(n ~/ 1000) + ' Thousand');
+      n %= 1000;
+    }
+    if (n > 0) parts.add(convertLessThanThousand(n));
+    return parts.join(' ');
+  }
 }
 
 // ── Reusable Widgets ───────────────────────────────────────────────────────────
@@ -414,19 +461,14 @@ class TaxInvoicePreview extends StatelessWidget {
 class _ReferenceRow extends StatelessWidget {
   final String label;
   final String value;
-
   const _ReferenceRow({required this.label, required this.value});
-
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: Row(
         children: [
-          Text(
-            '$label :-  ',
-            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w600),
-          ),
+          Text('$label :-  ', style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w600)),
           Text(value, style: TaxInvoicePreview._bodyStyle),
         ],
       ),
@@ -439,31 +481,19 @@ class _HeaderCell extends StatelessWidget {
   final double width;
   final bool centered;
   final bool isLast;
-
-  const _HeaderCell(
-    this.text,
-    this.width, {
-    this.centered = false,
-    this.isLast = false,
-  });
-
+  const _HeaderCell(this.text, this.width, {this.centered = false, this.isLast = false});
   @override
   Widget build(BuildContext context) {
     return Container(
       width: width,
       decoration: BoxDecoration(
-        border: Border(
-          right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide,
-        ),
+        border: Border(right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
       child: Text(
         text,
         textAlign: centered ? TextAlign.center : TextAlign.left,
-        style: TaxInvoicePreview._bodyStyle.copyWith(
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-        ),
+        style: TaxInvoicePreview._bodyStyle.copyWith(fontSize: 9, fontWeight: FontWeight.w800),
       ),
     );
   }
@@ -477,34 +507,23 @@ class _DataCell extends StatelessWidget {
   final bool bold;
   final bool isLast;
   final double? fontSize;
-
-  const _DataCell(
-    this.text,
-    this.width, {
+  const _DataCell(this.text, this.width, {
     this.centered = false,
     this.rightAligned = false,
     this.bold = false,
     this.isLast = false,
     this.fontSize,
   });
-
   @override
   Widget build(BuildContext context) {
     TextAlign alignment;
-    if (rightAligned) {
-      alignment = TextAlign.right;
-    } else if (centered) {
-      alignment = TextAlign.center;
-    } else {
-      alignment = TextAlign.left;
-    }
-
+    if (rightAligned) alignment = TextAlign.right;
+    else if (centered) alignment = TextAlign.center;
+    else alignment = TextAlign.left;
     return Container(
       width: width,
       decoration: BoxDecoration(
-        border: Border(
-          right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide,
-        ),
+        border: Border(right: isLast ? BorderSide.none : TaxInvoicePreview._borderSide),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 6),
       child: Text(
@@ -522,12 +541,8 @@ class _DataCell extends StatelessWidget {
 class _DescriptionCell extends StatelessWidget {
   final double width;
   final String description;
-
-  // ← change this value to increase/decrease the gap
   static const double _descVoucherSpacing = 80.0;
-
   const _DescriptionCell({required this.width, required this.description});
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -543,11 +558,7 @@ class _DescriptionCell extends StatelessWidget {
           SizedBox(height: _descVoucherSpacing),
           const Text(
             '( Vouchers attached with this original bill )',
-            style: TextStyle(
-              fontSize: 8,
-              fontStyle: FontStyle.italic,
-              color: TaxInvoicePreview._black,
-            ),
+            style: TextStyle(fontSize: 8, fontStyle: FontStyle.italic, color: TaxInvoicePreview._black),
           ),
         ],
       ),
@@ -558,9 +569,7 @@ class _DescriptionCell extends StatelessWidget {
 class _BankInfoPanel extends StatelessWidget {
   final double width;
   final CompanyConfigModel config;
-
   const _BankInfoPanel({required this.width, required this.config});
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -572,23 +581,11 @@ class _BankInfoPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'PAN NO :-  ${config.pan}',
-            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text('PAN NO :-  ${config.pan}', style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
-          Text(
-            'GSTIN  :  ${config.gstin}          HSN: SAC99851',
-            style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text('GSTIN  :  ${config.gstin}          HSN: SAC99851', style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          Text(
-            'Bank Details for   :  RTGS / NEFT',
-            style: TaxInvoicePreview._bodyStyle.copyWith(
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
+          Text('Bank Details for   :  RTGS / NEFT', style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w700, fontSize: 12)),
           const SizedBox(height: 5),
           _BankDetailRow(label: 'Bank Name', value: config.bankName),
           _BankDetailRow(label: 'Branch', value: config.branch),
@@ -599,13 +596,10 @@ class _BankInfoPanel extends StatelessWidget {
     );
   }
 }
-
 class _BankDetailRow extends StatelessWidget {
   final String label;
   final String value;
-
   const _BankDetailRow({required this.label, required this.value});
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -614,19 +608,10 @@ class _BankDetailRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 90,
-            child: Text(
-              label,
-              style: TaxInvoicePreview._bodyStyle.copyWith(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
+            child: Text(label, style: TaxInvoicePreview._bodyStyle.copyWith(fontWeight: FontWeight.w600, fontSize: 12)),
           ),
           Flexible(
-            child: Text(
-              ':  $value',
-              style: TaxInvoicePreview._bodyStyle.copyWith(fontSize: 12),
-            ),
+            child: Text(':  $value', style: TaxInvoicePreview._bodyStyle.copyWith(fontSize: 12)),
           ),
         ],
       ),
@@ -638,80 +623,46 @@ class _TaxSummaryPanel extends StatelessWidget {
   final double taxLabelWidth;
   final double amountWidth;
   final VoucherModel voucher;
-
   const _TaxSummaryPanel({
     required this.taxLabelWidth,
     required this.amountWidth,
     required this.voucher,
   });
-
   @override
   Widget build(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _TaxRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Total amount before Tax',
-          value: voucher.baseTotal.toStringAsFixed(2),
-        ),
-        _TaxRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Add : CGST 9%',
-          value: voucher.cgst.toStringAsFixed(2),
-        ),
-        _TaxRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Add : SGST 9%',
-          value: voucher.sgst.toStringAsFixed(2),
-        ),
-        _TaxRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Total Tax Amount',
-          value: voucher.totalTax.toStringAsFixed(2),
-          bold: true,
-        ),
-        _TaxRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Round Up',
-          value: '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
-        ),
-        _GrandTotalRow(
-          labelWidth: taxLabelWidth,
-          amountWidth: amountWidth,
-          label: 'Total Amount after Tax',
-          value: '₹ ${voucher.finalTotal.toStringAsFixed(2)}',
-        ),
+        // First row: no top border
+        _TaxRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Total amount before Tax', value: voucher.baseTotal.toStringAsFixed(2), showTopBorder: false),
+        _TaxRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Add : CGST 9%', value: voucher.cgst.toStringAsFixed(2)),
+        _TaxRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Add : SGST 9%', value: voucher.sgst.toStringAsFixed(2)),
+        _TaxRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Total Tax Amount', value: voucher.totalTax.toStringAsFixed(2), bold: true),
+        _TaxRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Round Up', value: '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}'),
+        _GrandTotalRow(labelWidth: taxLabelWidth, amountWidth: amountWidth, label: 'Total Amount after Tax', value: '₹ ${voucher.finalTotal.toStringAsFixed(2)}', valueFontSize: 14),
       ],
     );
   }
 }
 
 class _TaxRow extends StatelessWidget {
-  final double labelWidth;
-  final double amountWidth;
-  final String label;
-  final String value;
+  final double labelWidth, amountWidth;
+  final String label, value;
   final bool bold;
-
+  final bool showTopBorder;  // new parameter
   const _TaxRow({
-    required this.labelWidth,
-    required this.amountWidth,
-    required this.label,
-    required this.value,
+    required this.labelWidth, required this.amountWidth,
+    required this.label, required this.value,
     this.bold = false,
+    this.showTopBorder = true,  // default true
   });
-
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: TaxInvoicePreview._thinBorderSide),
+      decoration: BoxDecoration(
+        border: showTopBorder
+            ? const Border(top: TaxInvoicePreview._thinBorderSide)
+            : null,  // no top border if false
       ),
       child: Row(
         children: [
@@ -729,15 +680,14 @@ class _TaxRow extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: amountWidth,
+          Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               child: Text(
                 value,
-                textAlign: TextAlign.right,
+                textAlign: TextAlign.center,
                 style: TaxInvoicePreview._bodyStyle.copyWith(
-                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -749,23 +699,19 @@ class _TaxRow extends StatelessWidget {
 }
 
 class _GrandTotalRow extends StatelessWidget {
-  final double labelWidth;
-  final double amountWidth;
-  final String label;
-  final String value;
-
+  final double labelWidth, amountWidth;
+  final String label, value;
+  final double valueFontSize;
   const _GrandTotalRow({
-    required this.labelWidth,
-    required this.amountWidth,
-    required this.label,
-    required this.value,
+    required this.labelWidth, required this.amountWidth,
+    required this.label, required this.value,
+    this.valueFontSize = 10,
   });
-
   @override
   Widget build(BuildContext context) {
     return Container(
       decoration: const BoxDecoration(
-        color: TaxInvoicePreview._grandTotalBg,
+        color: Color.fromARGB(255, 255, 255, 255),
         border: Border(top: TaxInvoicePreview._borderSide),
       ),
       child: Row(
@@ -785,15 +731,16 @@ class _GrandTotalRow extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: amountWidth,
-            child: Padding(
+          // Use Expanded so the background color fills all the way to the right outer border
+          Expanded(
+            child: Container(
+              color: const Color.fromARGB(255, 245, 245, 245),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Text(
                 value,
-                textAlign: TextAlign.right,
+                textAlign: TextAlign.center,
                 style: TaxInvoicePreview._bodyStyle.copyWith(
-                  fontSize: 10,
+                  fontSize: valueFontSize,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -805,29 +752,23 @@ class _GrandTotalRow extends StatelessWidget {
   }
 }
 
-// ── Fallback Logo ──────────────────────────────────────────────────────────────
 class _FallbackLogo extends StatelessWidget {
   const _FallbackLogo();
-
   @override
   Widget build(BuildContext context) {
     return Container(
       width: 110,
-      height: TaxInvoicePreview.headerHeight,  // consistent with headerHeight
+      height: TaxInvoicePreview.headerHeight,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(52),
-        border: Border.all(color: const Color(0xFF1A237E), width: 3),
+        border: Border.all(color: const Color(0xFF1A237E), width: 2.5),   // was 3
         color: const Color(0xFF1A237E),
       ),
       alignment: Alignment.center,
       child: const Text(
         'Aarti\nEnterprises',
         textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: 10,
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
+        style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700),
       ),
     );
   }

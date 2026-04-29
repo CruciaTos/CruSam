@@ -8,33 +8,138 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/preferences/export_preferences_notifier.dart';
+import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
+// ── Column width configuration – matches the preview’s VoucherColWidths ──────
+class _VoucherColWidths {
+  final double amount;    // 55
+  final double debitAc;   // 82
+  final double ifsc;      // 68
+  final double creditAc;  // 86
+  final double code;      // 30
+  final double name;      // 95
+  final double place;     // 65
+  final double expenses;  // 82
+  final double aarti;     // 46
+  final double from;      // 42
+  final double to;        // 42
+
+  const _VoucherColWidths({
+    this.amount   = 55,
+    this.debitAc  = 82,
+    this.ifsc     = 68,
+    this.creditAc = 86,
+    this.code     = 30,
+    this.name     = 95,
+    this.place    = 65,
+    this.expenses = 82,
+    this.aarti    = 46,
+    this.from     = 42,
+    this.to       = 42,
+  });
+
+  _VoucherColWidths copyWith({
+    double? amount,
+    double? debitAc,
+    double? ifsc,
+    double? creditAc,
+    double? code,
+    double? name,
+    double? place,
+    double? expenses,
+    double? aarti,
+    double? from,
+    double? to,
+  }) =>
+      _VoucherColWidths(
+        amount:   amount   ?? this.amount,
+        debitAc:  debitAc  ?? this.debitAc,
+        ifsc:     ifsc     ?? this.ifsc,
+        creditAc: creditAc ?? this.creditAc,
+        code:     code     ?? this.code,
+        name:     name     ?? this.name,
+        place:    place    ?? this.place,
+        expenses: expenses ?? this.expenses,
+        aarti:    aarti    ?? this.aarti,
+        from:     from     ?? this.from,
+        to:       to       ?? this.to,
+      );
+
+  double get totalWidth =>
+      amount + debitAc + ifsc + creditAc + code + name + place +
+      expenses + aarti + from + to;
+
+  _VoucherColWidths scaleToFit(double targetWidth) {
+    if (totalWidth == 0) return this;
+    final scale = targetWidth / totalWidth;
+    return _VoucherColWidths(
+      amount:   amount   * scale,
+      debitAc:  debitAc  * scale,
+      ifsc:     ifsc     * scale,
+      creditAc: creditAc * scale,
+      code:     code     * scale,
+      name:     name     * scale,
+      place:    place    * scale,
+      expenses: expenses * scale,
+      aarti:    aarti    * scale,
+      from:     from     * scale,
+      to:       to       * scale,
+    );
+  }
+
+  Map<int, pw.TableColumnWidth> get tableColumnWidths => {
+    0:  pw.FixedColumnWidth(amount),
+    1:  pw.FixedColumnWidth(debitAc),
+    2:  pw.FixedColumnWidth(ifsc),
+    3:  pw.FixedColumnWidth(creditAc),
+    4:  pw.FixedColumnWidth(code),
+    5:  pw.FixedColumnWidth(name),
+    6:  pw.FixedColumnWidth(place),
+    7:  pw.FixedColumnWidth(expenses),
+    8:  pw.FixedColumnWidth(aarti),
+    9:  pw.FixedColumnWidth(from),
+    10: pw.FixedColumnWidth(to),
+  };
+}
+
+class _TaxColumns {
+  final double sr, fr, to, desc, qty, rate, amt;
+  final double bank, tax, taxLbl;
+  const _TaxColumns({
+    required this.sr,
+    required this.fr,
+    required this.to,
+    required this.desc,
+    required this.qty,
+    required this.rate,
+    required this.amt,
+    required this.bank,
+    required this.tax,
+    required this.taxLbl,
+  });
+}
+
 class WidgetPdfExportService {
   WidgetPdfExportService._();
 
-  // ── Asset / font cache ──────────────────────────────────────────────────────
   static pw.Font? _regular;
   static pw.Font? _bold;
   static pw.MemoryImage? _logo;
   static pw.MemoryImage? _sig;
   static pw.MemoryImage? _letterhead;
 
-  // ── Palette ─────────────────────────────────────────────────────────────────
   static const _black   = PdfColor.fromInt(0xFF000000);
   static const _green   = PdfColor.fromInt(0xFF1A6B2F);
-  static const _hdrBg   = PdfColor.fromInt(0xFFE3E8F4);
-  static const _grandBg = PdfColor.fromInt(0xFFD6DCF5);
-  static const _altBg   = PdfColor.fromInt(0xFFF8FAFC);
-  static const _slate   = PdfColor.fromInt(0xFF475569);
 
-  static const _bSide = pw.BorderSide(color: _black, width: 0.75);
+  static const _bSide   = pw.BorderSide(color: _black, width: 1.25);
+  static const _thinSide = pw.BorderSide(color: _black, width: 1.25);
+  static const double _outerBorderWidth = 1.25;
   static const double _headerHeightPt = 97.0;
 
-  // ── Init ────────────────────────────────────────────────────────────────────
   static Future<void> _init() async {
     _regular ??= pw.Font.ttf(
         await rootBundle.load('assets/fonts/NotoSans-Regular.ttf'));
@@ -88,16 +193,20 @@ class WidgetPdfExportService {
   static Future<void> exportTaxInvoiceAndVoucher({
     required VoucherModel voucher,
     required CompanyConfigModel config,
-    pw.EdgeInsets taxMargins     = const pw.EdgeInsets.all(24),
-    pw.EdgeInsets voucherMargins = const pw.EdgeInsets.all(24),
+    pw.EdgeInsets? taxMargins,
+    pw.EdgeInsets? voucherMargins,
   }) async {
     await _init();
+
+    final resolvedTax     = taxMargins     ?? await _loadSavedTaxMargins();
+    final resolvedVoucher = voucherMargins ?? await _loadSavedVoucherMargins();
+
     final doc = _newDoc();
 
     doc.addPage(pw.Page(
       pageFormat: PdfPageFormat.a4,
-      margin: taxMargins,
-      build: (ctx) => _taxInvoicePage(voucher, config),
+      margin: resolvedTax,
+      build: (ctx) => _taxInvoicePage(voucher, config, resolvedTax),
     ));
 
     final sorted = _sortRows(voucher.rows);
@@ -106,9 +215,9 @@ class WidgetPdfExportService {
     if (sorted.isEmpty) {
       doc.addPage(pw.Page(
         pageFormat: PdfPageFormat.a4.landscape,
-        margin: voucherMargins,
+        margin: resolvedVoucher,
         build: (ctx) =>
-            _voucherPageContent(voucher, config, const [], 0, showTotal: true),
+            _voucherPageContent(voucher, config, const [], 0, margins: resolvedVoucher, showTotal: true),
       ));
     } else {
       for (var i = 0; i < sorted.length; i += rowsPerPage) {
@@ -117,57 +226,95 @@ class WidgetPdfExportService {
         final isLast = end >= sorted.length;
         doc.addPage(pw.Page(
           pageFormat: PdfPageFormat.a4.landscape,
-          margin: voucherMargins,
+          margin: resolvedVoucher,
           build: (ctx) => _voucherPageContent(
             voucher, config, slice, i,
+            margins: resolvedVoucher,
             showTotal: isLast,
           ),
         ));
       }
     }
 
-    // Task 3: use taxInvoicePdfPath first, fall back to general pdfPath
     await _saveFile(doc, voucher.billNo, 'tax_invoice_voucher',
         pathType: ExportPathTarget.taxInvoice);
+  }
+
+  static Future<pw.EdgeInsets> _loadSavedTaxMargins() async {
+    try {
+      final s = await DatabaseHelper.instance.getMarginSettings();
+      return pw.EdgeInsets.fromLTRB(s.left, s.top, s.right, s.bottom);
+    } catch (_) {
+      return const pw.EdgeInsets.fromLTRB(52, 24, 24, 24);
+    }
+  }
+
+  static Future<pw.EdgeInsets> _loadSavedVoucherMargins() async {
+    try {
+      final s = await DatabaseHelper.instance.getMarginSettings();
+      return pw.EdgeInsets.fromLTRB(s.left, s.top, s.right, s.bottom);
+    } catch (_) {
+      return const pw.EdgeInsets.all(24);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // TAX INVOICE PAGE
   // ══════════════════════════════════════════════════════════════════════════
 
+  static const double _a4PtWidth = 595.28;
+  static const double _a4PxWidth = 793.7;
+  static const double _pxToPt = _a4PtWidth / _a4PxWidth;
+
+  static const double _pxColSr   = 28.0;
+  static const double _pxColFr   = 80.0;
+  static const double _pxColTo   = 80.0;
+  static const double _pxColQty  = 36.0;
+  static const double _pxColRate = 50.0;
+  static const double _pxColAmt  = 90.0;
+
+  static _TaxColumns _columnLayout(double usableW) {
+    final sr   = _pxColSr   * _pxToPt;
+    final fr   = _pxColFr   * _pxToPt;
+    final to   = _pxColTo   * _pxToPt;
+    final qty  = _pxColQty  * _pxToPt;
+    final rate = _pxColRate * _pxToPt;
+    final amt  = _pxColAmt  * _pxToPt;
+
+    final fixedSum = sr + fr + to + qty + rate + amt;
+    final desc     = usableW - fixedSum;
+    final bank     = sr + fr + to + desc;
+    final tax      = qty + rate + amt;
+    final taxLbl   = tax - amt;
+
+    return _TaxColumns(
+      sr: sr, fr: fr, to: to, desc: desc,
+      qty: qty, rate: rate, amt: amt,
+      bank: bank, tax: tax, taxLbl: taxLbl,
+    );
+  }
+
   static pw.Widget _taxInvoicePage(
-      VoucherModel voucher, CompanyConfigModel config) {
+      VoucherModel voucher, CompanyConfigModel config, pw.EdgeInsets margins) {
     final sorted   = _sortRows(voucher.rows);
     final fromDate = sorted.isNotEmpty ? _fmtDate(sorted.first.fromDate) : '-';
     final toDate   = sorted.isNotEmpty ? _fmtDate(sorted.last.toDate)   : '-';
 
-    const outerBorder = 0.9;
-    const usableW = 547.28 - 2 * outerBorder;   // ≈ 545.48
-
-    // ── Column widths (adjusted to match preview layout) ────────
-    const srW   = 20.0;
-    const frW   = 60.0;   // ← was 47.0 → now fits dd/mm/yyyy in one line
-    const toW   = 60.0;   // ← was 47.0
-    const qtyW  = 26.0;
-    const rateW = 60.0;
-    const amtW  = 66.0;
-
-    const fixedSum = srW + frW + toW + qtyW + rateW + amtW; // 292.0
-    const descW = usableW - fixedSum;   // ≈ 253.48
-    const bankW   = srW + frW + toW + descW;   // ≈ 393.48
-    const taxW    = qtyW + rateW + amtW;        // = 152.0
-    const taxLblW = taxW - amtW;                // = 86.0
+    final usableW = _a4PtWidth - margins.left - margins.right - 2 * _outerBorderWidth;
+    final cols = _columnLayout(usableW);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         _invoiceHeader(config),
         pw.SizedBox(height: 4),
-        pw.Divider(color: _black, thickness: 0.8),
+        pw.Divider(color: _black, thickness: 1.3),
         pw.SizedBox(height: 5),
         pw.Center(
           child: pw.Text('TAX INVOICE',
-              style: _ts(size: 12, bold: true,
+              style: _ts(
+                  size: 12,
+                  bold: true,
                   decoration: pw.TextDecoration.underline,
                   letterSpacing: 1.2)),
         ),
@@ -176,19 +323,22 @@ class WidgetPdfExportService {
         pw.SizedBox(height: 8),
         pw.Container(
           decoration: pw.BoxDecoration(
-              border: pw.Border.all(color: _black, width: 0.9)),
+              border: pw.Border.all(color: _black, width: _outerBorderWidth)),
           child: pw.Column(children: [
             pw.Table(
               border: pw.TableBorder(bottom: _bSide, verticalInside: _bSide),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(srW),   1: pw.FixedColumnWidth(frW),
-                2: pw.FixedColumnWidth(toW),   3: pw.FixedColumnWidth(descW),
-                4: pw.FixedColumnWidth(qtyW),  5: pw.FixedColumnWidth(rateW),
-                6: pw.FixedColumnWidth(amtW),
+              columnWidths: {
+                0: pw.FixedColumnWidth(cols.sr),
+                1: pw.FixedColumnWidth(cols.fr),
+                2: pw.FixedColumnWidth(cols.to),
+                3: pw.FixedColumnWidth(cols.desc),
+                4: pw.FixedColumnWidth(cols.qty),
+                5: pw.FixedColumnWidth(cols.rate),
+                6: pw.FixedColumnWidth(cols.amt),
               },
               children: [
                 pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: _hdrBg),
+                  // No background – removed _hdrBg
                   children: [
                     _tblHdrCell('Sr. No', centered: true),
                     _tblHdrCell('Date Fr.', centered: true),
@@ -203,17 +353,19 @@ class WidgetPdfExportService {
             ),
             pw.Table(
               border: pw.TableBorder(bottom: _bSide, verticalInside: _bSide),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(srW),   1: pw.FixedColumnWidth(frW),
-                2: pw.FixedColumnWidth(toW),   3: pw.FixedColumnWidth(descW),
-                4: pw.FixedColumnWidth(qtyW),  5: pw.FixedColumnWidth(rateW),
-                6: pw.FixedColumnWidth(amtW),
+              columnWidths: {
+                0: pw.FixedColumnWidth(cols.sr),
+                1: pw.FixedColumnWidth(cols.fr),
+                2: pw.FixedColumnWidth(cols.to),
+                3: pw.FixedColumnWidth(cols.desc),
+                4: pw.FixedColumnWidth(cols.qty),
+                5: pw.FixedColumnWidth(cols.rate),
+                6: pw.FixedColumnWidth(cols.amt),
               },
               defaultVerticalAlignment: pw.TableCellVerticalAlignment.top,
               children: [
                 pw.TableRow(children: [
                   _tblDataCell('1', centered: true),
-                  // Date cells now prevent line‑break and use the correct format
                   _tblDataCell(fromDate, centered: true, size: 8, maxLines: 1),
                   _tblDataCell(toDate, centered: true, size: 8, maxLines: 1),
                   _tblDescCell(voucher.itemDescription),
@@ -223,30 +375,26 @@ class WidgetPdfExportService {
                     voucher.baseTotal == 0
                         ? '0.00'
                         : voucher.baseTotal.toStringAsFixed(2),
-                    right: true, bold: true,
+                    centered: true,
+                    bold: true,
                   ),
                 ]),
               ],
             ),
             pw.Table(
               border: pw.TableBorder(bottom: _bSide, verticalInside: _bSide),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(bankW),
-                1: pw.FixedColumnWidth(taxW),
+              columnWidths: {
+                0: pw.FixedColumnWidth(cols.bank),
+                1: pw.FixedColumnWidth(cols.tax),
               },
               children: [
                 pw.TableRow(children: [
                   _bankInfoPanel(config),
-                  _taxSummaryPanel(voucher, taxLblW, amtW),
+                  _taxSummaryPanel(voucher, cols.taxLbl, cols.amt),
                 ]),
               ],
             ),
-            pw.Container(
-              width: double.infinity,
-              padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              child: pw.Text(config.declarationText,
-                  style: _ts(size: 7.5, italic: true)),
-            ),
+            _buildAmountInWordsRow(voucher.finalTotal),
           ]),
         ),
         pw.SizedBox(height: 8),
@@ -254,31 +402,110 @@ class WidgetPdfExportService {
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
             pw.Expanded(
-              child: pw.Text('Subject to ${config.jurisdiction} jurisdiction.',
-                  style: _ts(size: 8)),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(config.declarationText,
+                      style: _ts(size: 8, italic: true)),
+                  pw.SizedBox(height: 2),
+                  pw.Text(
+                      'Subject to ${config.jurisdiction} jurisdiction.',
+                      style: _ts(size: 8)),
+                ],
+              ),
             ),
             if (_sig != null)
-              pw.SizedBox(width: 150, height: 66,
+              pw.SizedBox(
+                  width: 200,
+                  height: 90,
                   child: pw.Image(_sig!, fit: pw.BoxFit.contain))
             else
-              pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center,
-                children: [
-                  pw.Text('For AARTI ENTERPRISES', style: _ts(size: 8, bold: true)),
-                  pw.SizedBox(height: 4),
-                  pw.Text('Authorised Signatory', style: _ts(size: 7)),
-                ]),
+              pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Text('For AARTI ENTERPRISES',
+                        style: _ts(size: 8, bold: true)),
+                    pw.SizedBox(height: 4),
+                    pw.Text('Authorised Signatory', style: _ts(size: 7)),
+                  ]),
           ],
         ),
       ],
     );
   }
 
+  static pw.Widget _buildAmountInWordsRow(double finalTotal) {
+    final words = _convertAmountToWords(finalTotal);
+    return pw.Container(
+      width: double.infinity,
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(top: _bSide),
+      ),
+      padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      child: pw.Text(words, style: _ts(size: 9, bold: true)),
+    );
+  }
+
+  static String _convertAmountToWords(double amount) {
+    if (amount == 0) return 'Zero Only';
+    int rupees = amount.toInt();
+    int paise = ((amount - rupees) * 100).round();
+    String words = _numberToWordsIndian(rupees) + ' Rupees';
+    if (paise > 0) {
+      words += ' and ' + _numberToWordsIndian(paise) + ' Paise';
+    }
+    words += ' Only';
+    return words;
+  }
+
+  static String _numberToWordsIndian(int n) {
+    if (n == 0) return 'Zero';
+    const ones = [
+      '', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine',
+      'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen',
+      'Seventeen', 'Eighteen', 'Nineteen'
+    ];
+    const tens = [
+      '', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'
+    ];
+    String convertLessThanThousand(int num) {
+      if (num == 0) return '';
+      if (num < 20) return ones[num];
+      if (num < 100) {
+        return tens[num ~/ 10] + (num % 10 != 0 ? ' ' + ones[num % 10] : '');
+      }
+      return ones[num ~/ 100] + ' Hundred' + (num % 100 != 0 ? ' ' + convertLessThanThousand(num % 100) : '');
+    }
+    if (n < 1000) return convertLessThanThousand(n);
+    List<String> parts = [];
+    if (n >= 10000000) {
+      parts.add(convertLessThanThousand(n ~/ 10000000) + ' Crore');
+      n %= 10000000;
+    }
+    if (n >= 100000) {
+      parts.add(convertLessThanThousand(n ~/ 100000) + ' Lakh');
+      n %= 100000;
+    }
+    if (n >= 1000) {
+      parts.add(convertLessThanThousand(n ~/ 1000) + ' Thousand');
+      n %= 1000;
+    }
+    if (n > 0) parts.add(convertLessThanThousand(n));
+    return parts.join(' ');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // HEADER & BILL-TO
+  // ══════════════════════════════════════════════════════════════════════════
+
   static pw.Widget _invoiceHeader(CompanyConfigModel config) {
     return pw.Row(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         if (_logo != null)
-          pw.SizedBox(width: 100, height: _headerHeightPt,
+          pw.SizedBox(
+              width: 100,
+              height: _headerHeightPt,
               child: pw.Image(_logo!, fit: pw.BoxFit.contain))
         else
           pw.SizedBox(width: 100, height: _headerHeightPt),
@@ -289,8 +516,10 @@ class WidgetPdfExportService {
             child: _letterhead != null
                 ? pw.Align(
                     alignment: pw.Alignment.centerRight,
-                    child: pw.Image(_letterhead!, fit: pw.BoxFit.contain,
-                        width: double.infinity, height: _headerHeightPt))
+                    child: pw.Image(_letterhead!,
+                        fit: pw.BoxFit.contain,
+                        width: double.infinity,
+                        height: _headerHeightPt))
                 : pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     mainAxisAlignment: pw.MainAxisAlignment.center,
@@ -300,7 +529,8 @@ class WidgetPdfExportService {
                           style: _ts(size: 15, color: _green, bold: true)),
                       pw.SizedBox(height: 3),
                       pw.Text(config.address,
-                          textAlign: pw.TextAlign.right, style: _ts(size: 8)),
+                          textAlign: pw.TextAlign.right,
+                          style: _ts(size: 8)),
                       pw.SizedBox(height: 2),
                       pw.Text('Tel.  Office  :  ${config.phone}',
                           textAlign: pw.TextAlign.right,
@@ -314,8 +544,9 @@ class WidgetPdfExportService {
 
   static pw.Widget _billToSection(VoucherModel voucher) => pw.Container(
         decoration: pw.BoxDecoration(
-            border: pw.Border.all(color: _black, width: 0.75)),
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            border: pw.Border.all(color: _black, width: _bSide.width)),
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -339,7 +570,6 @@ class WidgetPdfExportService {
                   child: pw.Text(_multiline(voucher.clientAddress),
                       style: _ts(size: 8)),
                 ),
-                // ✅ Date now formatted as dd/mm/yyyy
                 _kvRight('Date :-', _fmtDate(voucher.date)),
               ],
             ),
@@ -351,8 +581,8 @@ class WidgetPdfExportService {
                   child: pw.Text('GST No. ${voucher.clientGstin}',
                       style: _ts(size: 8, bold: true)),
                 ),
-                _kvRight('PO.No. :-',
-                    voucher.poNo.isEmpty ? '-' : voucher.poNo),
+                _kvRight(
+                    'PO.No. :-', voucher.poNo.isEmpty ? '-' : voucher.poNo),
               ],
             ),
           ],
@@ -365,34 +595,44 @@ class WidgetPdfExportService {
         pw.Text(value, style: _ts(size: 8.5)),
       ]);
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // TABLE CELLS (tax invoice)
+  // ══════════════════════════════════════════════════════════════════════════
+
   static pw.Widget _tblHdrCell(String text, {bool centered = false}) =>
       pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
         child: pw.Align(
-          alignment: centered ? pw.Alignment.center : pw.Alignment.centerLeft,
+          alignment:
+              centered ? pw.Alignment.center : pw.Alignment.centerLeft,
           child: pw.Text(text, style: _ts(size: 7.5, bold: true)),
         ),
       );
 
-  // ── Data cell now supports limiting to a single line ────────
   static pw.Widget _tblDataCell(String text,
-      {bool centered = false, bool right = false,
-       bool bold = false, double size = 8.0, int? maxLines}) =>
+          {bool centered = false,
+          bool right = false,
+          bool bold = false,
+          double size = 8.0,
+          int? maxLines}) =>
       pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: pw.Align(
           alignment: centered
               ? pw.Alignment.center
               : right
                   ? pw.Alignment.centerRight
                   : pw.Alignment.centerLeft,
-          child: pw.Text(text, style: _ts(size: size, bold: bold),
-              maxLines: maxLines),
+          child: pw.Text(text,
+              style: _ts(size: size, bold: bold), maxLines: maxLines),
         ),
       );
 
   static pw.Widget _tblDescCell(String description) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 8),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -404,14 +644,21 @@ class WidgetPdfExportService {
         ),
       );
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // BANK INFO & TAX SUMMARY (tax invoice)
+  // ══════════════════════════════════════════════════════════════════════════
+
   static pw.Widget _bankInfoPanel(CompanyConfigModel config) => pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding:
+            const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text('PAN NO :-  ${config.pan}', style: _ts(size: 8, bold: true)),
+            pw.Text('PAN NO :-  ${config.pan}',
+                style: _ts(size: 8, bold: true)),
             pw.SizedBox(height: 2),
-            pw.Text('GSTIN  :  ${config.gstin}          HSN: SAC99851',
+            pw.Text(
+                'GSTIN  :  ${config.gstin}          HSN: SAC99851',
                 style: _ts(size: 8, bold: true)),
             pw.SizedBox(height: 8),
             pw.Text('Bank Details for   :  RTGS / NEFT',
@@ -428,7 +675,8 @@ class WidgetPdfExportService {
   static pw.Widget _bankRow(String label, String value) => pw.Padding(
         padding: const pw.EdgeInsets.only(bottom: 2),
         child: pw.Row(children: [
-          pw.SizedBox(width: 72,
+          pw.SizedBox(
+              width: 72,
               child: pw.Text(label, style: _ts(size: 8, bold: true))),
           pw.Text(':  $value', style: _ts(size: 8)),
         ]),
@@ -438,42 +686,85 @@ class WidgetPdfExportService {
       VoucherModel voucher, double labelW, double amtW) {
     return pw.Column(children: [
       _taxRow('Total amount before Tax',
-          voucher.baseTotal.toStringAsFixed(2), labelW, amtW),
-      _taxRow('Add : CGST 9%', voucher.cgst.toStringAsFixed(2), labelW, amtW),
-      _taxRow('Add : SGST 9%', voucher.sgst.toStringAsFixed(2), labelW, amtW),
-      _taxRow('Total Tax Amount', voucher.totalTax.toStringAsFixed(2), labelW, amtW,
+          voucher.baseTotal.toStringAsFixed(2), labelW, amtW, showTop: false),
+      _taxRow(
+          'Add : CGST 9%', voucher.cgst.toStringAsFixed(2), labelW, amtW),
+      _taxRow(
+          'Add : SGST 9%', voucher.sgst.toStringAsFixed(2), labelW, amtW),
+      _taxRow('Total Tax Amount', voucher.totalTax.toStringAsFixed(2),
+          labelW, amtW,
           bold: true),
-      _taxRow('Round Up',
+      _taxRow(
+          'Round Up',
           '${voucher.roundOff >= 0 ? '+' : ''}${voucher.roundOff.toStringAsFixed(2)}',
-          labelW, amtW),
-      _taxRow('Total amount after Tax',
-          '₹ ${voucher.finalTotal.toStringAsFixed(0)}',
-          labelW, amtW, bold: true, bg: _grandBg, last: true),
+          labelW,
+          amtW),
+      _grandTaxRow(
+          'Total amount after Tax',
+          '₹ ${voucher.finalTotal.toStringAsFixed(2)}',
+          labelW,
+          amtW),
     ]);
   }
 
-  static pw.Widget _taxRow(String label, String value, double labelW,
-      double amtW, {bool bold = false, PdfColor? bg, bool last = false}) {
-    const borderThickness = 0.75;
+  static pw.Widget _taxRow(String label, String value, double labelW, double amtW,
+      {bool bold = false, bool showTop = true}) {
     return pw.Container(
-      decoration: pw.BoxDecoration(
-          color: bg,
-          border: last ? null : const pw.Border(bottom: _bSide)),
+      decoration: showTop
+          ? pw.BoxDecoration(border: pw.Border(top: _thinSide))
+          : null,
       child: pw.Row(children: [
         pw.Container(
-          width: labelW - borderThickness,
-          decoration: const pw.BoxDecoration(border: pw.Border(right: _bSide)),
-          padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          width: labelW,
+          decoration: pw.BoxDecoration(border: pw.Border(right: _bSide)),
+          padding:
+              const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
           alignment: pw.Alignment.centerRight,
-          child: pw.Text(label, textAlign: pw.TextAlign.right,
+          child: pw.Text(label,
+              textAlign: pw.TextAlign.right,
               style: _ts(size: 7.5, bold: bold)),
         ),
         pw.Expanded(
           child: pw.Container(
-            padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text(value, textAlign: pw.TextAlign.right,
-                style: _ts(size: 8, bold: bold)),
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            alignment: pw.Alignment.center,
+            child: pw.Text(value,
+                textAlign: pw.TextAlign.center,
+                style: _ts(size: 8, bold: true)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  static pw.Widget _grandTaxRow(
+      String label, String value, double labelW, double amtW) {
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        // Removed color: _grandBg
+        border: pw.Border(top: _bSide),
+      ),
+      child: pw.Row(children: [
+        pw.Container(
+          width: labelW,
+          decoration: pw.BoxDecoration(border: pw.Border(right: _bSide)),
+          padding:
+              const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(label,
+              textAlign: pw.TextAlign.right,
+              style: _ts(size: 7.5, bold: true)),
+        ),
+        pw.Expanded(
+          child: pw.Container(
+            // Removed color: _grandBg
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            alignment: pw.Alignment.center,
+            child: pw.Text(value,
+                textAlign: pw.TextAlign.center,
+                style: _ts(size: 8, bold: true)),
           ),
         ),
       ]),
@@ -484,24 +775,54 @@ class WidgetPdfExportService {
   // VOUCHER PAGE (LANDSCAPE)
   // ══════════════════════════════════════════════════════════════════════════
 
-  static const double _defaultTotalPx = 693.0;
-  static const double _targetWidthPt  = 794.0;
-
-  static List<double> _getScaledColWidths() {
-    const scale = _targetWidthPt / _defaultTotalPx;
-    return [55,82,68,86,30,95,65,82,46,42,42].map((v) => v * scale).toList();
-  }
-
-  static const _vHeaders = [
-    'Amount','Debit A/c','IFSC','Credit A/c','Code',
-    'Name','Place','Expenses','Aarti','Fr.','To',
+  static const double _voucherBorderWidth = 0.5;
+  static const _voucherHeaders = [
+    'Amount',
+    'Debit A/c',
+    'IFSC',
+    'Credit A/c',
+    'Code',
+    'Name',
+    'Place',
+    'Expenses',
+    'Aarti',
+    'Fr.',
+    'To',
   ];
 
+  static double _measureDateWidth(String date) {
+    if (date.isEmpty) return 0;
+    const double charWidthFactor = 0.55;
+    return date.length * 7.5 * charWidthFactor + 4;
+  }
+
   static pw.Widget _voucherPageContent(
-    VoucherModel voucher, CompanyConfigModel config,
-    List<VoucherRowModel> rows, int startIndex,
-    {required bool showTotal}) {
-    final colWidths  = _getScaledColWidths();
+    VoucherModel voucher,
+    CompanyConfigModel config,
+    List<VoucherRowModel> rows,
+    int startIndex, {
+    required pw.EdgeInsets margins,
+    required bool showTotal,
+  }) {
+    final landscape = PdfPageFormat.a4.landscape;
+    final availableWidth = landscape.width - margins.left - margins.right;
+
+    final baseColWidths = const _VoucherColWidths().scaleToFit(availableWidth);
+
+    double maxDateWidth = 0;
+    for (final row in rows) {
+      final fromDate = _fmtDate(row.fromDate);
+      final toDate   = _fmtDate(row.toDate);
+      final fromW = _measureDateWidth(fromDate);
+      final toW   = _measureDateWidth(toDate);
+      if (fromW > maxDateWidth) maxDateWidth = fromW;
+      if (toW   > maxDateWidth) maxDateWidth = toW;
+    }
+    final colWidths = baseColWidths.copyWith(
+      from: maxDateWidth > baseColWidths.from ? maxDateWidth : baseColWidths.from,
+      to:   maxDateWidth > baseColWidths.to   ? maxDateWidth : baseColWidths.to,
+    );
+
     final monthLabel = _monthFromIso(voucher.date);
 
     return pw.Column(
@@ -519,58 +840,45 @@ class WidgetPdfExportService {
             pw.Text(voucher.deptCode, style: _ts(size: 10, bold: true)),
           ],
         ),
-        pw.Divider(color: _black, thickness: 0.75),
+        pw.Divider(color: _black, thickness: 1.0),
         pw.SizedBox(height: 4),
         pw.Table(
-          border: pw.TableBorder.all(color: _black, width: 0.5),
-          columnWidths: {
-            for (var i = 0; i < colWidths.length; i++)
-              i: pw.FixedColumnWidth(colWidths[i])
-          },
+          border: pw.TableBorder.all(
+              color: _black, width: _voucherBorderWidth),
+          columnWidths: colWidths.tableColumnWidths,
           defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
           children: [
+            // Header row – no background
             pw.TableRow(
-              decoration: const pw.BoxDecoration(color: _hdrBg),
-              children: _vHeaders.map((h) {
+              children: _voucherHeaders.map((h) {
                 final center = h == 'Aarti';
-                return pw.Padding(
-                  padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-                  child: pw.Align(
-                    alignment: center ? pw.Alignment.center : pw.Alignment.centerLeft,
-                    child: pw.Text(h, style: _ts(size: 7.5, bold: true)),
-                  ),
-                );
+                return _voucherHeaderCell(h, center: center);
               }).toList(),
             ),
-            ...rows.asMap().entries.map((e) {
-              final r  = e.value;
-              final bg = e.key.isOdd ? _altBg : PdfColors.white;
+            // Data rows – no alternating background
+            ...rows.map((r) {
               return pw.TableRow(
-                decoration: pw.BoxDecoration(color: bg),
                 children: [
-                  _vCell(r.amount.toStringAsFixed(2), right: true),
-                  _vCell(config.accountNo, mono: true),
-                  _vCell(r.ifscCode, mono: true),
-                  _vCell(r.accountNumber, mono: true),
-                  _vCell(r.sbCode),
-                  _vCell(r.employeeName),
-                  _vCell(r.branch),
-                  _vCell('Exp. for month of $monthLabel'),
-                  _vCell('Aarti', center: true),
-                  _vCell(_fmtDate(r.fromDate)),
-                  _vCell(_fmtDate(r.toDate)),
+                  _voucherCell(r.amount.toStringAsFixed(2)),
+                  _voucherCell(config.accountNo, mono: true),
+                  _voucherCell(r.ifscCode, mono: true),
+                  _voucherCell(r.accountNumber, mono: true),
+                  _voucherCell(r.sbCode, center: true),
+                  _voucherCell(r.employeeName),
+                  _voucherCell(r.branch),
+                  _voucherCell('Exp. for month of $monthLabel'),
+                  _voucherCell('Aarti', center: true),
+                  _voucherCell(_fmtDate(r.fromDate)),
+                  _voucherCell(_fmtDate(r.toDate)),
                 ],
               );
             }),
+            // Grand total row – no background
             if (showTotal)
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: _grandBg),
                 children: [
-                  pw.Padding(padding: const pw.EdgeInsets.all(2),
-                    child: pw.Align(alignment: pw.Alignment.centerRight,
-                      child: pw.Text(voucher.baseTotal.toStringAsFixed(2),
-                          style: _ts(size: 8, bold: true)))),
-                  ...List.generate(10, (_) => _vCell('')),
+                  _voucherCell(voucher.baseTotal.toStringAsFixed(2), bold: true),
+                  ...List.generate(10, (_) => _voucherCell('')),
                 ],
               ),
           ],
@@ -608,7 +916,9 @@ class WidgetPdfExportService {
               ),
               pw.SizedBox(width: 20),
               if (_sig != null)
-                pw.SizedBox(width: 200, height: 90,
+                pw.SizedBox(
+                    width: 200,
+                    height: 90,
                     child: pw.Image(_sig!, fit: pw.BoxFit.contain))
               else
                 pw.SizedBox(width: 200, height: 90),
@@ -619,33 +929,43 @@ class WidgetPdfExportService {
     );
   }
 
-  static pw.Widget _vCell(String text,
-      {bool mono = false, bool right = false,
-       bool center = false, bool bold = false}) =>
+  static pw.Widget _voucherHeaderCell(String text, {bool center = false}) =>
       pw.Padding(
-        padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 1.5),
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: pw.Align(
-          alignment: center
-              ? pw.Alignment.center
-              : right
-                  ? pw.Alignment.centerRight
-                  : pw.Alignment.centerLeft,
-          child: pw.Text(text, style: _ts(size: 7.5, bold: bold)),
+          alignment:
+              center ? pw.Alignment.center : pw.Alignment.centerLeft,
+          child: pw.Text(text,
+              style: _ts(size: 7.5, bold: true),
+              maxLines: 1,
+              overflow: pw.TextOverflow.clip),
         ),
       );
 
+  static pw.Widget _voucherCell(String text,
+        {bool mono = false,
+        bool right = false,
+        bool center = false,
+        bool bold = false}) =>
+    pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 1.5),
+      child: pw.Align(
+        alignment: center ? pw.Alignment.center
+            : right ? pw.Alignment.centerRight
+                    : pw.Alignment.centerLeft,
+        child: pw.Text(text,
+            style: _ts(size: 7.5, bold: bold),
+            ),
+      ),
+    );
+
   // ══════════════════════════════════════════════════════════════════════════
-  // TASK 3 — Path resolution using existing ExportPathTarget enum
+  // FILE SAVING & HELPERS
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Returns the correct output directory in priority order:
-  ///   1. Per-type path set by the user (Task 3)
-  ///   2. General PDF path set by the user
-  ///   3. System Downloads / app documents (default)
   static Future<Directory> _outputDirFor(ExportPathTarget type) async {
     final prefs = ExportPreferencesNotifier.instance;
 
-    // 1. Per-type specific path
     String specific = '';
     switch (type) {
       case ExportPathTarget.taxInvoice:
@@ -657,7 +977,6 @@ class WidgetPdfExportService {
       case ExportPathTarget.general:
         break;
       default:
-        // salaryStatementExcel or any future additions – no PDF‑specific path
         break;
     }
     if (specific.isNotEmpty) {
@@ -665,24 +984,19 @@ class WidgetPdfExportService {
       if (await dir.exists()) return dir;
     }
 
-    // 2. General PDF fallback
     if (prefs.pdfPath.isNotEmpty) {
       final dir = Directory(prefs.pdfPath);
       if (await dir.exists()) return dir;
     }
 
-    // 3. System default
     final home = Platform.environment['HOME'] ??
-        Platform.environment['USERPROFILE'] ?? '.';
+        Platform.environment['USERPROFILE'] ??
+        '.';
     final dl = Directory(
         Platform.isWindows ? '$home\\Downloads' : '$home/Downloads');
     if (await dl.exists()) return dl;
     return getApplicationDocumentsDirectory();
   }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // FIX 1 — unique path (prevents overwriting)
-  // ══════════════════════════════════════════════════════════════════════════
 
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
@@ -697,10 +1011,6 @@ class WidgetPdfExportService {
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // TASK 4 — Save silently (no Share popup)
-  // ══════════════════════════════════════════════════════════════════════════
-
   static Future<void> _saveFile(
     pw.Document doc,
     String billNo,
@@ -709,17 +1019,16 @@ class WidgetPdfExportService {
   }) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
-    final slug     = billNo.isEmpty
+    final slug = billNo.isEmpty
         ? '${DateTime.now().millisecondsSinceEpoch}'
         : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
     final dir      = await _outputDirFor(pathType);
-    final basePath = '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
-    final path     = await _uniquePath(basePath);
-    // Task 4: write to disk silently — no Share sheet, no dialog
+    final basePath =
+        '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
+    final path = await _uniquePath(basePath);
     await File(path).writeAsBytes(bytes, flush: true);
   }
 
-  // ── Shared helpers ─────────────────────────────────────────────────────────
   static List<VoucherRowModel> _sortRows(List<VoucherRowModel> rows) {
     final copy = [...rows];
     copy.sort((a, b) {
@@ -738,11 +1047,14 @@ class WidgetPdfExportService {
       if (parts.length != 3) return '';
       final month = int.parse(parts[1]);
       const months = [
-        'January','February','March','April','May','June',
-        'July','August','September','October','November','December',
+        'January', 'February', 'March',     'April',
+        'May',      'June',     'July',      'August',
+        'September','October',  'November',  'December',
       ];
       return months[month - 1];
-    } catch (_) { return ''; }
+    } catch (_) {
+      return '';
+    }
   }
 
   static String _fmtDate(String iso) {
