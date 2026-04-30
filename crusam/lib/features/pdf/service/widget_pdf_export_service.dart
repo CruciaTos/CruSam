@@ -14,7 +14,7 @@ import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
 import '../../../shared/utils/format_utils.dart';
 
-// ── Column width configuration – matches the preview’s VoucherColWidths ──────
+// ── Column width configuration – matches the preview's VoucherColWidths ──────
 class _VoucherColWidths {
   final double amount;    // 55
   final double debitAc;   // 82
@@ -303,6 +303,9 @@ class WidgetPdfExportService {
     final usableW = _a4PtWidth - margins.left - margins.right - 2 * _outerBorderWidth;
     final cols = _columnLayout(usableW);
 
+  
+    final taxInvoiceHeading = 'TAX INVOICE';
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -311,16 +314,33 @@ class WidgetPdfExportService {
         pw.Divider(color: _black, thickness: 1.3),
         pw.SizedBox(height: 5),
         pw.Center(
-          child: pw.Text('TAX INVOICE',
-              style: _ts(
-                  size: 12,
-                  bold: true,
-                  decoration: pw.TextDecoration.underline,
-                  letterSpacing: 1.2)),
+          child: pw.Text(
+            taxInvoiceHeading,
+            style: _ts(
+                size: 12,
+                bold: true,
+                decoration: pw.TextDecoration.underline,
+                letterSpacing: 1.2),
+          ),
         ),
         pw.SizedBox(height: 6),
         _billToSection(voucher),
-        pw.SizedBox(height: 8),
+
+        // ── EMPTY BOX moved here: between Bill To section and Tax Invoice table ──
+        pw.SizedBox(height: 5),
+        pw.Container(
+          height: 18,
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: _black, width: 1.25),
+          ),
+          alignment: pw.Alignment.center,
+          child: pw.Text(
+            'TRAVEL EXPENSES FOR THE MONTH OF ${_monthYearFromIso(voucher.date)}',
+            style: _ts(size: 8, bold: true),
+          ),
+        ),
+
+        pw.SizedBox(height: 5),
         pw.Container(
           decoration: pw.BoxDecoration(
               border: pw.Border.all(color: _black, width: _outerBorderWidth)),
@@ -338,7 +358,6 @@ class WidgetPdfExportService {
               },
               children: [
                 pw.TableRow(
-                  // No background – removed _hdrBg
                   children: [
                     _tblHdrCell('Sr. No', centered: true),
                     _tblHdrCell('Date Fr.', centered: true),
@@ -389,7 +408,7 @@ class WidgetPdfExportService {
               },
               children: [
                 pw.TableRow(children: [
-                  _bankInfoPanel(config),
+                  _bankInfoPanel(config, voucher.deptCode),
                   _taxSummaryPanel(voucher, cols.taxLbl, cols.amt),
                 ]),
               ],
@@ -414,20 +433,24 @@ class WidgetPdfExportService {
                 ],
               ),
             ),
-            if (_sig != null)
-              pw.SizedBox(
-                  width: 200,
-                  height: 90,
-                  child: pw.Image(_sig!, fit: pw.BoxFit.contain))
-            else
-              pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.center,
-                  children: [
-                    pw.Text('For AARTI ENTERPRISES',
-                        style: _ts(size: 8, bold: true)),
-                    pw.SizedBox(height: 4),
-                    pw.Text('Authorised Signatory', style: _ts(size: 7)),
-                  ]),
+
+            pw.Container(
+              margin: const pw.EdgeInsets.only(top: 15),
+              child: _sig != null
+                  ? pw.SizedBox(
+                      width: 170,
+                      height: 60,
+                      child: pw.Image(_sig!, fit: pw.BoxFit.contain))
+                  : pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        pw.Text('For AARTI ENTERPRISES',
+                            style: _ts(size: 8, bold: true)),
+                        pw.SizedBox(height: 4),
+                        pw.Text('Authorised Signatory', style: _ts(size: 7)),
+                      ],
+                    ),
+            ),
           ],
         ),
       ],
@@ -447,10 +470,10 @@ class WidgetPdfExportService {
   }
 
   static String _convertAmountToWords(double amount) {
-    if (amount == 0) return 'Zero Only';
+    if (amount == 0) return 'Rupees Zero Only';
     int rupees = amount.toInt();
     int paise = ((amount - rupees) * 100).round();
-    String words = _numberToWordsIndian(rupees) + ' Rupees';
+    String words = 'Rupees ' + _numberToWordsIndian(rupees);
     if (paise > 0) {
       words += ' and ' + _numberToWordsIndian(paise) + ' Paise';
     }
@@ -542,6 +565,7 @@ class WidgetPdfExportService {
     );
   }
 
+  // ── Bill To section — now includes Dept. Code row at the bottom ──────────
   static pw.Widget _billToSection(VoucherModel voucher) => pw.Container(
         decoration: pw.BoxDecoration(
             border: pw.Border.all(color: _black, width: _bSide.width)),
@@ -585,6 +609,14 @@ class WidgetPdfExportService {
                     'PO.No. :-', voucher.poNo.isEmpty ? '-' : voucher.poNo),
               ],
             ),
+            // ── Dept. Code row — only rendered when a code is selected ──
+            if (voucher.deptCode.trim().isNotEmpty) ...[
+              pw.SizedBox(height: 3),
+              pw.Text(
+                'DEPT. CODE : ${voucher.deptCode.trim()}',
+                style: _ts(size: 8, bold: true),
+              ),
+            ],
           ],
         ),
       );
@@ -648,7 +680,8 @@ class WidgetPdfExportService {
   // BANK INFO & TAX SUMMARY (tax invoice)
   // ══════════════════════════════════════════════════════════════════════════
 
-  static pw.Widget _bankInfoPanel(CompanyConfigModel config) => pw.Padding(
+  static pw.Widget _bankInfoPanel(CompanyConfigModel config, String deptCode) =>
+      pw.Padding(
         padding:
             const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         child: pw.Column(
@@ -660,7 +693,13 @@ class WidgetPdfExportService {
             pw.Text(
                 'GSTIN  :  ${config.gstin}          HSN: SAC99851',
                 style: _ts(size: 8, bold: true)),
-            pw.SizedBox(height: 8),
+            pw.SizedBox(height: 2),
+            if (deptCode.isNotEmpty)
+              pw.Text(
+                'Code  :  ($deptCode)',
+                style: _ts(size: 8, bold: true),
+              ),
+            pw.SizedBox(height: deptCode.isNotEmpty ? 6 : 8),
             pw.Text('Bank Details for   :  RTGS / NEFT',
                 style: _ts(size: 9, bold: true)),
             pw.SizedBox(height: 4),
@@ -742,7 +781,6 @@ class WidgetPdfExportService {
       String label, String value, double labelW, double amtW) {
     return pw.Container(
       decoration: pw.BoxDecoration(
-        // Removed color: _grandBg
         border: pw.Border(top: _bSide),
       ),
       child: pw.Row(children: [
@@ -758,7 +796,6 @@ class WidgetPdfExportService {
         ),
         pw.Expanded(
           child: pw.Container(
-            // Removed color: _grandBg
             padding:
                 const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
             alignment: pw.Alignment.center,
@@ -828,6 +865,7 @@ class WidgetPdfExportService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
+        // ── Metadata row ──
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -841,21 +879,21 @@ class WidgetPdfExportService {
           ],
         ),
         pw.Divider(color: _black, thickness: 1.0),
-        pw.SizedBox(height: 4),
+
         pw.Table(
           border: pw.TableBorder.all(
               color: _black, width: _voucherBorderWidth),
           columnWidths: colWidths.tableColumnWidths,
           defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
           children: [
-            // Header row – no background
+            // Header row
             pw.TableRow(
               children: _voucherHeaders.map((h) {
                 final center = h == 'Aarti';
                 return _voucherHeaderCell(h, center: center);
               }).toList(),
             ),
-            // Data rows – no alternating background
+            // Data rows
             ...rows.map((r) {
               return pw.TableRow(
                 children: [
@@ -873,7 +911,7 @@ class WidgetPdfExportService {
                 ],
               );
             }),
-            // Grand total row – no background
+            // Grand total row
             if (showTotal)
               pw.TableRow(
                 children: [
@@ -900,28 +938,15 @@ class WidgetPdfExportService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Expanded(
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'Certified that the particulars given above are true and correct.',
-                      style: _ts(size: 8, italic: true),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text('Subject to Mumbai jurisdiction.',
-                        style: _ts(size: 8)),
-                  ],
-                ),
-              ),
+              pw.Expanded(child: pw.SizedBox()),
               pw.SizedBox(width: 20),
               if (_sig != null)
                 pw.SizedBox(
-                    width: 200,
-                    height: 90,
+                    width: 170,
+                    height: 60,
                     child: pw.Image(_sig!, fit: pw.BoxFit.contain))
               else
-                pw.SizedBox(width: 200, height: 90),
+                pw.SizedBox(width: 170, height: 60),
             ],
           ),
         ],
@@ -1052,6 +1077,24 @@ class WidgetPdfExportService {
         'September','October',  'November',  'December',
       ];
       return months[month - 1];
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static String _monthYearFromIso(String iso) {
+    if (iso.isEmpty) return '';
+    try {
+      final parts = iso.split('-');
+      if (parts.length != 3) return '';
+      final year = parts[0];
+      final month = int.parse(parts[1]);
+      const months = [
+        'JANUARY', 'FEBRUARY', 'MARCH',     'APRIL',
+        'MAY',      'JUNE',     'JULY',      'AUGUST',
+        'SEPTEMBER','OCTOBER',  'NOVEMBER',  'DECEMBER',
+      ];
+      return '${months[month - 1]} $year';
     } catch (_) {
       return '';
     }

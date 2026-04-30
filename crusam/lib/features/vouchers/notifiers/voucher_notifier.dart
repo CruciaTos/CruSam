@@ -113,7 +113,7 @@ class VoucherNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addRow() {
+  String addRow() {
     final id = '${DateTime.now().millisecondsSinceEpoch}'
                '${Random().nextInt(9999)}';
     final row = VoucherRowModel(
@@ -125,6 +125,7 @@ class VoucherNotifier extends ChangeNotifier {
     current = current.copyWith(rows: [...current.rows, row]);
     _syncSalaryMetadata();
     notifyListeners();
+    return id;
   }
 
   void updateRow(String id, VoucherRowModel Function(VoucherRowModel) fn) {

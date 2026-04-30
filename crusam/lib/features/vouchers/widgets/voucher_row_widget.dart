@@ -18,7 +18,20 @@ TableRow buildVoucherRow({
   required void Function(String) onFromDateChanged,
   required void Function(String) onToDateChanged,
   required VoidCallback onRemove,
+  FocusNode? employeeFocusNode,
+  FocusNode? amountFocusNode,
+  FocusNode? fromDateFocusNode,
+  FocusNode? toDateFocusNode,
+  VoidCallback? onEmployeeSelected,
+  VoidCallback? onEmployeeMovePrevious,  
+  VoidCallback? onAmountSubmitted,
+  VoidCallback? onFromDateSubmitted,
+  VoidCallback? onToDateSubmitted,
   bool highlight = false,
+  // ▶️ NEW – backward navigation callbacks
+  VoidCallback? onAmountMovePrevious,
+  VoidCallback? onFromDateMovePrevious,
+  VoidCallback? onToDateMovePrevious,
 }) {
   final isEven = index.isEven;
   final bg = highlight
@@ -41,15 +54,33 @@ TableRow buildVoucherRow({
         employees: employees,
         selectedId: row.employeeId,
         onChanged: onSelectEmployee,
+        focusNode: employeeFocusNode,
+        onSelectedSubmitted: onEmployeeSelected,
+        onMovePrevious: onEmployeeMovePrevious, 
         highlight: highlight,
       )),
       _cell(_AmountField(
         value: row.amount,
         onChanged: onAmountChanged,
+        focusNode: amountFocusNode,
+        onSubmitted: onAmountSubmitted,
+        onMovePrevious: onAmountMovePrevious,   // ← new
         highlight: highlight,
       )),
-      _cell(_DateField(value: row.fromDate, onChanged: onFromDateChanged)),
-      _cell(_DateField(value: row.toDate, onChanged: onToDateChanged)),
+      _cell(_DateField(
+        value: row.fromDate,
+        onChanged: onFromDateChanged,
+        focusNode: fromDateFocusNode,
+        onSubmitted: onFromDateSubmitted,
+        onMovePrevious: onFromDateMovePrevious, // ← new
+      )),
+      _cell(_DateField(
+        value: row.toDate,
+        onChanged: onToDateChanged,
+        focusNode: toDateFocusNode,
+        onSubmitted: onToDateSubmitted,
+        onMovePrevious: onToDateMovePrevious,   // ← new
+      )),
       _cell(_AutoFilledInfo(row: row)),
       _cell(
         SizedBox(
@@ -88,11 +119,17 @@ class _EmpDropdown extends StatefulWidget {
   final List<EmployeeModel> employees;
   final String selectedId;
   final void Function(String) onChanged;
+  final FocusNode? focusNode;
+  final VoidCallback? onSelectedSubmitted;
+  final VoidCallback? onMovePrevious;
   final bool highlight;
   const _EmpDropdown({
     required this.employees,
     required this.selectedId,
     required this.onChanged,
+    this.focusNode,
+    this.onSelectedSubmitted,
+    this.onMovePrevious,          
     this.highlight = false,
   });
   @override
@@ -102,8 +139,14 @@ class _EmpDropdown extends StatefulWidget {
 class _EmpDropdownState extends State<_EmpDropdown> {
   final LayerLink _layerLink = LayerLink();
   late final TextEditingController _sc;
-  late final FocusNode _fn;
+  late final FocusNode _ownedFocusNode;
   OverlayEntry? _oe;
+
+  // Key to access the dropdown's navigation state
+  final GlobalKey<EmployeeSearchDropdownState> _dropdownKey =
+      GlobalKey<EmployeeSearchDropdownState>();
+
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocusNode;
 
   EmployeeModel? get _sel {
     for (final e in widget.employees) {
@@ -113,6 +156,39 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   }
 
   String _label(EmployeeModel e) => '${e.name} (${e.pfNo})';
+
+  List<EmployeeModel> get _filteredEmployees {
+    final query = _sc.text.trim().toLowerCase();
+    if (query.isEmpty) return widget.employees;
+    return widget.employees
+        .where((e) =>
+            e.name.toLowerCase().contains(query) ||
+            e.pfNo.toLowerCase().contains(query))
+        .toList(growable: false);
+  }
+
+  void _handleFocusChange() {
+    if (_focusNode.hasFocus && _oe == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _focusNode.hasFocus && _oe == null) {
+          _open();
+        }
+      });
+    }
+  }
+
+  void _selectEmployee(EmployeeModel emp) {
+    final id = emp.id;
+    if (id != null) {
+      final lbl = _label(emp);
+      _sc.value = TextEditingValue(
+          text: lbl,
+          selection: TextSelection.collapsed(offset: lbl.length));
+      widget.onChanged(id.toString());
+    }
+    _close(restore: false);
+    widget.onSelectedSubmitted?.call();
+  }
 
   void _sync() {
     final s = _sel;
@@ -125,7 +201,8 @@ class _EmpDropdownState extends State<_EmpDropdown> {
   void initState() {
     super.initState();
     _sc = TextEditingController();
-    _fn = FocusNode();
+    _ownedFocusNode = FocusNode();
+    _focusNode.addListener(_handleFocusChange);
     _sync();
   }
 
@@ -139,7 +216,6 @@ class _EmpDropdownState extends State<_EmpDropdown> {
     _oe?.remove();
     _oe = null;
     if (restore) _sync();
-    _fn.unfocus();
   }
 
   void _open({bool reset = true}) {
@@ -150,7 +226,7 @@ class _EmpDropdownState extends State<_EmpDropdown> {
       _sc.clear();
       _sc.selection = const TextSelection.collapsed(offset: 0);
     }
-    _fn.requestFocus();
+    _focusNode.requestFocus();
     _oe = OverlayEntry(builder: (_) => Stack(children: [
           Positioned.fill(
               child: GestureDetector(
@@ -170,21 +246,12 @@ class _EmpDropdownState extends State<_EmpDropdown> {
                 elevation: 6,
                 borderRadius: BorderRadius.circular(8),
                 child: EmployeeSearchDropdown(
+                  key: _dropdownKey,
                   employees: widget.employees,
                   selectedId: widget.selectedId,
                   searchController: _sc,
                   showSearchBar: false,
-                  onSelected: (emp) {
-                    final id = emp.id;
-                    if (id != null) {
-                      final lbl = _label(emp);
-                      _sc.value = TextEditingValue(
-                          text: lbl,
-                          selection: TextSelection.collapsed(offset: lbl.length));
-                      widget.onChanged(id.toString());
-                    }
-                    _close(restore: false);
-                  },
+                  onSelected: _selectEmployee,
                 ),
               ),
             ),
@@ -193,11 +260,43 @@ class _EmpDropdownState extends State<_EmpDropdown> {
     Overlay.of(context).insert(_oe!);
   }
 
+  /// Handles keyboard navigation when the overlay is open.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+  if (event is KeyDownEvent) {
+    // Shift+Enter → close overlay (if open) and go backward
+    if (event.logicalKey == LogicalKeyboardKey.enter &&
+        HardwareKeyboard.instance.isShiftPressed) {
+      if (_oe != null) _close();
+      widget.onMovePrevious?.call();
+      return KeyEventResult.handled;
+    }
+    if (_oe != null) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        _dropdownKey.currentState?.navigateDown();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        _dropdownKey.currentState?.navigateUp();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter) {
+        _dropdownKey.currentState?.selectHighlighted();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _close();
+        return KeyEventResult.handled;
+      }
+    }
+  }
+  return KeyEventResult.ignored;
+}
   @override
   void dispose() {
     _close();
+    _focusNode.removeListener(_handleFocusChange);
     _sc.dispose();
-    _fn.dispose();
+    _ownedFocusNode.dispose();
     super.dispose();
   }
 
@@ -210,36 +309,45 @@ class _EmpDropdownState extends State<_EmpDropdown> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: TextField(
-                  controller: _sc,
-                  focusNode: _fn,
-                  maxLines: null,
-                  minLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.center,
-                  style: AppTextStyles.input.copyWith(color: AppColors.slate700),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    hintText: 'Select employee…',
-                    hintStyle:
-                        AppTextStyles.input.copyWith(color: AppColors.slate400),
-                    contentPadding: _kInputPadding,
-                    filled: true,
-                    fillColor: widget.highlight
-                        ? const Color(0xFFFFFDE7)
-                        : AppColors.white,
-                    enabledBorder: _border(
-                      widget.highlight
-                          ? const Color(0xFFF59E0B)
-                          : const Color(0xFF1E1B4B),
-                      width: widget.highlight ? 1.5 : 1.0,
+                child: Focus(
+                  onKeyEvent: _handleKeyEvent,
+                  child: TextField(
+                    controller: _sc,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    minLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.center,
+                    style: AppTextStyles.input.copyWith(color: AppColors.slate700),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Select employee…',
+                      hintStyle:
+                          AppTextStyles.input.copyWith(color: AppColors.slate400),
+                      contentPadding: _kInputPadding,
+                      filled: true,
+                      fillColor: widget.highlight
+                          ? const Color(0xFFFFFDE7)
+                          : AppColors.white,
+                      enabledBorder: _border(
+                        widget.highlight
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF1E1B4B),
+                        width: widget.highlight ? 1.5 : 1.0,
+                      ),
+                      focusedBorder: _border(AppColors.indigo500, width: 1.5),
                     ),
-                    focusedBorder: _border(AppColors.indigo500, width: 1.5),
+                    onTap: () => _open(),
+                    onChanged: (_) {
+                      if (_oe == null) _open(reset: false);
+                    },
+                    onSubmitted: (_) {
+                      final filtered = _filteredEmployees;
+                      if (filtered.isNotEmpty) {
+                        _selectEmployee(filtered.first);
+                      }
+                    },
                   ),
-                  onTap: () => _open(),
-                  onChanged: (_) {
-                    if (_oe == null) _open(reset: false);
-                  },
                 ),
               ),
               const SizedBox(width: 4),
@@ -266,10 +374,16 @@ class _EmpDropdownState extends State<_EmpDropdown> {
 class _AmountField extends StatefulWidget {
   final double value;
   final void Function(double) onChanged;
+  final FocusNode? focusNode;
+  final VoidCallback? onSubmitted;
+  final VoidCallback? onMovePrevious;   // ← new
   final bool highlight;
   const _AmountField({
     required this.value,
     required this.onChanged,
+    this.focusNode,
+    this.onSubmitted,
+    this.onMovePrevious,
     this.highlight = false,
   });
   @override
@@ -305,36 +419,53 @@ class _AmountFieldState extends State<_AmountField> {
     super.dispose();
   }
 
+  /// Shift+Enter → move backward
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.enter &&
+        HardwareKeyboard.instance.isShiftPressed) {
+      widget.onMovePrevious?.call();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: _kH,
-        child: TextField(
-          controller: _ctrl,
-          maxLines: null,
-          minLines: null,
-          expands: true,
-          textAlign: TextAlign.right,
-          textAlignVertical: TextAlignVertical.center,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          style: AppTextStyles.input.copyWith(color: AppColors.slate700),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: '0',
-            hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
-            contentPadding: _kInputPadding,
-            filled: true,
-            fillColor:
-                widget.highlight ? const Color(0xFFFFFDE7) : AppColors.white,
-            enabledBorder: _border(
-              widget.highlight
-                  ? const Color(0xFFF59E0B)
-                  : const Color(0xFF1E1B4B),
-              width: widget.highlight ? 1.5 : 1.0,
+  Widget build(BuildContext context) => Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: SizedBox(
+          height: _kH,
+          child: TextField(
+            controller: _ctrl,
+            focusNode: widget.focusNode,
+            maxLines: null,
+            minLines: null,
+            expands: true,
+            textAlign: TextAlign.right,
+            textAlignVertical: TextAlignVertical.center,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: AppTextStyles.input.copyWith(color: AppColors.slate700),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '0',
+              hintStyle: AppTextStyles.input.copyWith(color: AppColors.slate400),
+              contentPadding: _kInputPadding,
+              filled: true,
+              fillColor:
+                  widget.highlight ? const Color(0xFFFFFDE7) : AppColors.white,
+              enabledBorder: _border(
+                widget.highlight
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF1E1B4B),
+                width: widget.highlight ? 1.5 : 1.0,
+              ),
+              focusedBorder: _border(AppColors.indigo500, width: 1.5),
             ),
-            focusedBorder: _border(AppColors.indigo500, width: 1.5),
+            onChanged: (v) => widget.onChanged((int.tryParse(v) ?? 0).toDouble()),
+            onSubmitted: (_) => widget.onSubmitted?.call(),
           ),
-          onChanged: (v) => widget.onChanged((int.tryParse(v) ?? 0).toDouble()),
         ),
       );
 }
@@ -344,8 +475,17 @@ class _AmountFieldState extends State<_AmountField> {
 class _DateField extends StatefulWidget {
   final String value;
   final void Function(String) onChanged;
+  final FocusNode? focusNode;
+  final VoidCallback? onSubmitted;
+  final VoidCallback? onMovePrevious;   // ← new
 
-  const _DateField({required this.value, required this.onChanged});
+  const _DateField({
+    required this.value,
+    required this.onChanged,
+    this.focusNode,
+    this.onSubmitted,
+    this.onMovePrevious,
+  });
 
   @override
   State<_DateField> createState() => _DateFieldState();
@@ -354,19 +494,20 @@ class _DateField extends StatefulWidget {
 class _DateFieldState extends State<_DateField> {
   static const String _mask = 'dd/mm/yyyy';
   late final TextEditingController _controller;
-  late final FocusNode _focusNode;
+  late final FocusNode _ownedFocusNode;
   bool _isValid = false;
   bool _isInternalUpdate = false;
+
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocusNode;
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController();
-    _focusNode = FocusNode();
+    _ownedFocusNode = FocusNode();
     _setInitialValue(widget.value);
     _controller.addListener(_handleChange);
 
-    // Cursor-to-start: fires after platform settles cursor position
     _focusNode.addListener(() {
       if (_focusNode.hasFocus && _controller.text == _mask) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -482,6 +623,7 @@ class _DateFieldState extends State<_DateField> {
       _isInternalUpdate = false;
       widget.onChanged(picked.toIso8601String().split('T').first);
       setState(() => _isValid = true);
+      widget.onSubmitted?.call();
     }
   }
 
@@ -489,65 +631,81 @@ class _DateFieldState extends State<_DateField> {
   void dispose() {
     _controller.removeListener(_handleChange);
     _controller.dispose();
-    _focusNode.dispose();
+    _ownedFocusNode.dispose();
     super.dispose();
   }
 
+  /// Shift+Enter → move backward
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.enter &&
+        HardwareKeyboard.instance.isShiftPressed) {
+      widget.onMovePrevious?.call();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: _kH,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                maxLines: null,
-                minLines: null,
-                expands: true,
-                textAlign: TextAlign.center,
-                textAlignVertical: TextAlignVertical.center,
-                keyboardType: TextInputType.number,
-                inputFormatters: [_DateMaskFormatter()],
-                style: AppTextStyles.input.copyWith(
-                  color: AppColors.slate700,
-                  fontFamily: 'monospace',
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: _mask,
-                  hintStyle: AppTextStyles.input.copyWith(
-                    color: AppColors.slate400,
-                    fontSize: 12,
+  Widget build(BuildContext context) => Focus(
+        onKeyEvent: _handleKeyEvent,
+        child: SizedBox(
+          height: _kH,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  maxLines: null,
+                  minLines: null,
+                  expands: true,
+                  textAlign: TextAlign.center,
+                  textAlignVertical: TextAlignVertical.center,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  inputFormatters: [_DateMaskFormatter()],
+                  style: AppTextStyles.input.copyWith(
+                    color: AppColors.slate700,
                     fontFamily: 'monospace',
                   ),
-                  contentPadding: _kInputPadding,
-                  filled: true,
-                  fillColor: Colors.white,
-                  enabledBorder: _border(AppColors.slate300),
-                  focusedBorder: _border(AppColors.indigo500, width: 1.6),
-                  errorBorder: _border(Colors.red, width: 1.5),
-                  focusedErrorBorder: _border(Colors.red, width: 1.5),
-                  errorText: !_isValid && _hasInput ? '' : null,
-                  errorStyle: const TextStyle(height: 0, fontSize: 0),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: _mask,
+                    hintStyle: AppTextStyles.input.copyWith(
+                      color: AppColors.slate400,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                    contentPadding: _kInputPadding,
+                    filled: true,
+                    fillColor: Colors.white,
+                    enabledBorder: _border(AppColors.slate300),
+                    focusedBorder: _border(AppColors.indigo500, width: 1.6),
+                    errorBorder: _border(Colors.red, width: 1.5),
+                    focusedErrorBorder: _border(Colors.red, width: 1.5),
+                    errorText: !_isValid && _hasInput ? '' : null,
+                    errorStyle: const TextStyle(height: 0, fontSize: 0),
+                  ),
+                  onSubmitted: (_) => widget.onSubmitted?.call(),
                 ),
               ),
-            ),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: 28,
-              child: IconButton(
-                splashRadius: 14,
-                onPressed: _pickDate,
-                icon: const Icon(Icons.calendar_month_rounded,
-                    size: 16, color: AppColors.slate500),
-                tooltip: 'Pick date',
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              const SizedBox(width: 4),
+              SizedBox(
+                width: 28,
+                child: IconButton(
+                  splashRadius: 14,
+                  onPressed: _pickDate,
+                  icon: const Icon(Icons.calendar_month_rounded,
+                      size: 16, color: AppColors.slate500),
+                  tooltip: 'Pick date',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
 }

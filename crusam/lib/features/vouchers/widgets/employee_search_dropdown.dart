@@ -4,11 +4,11 @@ import '../../../../core/theme/app_text_styles.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../data/models/employee_model.dart';
 
-/// A searchable employee picker.
+/// A searchable employee picker that supports keyboard navigation.
 ///
-/// Renders a search bar + filtered employee list.
+/// Use this widget inside an overlay/modal.
 /// [onSelected] fires once with the chosen [EmployeeModel].
-/// [selectedId] highlights the active row if already chosen.
+/// [selectedId] highlights the already selected row.
 class EmployeeSearchDropdown extends StatefulWidget {
   final List<EmployeeModel> employees;
   final String? selectedId;
@@ -26,13 +26,17 @@ class EmployeeSearchDropdown extends StatefulWidget {
   });
 
   @override
-  State<EmployeeSearchDropdown> createState() => _EmployeeSearchDropdownState();
+  State<EmployeeSearchDropdown> createState() => EmployeeSearchDropdownState();
 }
 
-class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
+/// Exposed state for keyboard navigation from the parent.
+class EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
   String _query = '';
   late final TextEditingController _ctrl;
   late final bool _ownsController;
+
+  int _highlightedIndex = -1;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -46,7 +50,10 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
   void _syncQueryWithController() {
     final nextQuery = _ctrl.text;
     if (nextQuery == _query) return;
-    setState(() => _query = nextQuery);
+    setState(() {
+      _query = nextQuery;
+      _highlightedIndex = -1; // reset highlight when query changes
+    });
   }
 
   @override
@@ -55,6 +62,7 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
     if (_ownsController) {
       _ctrl.dispose();
     }
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -63,8 +71,51 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
     final q = _query.toLowerCase();
     return widget.employees
         .where((e) =>
-            e.name.toLowerCase().contains(q) || e.pfNo.toLowerCase().contains(q))
+            e.name.toLowerCase().contains(q) ||
+            e.pfNo.toLowerCase().contains(q))
         .toList(growable: false);
+  }
+
+  void navigateDown() {
+    setState(() {
+      if (_highlightedIndex < _filtered.length - 1) {
+        _highlightedIndex++;
+        _scrollToHighlighted();
+      }
+    });
+  }
+
+  void navigateUp() {
+    setState(() {
+      if (_highlightedIndex > 0) {
+        _highlightedIndex--;
+        _scrollToHighlighted();
+      } else if (_highlightedIndex == 0) {
+        _highlightedIndex = -1; // allow going back to no highlight
+      }
+    });
+  }
+
+  void selectHighlighted() {
+    if (_highlightedIndex >= 0 && _highlightedIndex < _filtered.length) {
+      widget.onSelected(_filtered[_highlightedIndex]);
+    } else if (_filtered.isNotEmpty) {
+      // select first match if nothing highlighted (mimics old onSubmitted)
+      widget.onSelected(_filtered.first);
+    }
+  }
+
+  void _scrollToHighlighted() {
+    if (_highlightedIndex < 0 || _highlightedIndex >= _filtered.length) return;
+    final itemHeight = 48.0; // dense ListTile height
+    final targetOffset = _highlightedIndex * itemHeight;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final clamped = targetOffset.clamp(0.0, maxScroll);
+    _scrollController.animateTo(
+      clamped,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+    );
   }
 
   void _onClear() {
@@ -89,22 +140,24 @@ class _EmployeeSearchDropdownState extends State<EmployeeSearchDropdown> {
             ),
             const SizedBox(height: AppSpacing.sm),
           ],
-        _CountLabel(
-          shown: filtered.length,
-          total: widget.employees.length,
-        ),
-        const SizedBox(height: AppSpacing.xs),
-        Expanded(
-          child: _EmployeeList(
-            employees: filtered,
-            selectedId: widget.selectedId,
-            query: _query,
-            onTap: widget.onSelected,
+          _CountLabel(
+            shown: filtered.length,
+            total: widget.employees.length,
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: AppSpacing.xs),
+          Expanded(
+            child: _EmployeeList(
+              employees: filtered,
+              selectedId: widget.selectedId,
+              highlightedIndex: _highlightedIndex,
+              scrollController: _scrollController,
+              query: _query,
+              onTap: widget.onSelected,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -159,12 +212,16 @@ class _CountLabel extends StatelessWidget {
 class _EmployeeList extends StatelessWidget {
   final List<EmployeeModel> employees;
   final String? selectedId;
+  final int highlightedIndex;
+  final ScrollController scrollController;
   final String query;
   final void Function(EmployeeModel) onTap;
 
   const _EmployeeList({
     required this.employees,
     required this.selectedId,
+    required this.highlightedIndex,
+    required this.scrollController,
     required this.query,
     required this.onTap,
   });
@@ -176,17 +233,18 @@ class _EmployeeList extends StatelessWidget {
     }
 
     return ListView.separated(
-      
+      controller: scrollController,
       itemCount: employees.length,
-      separatorBuilder: (_, separatorIndex) =>
-          const Divider(height: 1, thickness: 0.5),
+      separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.5),
       itemBuilder: (_, i) {
         final emp = employees[i];
         final isSelected = emp.id?.toString() == selectedId;
+        final isHighlighted = i == highlightedIndex;
 
         return _EmployeeTile(
           employee: emp,
           isSelected: isSelected,
+          isHighlighted: isHighlighted,
           query: query,
           onTap: () => onTap(emp),
         );
@@ -198,34 +256,51 @@ class _EmployeeList extends StatelessWidget {
 class _EmployeeTile extends StatelessWidget {
   final EmployeeModel employee;
   final bool isSelected;
+  final bool isHighlighted;
   final String query;
   final VoidCallback onTap;
 
   const _EmployeeTile({
     required this.employee,
     required this.isSelected,
+    required this.isHighlighted,
     required this.query,
     required this.onTap,
   });
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        dense: true,
-        selected: isSelected,
-        selectedTileColor: AppColors.slate50,
-        onTap: onTap,
-        leading: _Avatar(name: employee.name),
-        title: _HighlightText(
-          text: employee.name,
-          query: query,
-          baseStyle: AppTextStyles.body,
-        ),
-        subtitle: Text(
-          employee.zone.isEmpty ? employee.pfNo : '${employee.zone} · ${employee.pfNo}',
-          style: AppTextStyles.small.copyWith(color: AppColors.slate500),
-        ),
-        trailing: _CodeBadge(code: employee.code),
-      );
+  Widget build(BuildContext context) {
+    // Visual feedback for keyboard highlight
+    final Color? tileColor;
+    if (isHighlighted) {
+      tileColor = AppColors.indigo50.withOpacity(0.6);
+    } else if (isSelected) {
+      tileColor = AppColors.slate50;
+    } else {
+      tileColor = null;
+    }
+
+    return ListTile(
+      dense: true,
+      selected: isSelected,
+      selectedTileColor: AppColors.slate50,
+      tileColor: tileColor,
+      onTap: onTap,
+      leading: _Avatar(name: employee.name),
+      title: _HighlightText(
+        text: employee.name,
+        query: query,
+        baseStyle: AppTextStyles.body,
+      ),
+      subtitle: Text(
+        employee.zone.isEmpty
+            ? employee.pfNo
+            : '${employee.zone} · ${employee.pfNo}',
+        style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+      ),
+      trailing: _CodeBadge(code: employee.code),
+    );
+  }
 }
 
 class _Avatar extends StatelessWidget {
@@ -240,7 +315,8 @@ class _Avatar extends StatelessWidget {
     if (parts.length == 1) {
       return parts[0].substring(0, 1).toUpperCase();
     }
-    return '${parts[0].substring(0, 1)}${parts[1].substring(0, 1)}'.toUpperCase();
+    return '${parts[0].substring(0, 1)}${parts[1].substring(0, 1)}'
+        .toUpperCase();
   }
 
   @override

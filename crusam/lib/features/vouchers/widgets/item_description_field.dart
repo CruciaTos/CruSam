@@ -1,13 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifiers/item_description_notifier.dart';
 
+class _ItemDescriptionPrimaryIntent extends Intent {
+  const _ItemDescriptionPrimaryIntent();
+}
+
+class _ItemDescriptionBackwardIntent extends Intent {
+  const _ItemDescriptionBackwardIntent();
+}
+
 class ItemDescriptionField extends StatefulWidget {
   final String value;
   final void Function(String) onChanged;
   final ItemDescriptionNotifier notifier;
+  final FocusNode? focusNode;
+  final VoidCallback? onMoveNext;
+  final VoidCallback? onMovePrevious;
 
   /// Custom background color for the dropdown overlay.
   /// Defaults to [Colors.white] if not provided.
@@ -22,6 +34,9 @@ class ItemDescriptionField extends StatefulWidget {
     required this.value,
     required this.onChanged,
     required this.notifier,
+    this.focusNode,
+    this.onMoveNext,
+    this.onMovePrevious,
     this.overlayBackgroundColor,
     this.overlayBorder,
   });
@@ -36,13 +51,18 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
   final GlobalKey _fieldKey = GlobalKey();
   final TextEditingController _addCtrl = TextEditingController();
   final FocusNode _addFocusNode = FocusNode();
+  final FocusNode _internalFocusNode = FocusNode();
 
   OverlayEntry? _overlayEntry;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  bool _hasFocus = false;
+  bool _selectionCommitted = false;
+  int _highlightedIndex = 0;
 
   bool get _isOpen => _overlayEntry != null;
+  FocusNode get _focusNode => widget.focusNode ?? _internalFocusNode;
 
   @override
   void initState() {
@@ -86,8 +106,31 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
     _removeOverlay(triggerSetState: false);
     _addCtrl.dispose();
     _addFocusNode.dispose();
+    if (widget.focusNode == null) _internalFocusNode.dispose();
     _animationController.dispose();
     super.dispose();
+  }
+
+  int get _selectedIndex {
+    final items = widget.notifier.items;
+    final index = items.indexWhere((item) => ((item['text'] as String?) ?? '') == widget.value);
+    return index >= 0 ? index : 0;
+  }
+
+  void _handleFocusChange(bool hasFocus) {
+    if (_hasFocus == hasFocus) return;
+    setState(() => _hasFocus = hasFocus);
+    if (hasFocus) {
+      if (!_isOpen && !_selectionCommitted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _focusNode.hasFocus && !_isOpen && !_selectionCommitted) {
+            _showOverlay();
+          }
+        });
+      }
+    } else {
+      _removeOverlay(resetCommitted: true);
+    }
   }
 
   void _toggleOverlay() {
@@ -101,6 +144,8 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
   void _showOverlay() {
     if (_isOpen) return;
 
+    _highlightedIndex = _selectedIndex;
+    _selectionCommitted = false;
     final overlay = Overlay.of(context);
     _overlayEntry = OverlayEntry(builder: _buildOverlay);
     overlay.insert(_overlayEntry!);
@@ -108,12 +153,87 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
     _animationController.forward();
   }
 
-  void _removeOverlay({bool triggerSetState = true}) {
+  void _removeOverlay({bool triggerSetState = true, bool resetCommitted = false}) {
     _animationController.reverse().then((_) {
       _overlayEntry?.remove();
       _overlayEntry = null;
-      if (triggerSetState && mounted) setState(() {});
+      if (triggerSetState && mounted) {
+        setState(() {
+          if (resetCommitted) _selectionCommitted = false;
+        });
+      } else if (resetCommitted) {
+        _selectionCommitted = false;
+      }
     });
+  }
+
+  void _moveHighlight(int delta) {
+    final items = widget.notifier.items;
+    if (!_isOpen || items.isEmpty) return;
+    final next = (_highlightedIndex + delta).clamp(0, items.length - 1);
+    if (next == _highlightedIndex) return;
+    setState(() => _highlightedIndex = next);
+    _overlayEntry?.markNeedsBuild();
+  }
+
+  void _selectItem(String text, {bool moveNext = false}) {
+    widget.onChanged(text);
+    _selectionCommitted = true;
+    _removeOverlay();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (moveNext) {
+        _selectionCommitted = false;
+        widget.onMoveNext?.call();
+      } else {
+        _focusNode.requestFocus();
+      }
+    });
+  }
+
+  void _handlePrimaryAction() {
+    final items = widget.notifier.items;
+    if (_isOpen) {
+      if (items.isEmpty) {
+        _removeOverlay(resetCommitted: true);
+        widget.onMoveNext?.call();
+        return;
+      }
+      final text = (items[_highlightedIndex]['text'] as String?) ?? '';
+      _selectItem(text, moveNext: true);
+      return;
+    }
+    if (_selectionCommitted) {
+      _selectionCommitted = false;
+      widget.onMoveNext?.call();
+      return;
+    }
+    _showOverlay();
+  }
+
+  void _handleBackwardAction() {
+    if (_isOpen) {
+      _removeOverlay(resetCommitted: true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+      return;
+    }
+    _selectionCommitted = false;
+    widget.onMovePrevious?.call();
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || !_isOpen) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      _moveHighlight(1);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      _moveHighlight(-1);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   Future<void> _handleAdd() async {
@@ -204,17 +324,21 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                                     ((item['is_custom'] as num?)?.toInt() ?? 0) == 1;
                                 final canDelete = isCustom || items.length > 1;
                                 final isSelected = widget.value == text;
+                                final isHighlighted = i == _highlightedIndex;
 
                                 return Material(
                                   color: Colors.transparent,
                                   child: InkWell(
-                                    onTap: () {
-                                      widget.onChanged(text);
-                                      _removeOverlay();
+                                    onTap: () => _selectItem(text),
+                                    onHover: (hovering) {
+                                      if (!hovering || i == _highlightedIndex) return;
+                                      setState(() => _highlightedIndex = i);
+                                      _overlayEntry?.markNeedsBuild();
                                     },
                                     hoverColor: AppColors.slate25,
                                     splashColor: AppColors.primary.withOpacity(0.1),
-                                    child: Padding(
+                                    child: Container(
+                                      color: isHighlighted ? AppColors.slate25 : Colors.transparent,
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                       child: Row(
                                         children: [
@@ -321,68 +445,94 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
   @override
   Widget build(BuildContext context) {
     final isOpen = _isOpen;
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: InkWell(
-        key: _fieldKey,
-        onTap: _toggleOverlay,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        focusNode: FocusNode(),
-        hoverColor: Colors.transparent,
-        splashColor: Colors.transparent,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isOpen ? AppColors.primary : AppColors.slate200,
-              width: isOpen ? 1.5 : 1,
-            ),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            color: Colors.white,
-            boxShadow: isOpen
-                ? [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.2),
-                      blurRadius: 6,
-                      offset: const Offset(0, 1),
-                    ),
-                  ]
-                : null,
+    return Shortcuts(
+      shortcuts: const {
+        SingleActivator(LogicalKeyboardKey.enter): _ItemDescriptionPrimaryIntent(),
+        SingleActivator(LogicalKeyboardKey.enter, shift: true): _ItemDescriptionBackwardIntent(),
+      },
+      child: Actions(
+        actions: {
+          _ItemDescriptionPrimaryIntent: CallbackAction<_ItemDescriptionPrimaryIntent>(
+            onInvoke: (_) {
+              _handlePrimaryAction();
+              return null;
+            },
           ),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.value.isEmpty ? 'Select or add a description...' : widget.value,
-                    style: AppTextStyles.input.copyWith(
-                      color: widget.value.isEmpty ? AppColors.slate400 : AppColors.slate800,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+          _ItemDescriptionBackwardIntent: CallbackAction<_ItemDescriptionBackwardIntent>(
+            onInvoke: (_) {
+              _handleBackwardAction();
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          focusNode: _focusNode,
+          onFocusChange: _handleFocusChange,
+          onKeyEvent: _onKeyEvent,
+          child: CompositedTransformTarget(
+            link: _layerLink,
+            child: InkWell(
+              key: _fieldKey,
+              onTap: _toggleOverlay,
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              hoverColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: (isOpen || _hasFocus) ? AppColors.primary : AppColors.slate200,
+                    width: (isOpen || _hasFocus) ? 1.5 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  color: Colors.white,
+                  boxShadow: (isOpen || _hasFocus)
+                      ? [
+                          BoxShadow(
+                            color: AppColors.primary.withOpacity(0.2),
+                            blurRadius: 6,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.value.isEmpty ? 'Select or add a description...' : widget.value,
+                          style: AppTextStyles.input.copyWith(
+                            color: widget.value.isEmpty ? AppColors.slate400 : AppColors.slate800,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (widget.value.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            widget.onChanged('');
+                            if (_isOpen) _removeOverlay();
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.only(right: 4),
+                          ),
+                        ),
+                      AnimatedRotation(
+                        duration: const Duration(milliseconds: 200),
+                        turns: isOpen ? 0.5 : 0,
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: isOpen ? AppColors.primary : AppColors.slate500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (widget.value.isNotEmpty)
-                  GestureDetector(
-                    onTap: () {
-                      widget.onChanged('');
-                      if (_isOpen) _removeOverlay();
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                    ),
-                  ),
-                AnimatedRotation(
-                  duration: const Duration(milliseconds: 200),
-                  turns: isOpen ? 0.5 : 0,
-                  child: Icon(
-                    Icons.keyboard_arrow_down,
-                    size: 20,
-                    color: isOpen ? AppColors.primary : AppColors.slate500,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
