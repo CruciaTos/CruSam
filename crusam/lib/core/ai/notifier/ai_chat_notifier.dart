@@ -4,6 +4,8 @@ import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/services/ai_service.dart';
 import 'package:crusam/core/ai/services/gemini_service.dart';
 import 'package:crusam/core/ai/services/ollama_service.dart';
+import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
+import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:flutter/foundation.dart';
 
 // Keep this notifier feature-agnostic. Employee or other module-specific
@@ -304,11 +306,13 @@ class AiChatNotifier extends ChangeNotifier {
           _status = ChatStatus.idle;
 
           if (finalText.trim().isNotEmpty) {
+            final displayText = AiToolExecutor.stripActionBlock(finalText);
             _addMessage(ChatMessage(
               role: ChatRole.assistant,
-              text: finalText,
+              text: displayText,
               timestamp: DateTime.now(),
             ));
+            _executeToolFromAssistantResponse(finalText);
           } else {
             _handleError('The model returned an empty response.');
           }
@@ -352,6 +356,29 @@ class AiChatNotifier extends ChangeNotifier {
         if (e is GeminiException) msg = e.message;
         _handleError(msg);
       }
+      notifyListeners();
+    }
+  }
+
+  Future<void> _executeToolFromAssistantResponse(String assistantText) async {
+    final result = await AiToolExecutor.instance.tryExecute(
+      llmText: assistantText,
+      employeeNotifier: EmployeeNotifier.instance,
+    );
+
+    if (result is AiToolSuccess) {
+      _addMessage(ChatMessage(
+        role: ChatRole.assistant,
+        text: result.confirmation,
+        timestamp: DateTime.now(),
+      ));
+      notifyListeners();
+    } else if (result is AiToolFailure) {
+      _addMessage(ChatMessage(
+        role: ChatRole.assistant,
+        text: '⚠️ Tool execution failed: ${result.reason}',
+        timestamp: DateTime.now(),
+      ));
       notifyListeners();
     }
   }

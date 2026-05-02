@@ -3,6 +3,9 @@ import 'dart:convert';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/employee_model.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
+import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +67,9 @@ class AiToolExecutor {
   Future<AiToolResult> tryExecute({
     required String llmText,
     required EmployeeNotifier employeeNotifier,
+    SalaryStateController? salaryStateController,
+    SalaryDataNotifier? salaryDataNotifier,
+    VoucherNotifier? voucherNotifier,
   }) async {
     final json = _extractJson(llmText);
     if (json == null) return AiToolNotPresent();
@@ -76,6 +82,10 @@ class AiToolExecutor {
     }
 
     final action = payload['action'] as String?;
+    final salaryController = salaryStateController ?? SalaryStateController.instance;
+    final salaryNotifier = salaryDataNotifier ?? SalaryDataNotifier.instance;
+    final voucher = voucherNotifier ?? VoucherNotifier.instance;
+
     switch (action) {
       case 'update_employee':
         return _updateEmployee(payload, employeeNotifier);
@@ -83,6 +93,16 @@ class AiToolExecutor {
         return _deleteEmployee(payload, employeeNotifier);
       case 'add_employee':
         return _addEmployee(payload, employeeNotifier);
+      case 'set_company_filter':
+        return _setCompanyFilter(payload, salaryController);
+      case 'set_month_year':
+        return _setMonthYear(payload, salaryNotifier);
+      case 'set_days_present':
+        return _setDaysPresent(payload, salaryNotifier);
+      case 'set_salary_meta':
+        return _setSalaryMeta(payload, salaryNotifier);
+      case 'set_voucher_field':
+        return _setVoucherField(payload, voucher);
       default:
         return AiToolFailure('Unknown action: "$action".');
     }
@@ -238,5 +258,162 @@ class AiToolExecutor {
     } catch (e) {
       return AiToolFailure('Failed to add employee: $e');
     }
+  }
+
+  AiToolResult _setCompanyFilter(
+    Map<String, dynamic> p,
+    SalaryStateController controller,
+  ) {
+    final code = (p['code'] as String?)?.trim();
+    if (code == null || code.isEmpty) {
+      return AiToolFailure('set_company_filter requires a non-empty "code".');
+    }
+    controller.setCompanyCode(code);
+    return AiToolSuccess('✅ Salary company filter set to "$code".');
+  }
+
+  AiToolResult _setMonthYear(
+    Map<String, dynamic> p,
+    SalaryDataNotifier notifier,
+  ) {
+    final rawMonth = p['month'];
+    final rawYear = p['year'];
+    if (rawMonth == null || rawYear == null) {
+      return AiToolFailure('set_month_year requires "month" and "year".');
+    }
+
+    final month = _parseMonth(rawMonth);
+    final year = (rawYear as num?)?.toInt() ?? int.tryParse(rawYear.toString());
+    if (month == null || year == null || year < 1900 || year > 2100) {
+      return AiToolFailure('Invalid month or year values.');
+    }
+
+    notifier.setMonthYear(month, year);
+    return AiToolSuccess('✅ Salary month/year set to ${notifier.monthName} $year.');
+  }
+
+  AiToolResult _setDaysPresent(
+    Map<String, dynamic> p,
+    SalaryDataNotifier notifier,
+  ) {
+    final rawValue = p['days'];
+    final employeeId = _resolveEmployeeId(p);
+    if (employeeId == null) {
+      return AiToolFailure('set_days_present requires a valid employee id or name.');
+    }
+
+    final days = (rawValue as num?)?.toInt() ?? int.tryParse(rawValue?.toString() ?? '');
+    if (days == null || days < 0) {
+      return AiToolFailure('set_days_present requires a non-negative "days".');
+    }
+
+    notifier.setDays(employeeId, days);
+    return AiToolSuccess('✅ Set $days days present for employee id $employeeId.');
+  }
+
+  AiToolResult _setSalaryMeta(
+    Map<String, dynamic> p,
+    SalaryDataNotifier notifier,
+  ) {
+    final field = (p['field'] as String?)?.trim();
+    final value = (p['value'] as String?)?.trim();
+    if (field == null || field.isEmpty || value == null) {
+      return AiToolFailure('set_salary_meta requires "field" and "value".');
+    }
+
+    switch (field) {
+      case 'billNo':
+        notifier.setBillNo(value);
+        break;
+      case 'poNo':
+        notifier.setPoNo(value);
+        break;
+      case 'clientName':
+        notifier.setClientName(value);
+        break;
+      case 'clientAddr':
+        notifier.setClientAddr(value);
+        break;
+      case 'clientGstin':
+        notifier.setClientGstin(value);
+        break;
+      case 'deptCode':
+        notifier.setDeptCode(value);
+        break;
+      default:
+        return AiToolFailure('Unsupported salary field "$field".');
+    }
+
+    return AiToolSuccess('✅ Updated salary metadata field "$field".');
+  }
+
+  AiToolResult _setVoucherField(
+    Map<String, dynamic> p,
+    VoucherNotifier notifier,
+  ) {
+    final field = (p['field'] as String?)?.trim();
+    final value = (p['value'] as String?)?.trim();
+    if (field == null || field.isEmpty || value == null) {
+      return AiToolFailure('set_voucher_field requires "field" and "value".');
+    }
+
+    final acceptedFields = {
+      'title', 'deptCode', 'date', 'billNo', 'poNo',
+      'itemDescription', 'clientName', 'clientAddress', 'clientGstin',
+    };
+    if (!acceptedFields.contains(field)) {
+      return AiToolFailure('Unsupported voucher field "$field".');
+    }
+
+    notifier.update((current) => current.copyWith(
+          title: field == 'title' ? value : null,
+          deptCode: field == 'deptCode' ? value : null,
+          date: field == 'date' ? value : null,
+          billNo: field == 'billNo' ? value : null,
+          poNo: field == 'poNo' ? value : null,
+          itemDescription: field == 'itemDescription' ? value : null,
+          clientName: field == 'clientName' ? value : null,
+          clientAddress: field == 'clientAddress' ? value : null,
+          clientGstin: field == 'clientGstin' ? value : null,
+        ));
+
+    return AiToolSuccess('✅ Updated voucher $field.');
+  }
+
+  int? _resolveEmployeeId(Map<String, dynamic> payload) {
+    final byId = (payload['employeeId'] as num?)?.toInt();
+    if (byId != null) return byId;
+    return null;
+  }
+
+  int? _parseMonth(dynamic rawMonth) {
+    if (rawMonth is num) {
+      final month = rawMonth.toInt();
+      return month >= 1 && month <= 12 ? month : null;
+    }
+    if (rawMonth is String) {
+      final text = rawMonth.trim();
+      final parsed = int.tryParse(text);
+      if (parsed != null && parsed >= 1 && parsed <= 12) {
+        return parsed;
+      }
+      final normalized = text.toLowerCase();
+      const months = {
+        'january': 1,
+        'february': 2,
+        'march': 3,
+        'april': 4,
+        'may': 5,
+        'june': 6,
+        'july': 7,
+        'august': 8,
+        'september': 9,
+        'october': 10,
+        'november': 11,
+        'december': 12,
+      };
+      return months[normalized];
+    }
+    return null;
   }
 }

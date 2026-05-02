@@ -10,6 +10,9 @@ import '../../features/auth/notifiers/auth_notifier.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 // ── AI chat integration imports ───────────────────────────────────────────
 import '../../core/ai/presentation/ai_context_builder.dart';
+import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
 import '../../shared/widgets/ai_chat_panel.dart';
 
@@ -1042,10 +1045,11 @@ class _HeaderState extends State<_Header> {
                 tooltip: 'AI Assistant',
                 onPressed: () {
                   final ctx = AiContextBuilder.build(
-                    // salaryController: SalaryStateController.instance,
-                    // voucherNotifier:  VoucherNotifier.instance,
-                    // dashboardNotifier: DashboardNotifier.instance,
-                    // employeeNotifier: EmployeeNotifier.instance,
+                    employeeNotifier: EmployeeNotifier.instance,
+                    salaryStateController: SalaryStateController.instance,
+                    salaryDataNotifier: SalaryDataNotifier.instance,
+                    voucherNotifier: VoucherNotifier.instance,
+                    currentVoucher: VoucherNotifier.instance.current,
                   );
                   AiChatNotifier.instance.updateContext(ctx);
                   AiChatNotifier.instance.togglePanel();
