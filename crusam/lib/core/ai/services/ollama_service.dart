@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ai_provider.dart';
 
-/// Singleton service for interacting with a local Ollama instance.
+/// Singleton service for interacting with a local or remote Ollama instance.
 class OllamaService {
   // Private constructor
   OllamaService._();
@@ -13,10 +13,14 @@ class OllamaService {
   /// The single instance of [OllamaService].
   static final OllamaService instance = OllamaService._();
 
-  /// Preference key for the Ollama base URL.
+  /// Preference key for the Ollama base URL (legacy, used for backward compatibility).
   static const String _baseUrlKey = 'ollama_base_url';
 
-  /// The default base URL for Ollama.
+  // ── NEW PREFS KEYS ─────────────────────────────────────────────────────────
+  static const String _serverModeKey = 'ollama_server_mode'; // 'local' | 'remote'
+  static const String _remoteUrlKey  = 'ollama_remote_url';  // e.g. http://192.168.1.5:11434
+
+  /// The default base URL for Ollama when running locally.
   static const String defaultBaseUrl = 'http://127.0.0.1:11434';
 
   SharedPreferences? _prefs;
@@ -33,21 +37,69 @@ class OllamaService {
     return _prefs!;
   }
 
-  /// Returns the saved base URL or the default.
+  // ── MODE-AWARE getBaseUrl ───────────────────────────────────────────────────
+  /// Returns the active Ollama base URL based on the current server mode.
+  ///
+  /// In 'remote' mode the saved remote URL is used; in 'local' mode (default)
+  /// `http://127.0.0.1:11434` is returned.
   Future<String> getBaseUrl() async {
-    final prefs = await _getPrefs();
-    final url = prefs.getString(_baseUrlKey);
-    if (url == null || url.trim().isEmpty) {
-      return defaultBaseUrl;
+    final mode = await getServerMode();
+    if (mode == 'remote') {
+      final remote = await getRemoteUrl();
+      if (remote.isNotEmpty) return remote;
     }
-    return url.trim().replaceAll(RegExp(r'/+$'), '');
+    // local mode (default)
+    return defaultBaseUrl; // 'http://127.0.0.1:11434'
   }
 
-  /// Persists a new base URL for Ollama.
+  // ── OLD saveBaseUrl (kept for backward compatibility) ────────────────────────
+  /// Persists a legacy base URL. New code should prefer `saveRemoteUrl`.
   Future<void> saveBaseUrl(String url) async {
     final prefs = await _getPrefs();
     final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
     await prefs.setString(_baseUrlKey, trimmed);
+  }
+
+  // ── NEW: Server mode ───────────────────────────────────────────────────────
+  /// Returns the current server mode: 'local' or 'remote'.
+  Future<String> getServerMode() async {
+    final prefs = await _getPrefs();
+    return prefs.getString(_serverModeKey) ?? 'local';
+  }
+
+  /// Sets the server mode to [mode] (expected: 'local' or 'remote').
+  Future<void> saveServerMode(String mode) async {
+    final prefs = await _getPrefs();
+    await prefs.setString(_serverModeKey, mode);
+  }
+
+  // ── NEW: Remote URL ────────────────────────────────────────────────────────
+  /// Returns the saved remote Ollama URL, or an empty string if none is set.
+  Future<String> getRemoteUrl() async {
+    final prefs = await _getPrefs();
+    return prefs.getString(_remoteUrlKey) ?? '';
+  }
+
+  /// Persists a new remote Ollama URL. Trailing slashes are stripped.
+  Future<void> saveRemoteUrl(String url) async {
+    final prefs = await _getPrefs();
+    final trimmed = url.trim().replaceAll(RegExp(r'/+$'), '');
+    await prefs.setString(_remoteUrlKey, trimmed);
+  }
+
+  // ── NEW: Connection test ───────────────────────────────────────────────────
+  /// Tests whether an Ollama instance is reachable at [url].
+  ///
+  /// Hits `/api/tags` with a 5-second timeout. Returns `true` on success.
+  Future<bool> testConnection(String url) async {
+    try {
+      final clean = url.trim().replaceAll(RegExp(r'/+$'), '');
+      final uri   = Uri.parse('$clean/api/tags');
+      final resp  = await http.get(uri).timeout(const Duration(seconds: 5));
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Fetches the list of locally installed models via `GET /api/tags`.

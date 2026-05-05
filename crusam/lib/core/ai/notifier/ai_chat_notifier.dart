@@ -1,43 +1,21 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
+import 'package:crusam/core/ai/models/app_context.dart';
+import 'package:crusam/core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/core/ai/services/ai_service.dart';
 import 'package:crusam/core/ai/services/gemini_service.dart';
 import 'package:crusam/core/ai/services/ollama_service.dart';
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
+import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 import 'package:flutter/foundation.dart';
 
-// Keep this notifier feature-agnostic. Employee or other module-specific
-// notifiers should be transformed into [AppContext] elsewhere and injected
-// through [updateContext] instead of being imported here directly.
-
-// ---------------------------------------------------------------------------
-// NEW: Granular loading phases for richer UI feedback.
-// ---------------------------------------------------------------------------
-
-/// Describes the fine-grained phase of an AI request so the UI can show
-/// meaningful status text instead of a generic spinner.
-enum ChatPhase {
-  /// Nothing in progress.
-  idle,
-
-  /// Opening a connection to the model endpoint.
-  connecting,
-
-  /// Waiting for the first token (model is "thinking").
-  thinking,
-
-  /// Tokens are actively being streamed into the pending message.
-  streaming,
-}
-
-// ---------------------------------------------------------------------------
-// Data models
-// ---------------------------------------------------------------------------
-
+enum ChatPhase { idle, connecting, thinking, streaming, verifying }
 enum ChatRole { user, assistant }
-
 enum ChatStatus { idle, loading, error }
 
 class ChatMessage {
@@ -53,12 +31,8 @@ class ChatMessage {
   final String text;
   final DateTime timestamp;
   final bool isError;
-
-  /// Optional stable identifier – useful for targeting a specific message
-  /// in edit / delete operations from the UI.
   final String? id;
 
-  /// Returns a copy of this message with [text] replaced.
   ChatMessage copyWith({String? text}) => ChatMessage(
         role: role,
         text: text ?? this.text,
@@ -67,39 +41,6 @@ class ChatMessage {
         id: id,
       );
 }
-
-class AppContext {
-  const AppContext({
-    this.employeeCount,
-    this.totalSalary,
-    this.pendingVouchers,
-    this.dashboardSummary,
-    this.extra,
-  });
-
-  final int? employeeCount;
-  final double? totalSalary;
-  final int? pendingVouchers;
-  final String? dashboardSummary;
-  final Map<String, String>? extra;
-
-  String toPromptSection() {
-    final lines = <String>['=== Current App Data ==='];
-    if (employeeCount != null) lines.add('Total employees: $employeeCount');
-    if (totalSalary != null) {
-      lines.add('Total salary disbursed: ₹${totalSalary!.toStringAsFixed(2)}');
-    }
-    if (pendingVouchers != null) lines.add('Pending vouchers: $pendingVouchers');
-    if (dashboardSummary != null) lines.add(dashboardSummary!);
-    extra?.forEach((k, v) => lines.add('$k: $v'));
-    lines.add('========================');
-    return lines.join('\n');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Notifier – provider-aware AI chat state
-// ---------------------------------------------------------------------------
 
 class AiChatNotifier extends ChangeNotifier {
   AiChatNotifier._();
@@ -119,17 +60,15 @@ class AiChatNotifier extends ChangeNotifier {
   bool _initializing = true;
   bool _loadingModels = false;
 
-  // ---- NEW: Streaming state -----------------------------------------------
-
-  /// Accumulated text for the message currently being streamed.
-  /// `null` when not streaming; `''` while waiting for the first token.
+  // ---- Streaming state ----------------------------------------------------
   String? _pendingStreamText;
-
-  /// Fine-grained phase so the UI can show descriptive status text.
   ChatPhase _chatPhase = ChatPhase.idle;
-
-  /// Active stream subscription – used for clean cancellation.
   StreamSubscription<String>? _streamSubscription;
+  String _lastUserQuery = '';
+
+  // ---- Pending action (interactive confirmation) --------------------------
+  Completer<bool>? _pendingActionCompleter;
+  String? _pendingActionDescription;
 
   // ---- Public getters (chat) ----------------------------------------------
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -139,19 +78,16 @@ class AiChatNotifier extends ChangeNotifier {
   bool get isLoading => _status == ChatStatus.loading;
   bool get hasMessages => _messages.isNotEmpty;
 
-  // ---- NEW: Streaming getters ---------------------------------------------
-
-  /// The text currently being streamed into the pending AI message.
-  /// Non-null only while a response is in flight.
+  // ---- Streaming getters --------------------------------------------------
   String? get pendingStreamText => _pendingStreamText;
-
-  /// Whether the notifier is actively receiving streamed tokens.
   bool get isStreaming => _chatPhase == ChatPhase.streaming;
-
-  /// Fine-grained loading phase for richer UI feedback.
   ChatPhase get chatPhase => _chatPhase;
 
-  // ---- Public getters (provider / model) ----------------------------------
+  // ---- Pending action getters ---------------------------------------------
+  bool get hasPendingAction => _pendingActionCompleter != null;
+  String? get pendingActionDescription => _pendingActionDescription;
+
+  // ---- Provider / model getters -------------------------------------------
   AiProvider get selectedProvider => _selectedProvider;
   String get selectedModel => _selectedModel;
   List<AiModelInfo> get availableModels => List.unmodifiable(_availableModels);
@@ -211,7 +147,7 @@ class AiChatNotifier extends ChangeNotifier {
     } catch (e) {
       _availableModels = [];
       _selectedModel = '';
-      _errorMessage = 'Failed to load models.';
+      _errorMessage = 'Failed to load models: ${_friendlyError(e)}';
     } finally {
       _loadingModels = false;
       notifyListeners();
@@ -219,6 +155,7 @@ class AiChatNotifier extends ChangeNotifier {
   }
 
   void selectModel(String modelId) {
+    if (_selectedModel == modelId) return;
     _selectedModel = modelId;
     notifyListeners();
   }
@@ -244,10 +181,20 @@ class AiChatNotifier extends ChangeNotifier {
     _context = ctx;
   }
 
-  // ---- Cancel in‑flight request -------------------------------------------
+  Future<void> _refreshContext() async {
+    final ctx = await AiContextBuilder.build(
+      employeeNotifier: EmployeeNotifier.instance,
+      salaryStateController: SalaryStateController.instance,
+      salaryDataNotifier: SalaryDataNotifier.instance,
+      voucherNotifier: VoucherNotifier.instance,
+      currentVoucher: VoucherNotifier.instance.current,
+    );
+    updateContext(ctx);
+  }
+
+  // ---- Cancel in-flight request -------------------------------------------
   void cancelGeneration() {
     if (!isLoading) return;
-    // Cancel both the Dart stream subscription and the underlying HTTP client.
     _streamSubscription?.cancel();
     _streamSubscription = null;
     AiService.instance.cancelCurrentRequest(_selectedProvider);
@@ -260,16 +207,18 @@ class AiChatNotifier extends ChangeNotifier {
   }
 
   // ---- Messaging ----------------------------------------------------------
-
-  /// Sends [userText] to the AI model using real-time streaming.
   Future<void> sendMessage(String userText) async {
     final trimmed = userText.trim();
     if (trimmed.isEmpty || isLoading) return;
+
+    await _refreshContext();
 
     if (_selectedModel.isEmpty) {
       _handleError('No AI model selected. Please select a model first.');
       return;
     }
+
+    _lastUserQuery = trimmed;
 
     _addMessage(ChatMessage(
       role: ChatRole.user,
@@ -279,7 +228,7 @@ class AiChatNotifier extends ChangeNotifier {
 
     _status = ChatStatus.loading;
     _errorMessage = null;
-    _pendingStreamText = ''; // Empty string = waiting for first token.
+    _pendingStreamText = '';
     _chatPhase = ChatPhase.connecting;
     notifyListeners();
 
@@ -293,31 +242,53 @@ class AiChatNotifier extends ChangeNotifier {
         systemPrompt: _buildSystemPrompt(),
       );
 
+      _chatPhase = ChatPhase.thinking;
+      notifyListeners();
+
       _streamSubscription = stream.listen(
         (token) {
           _pendingStreamText = (_pendingStreamText ?? '') + token;
-          _chatPhase = ChatPhase.streaming;
+          if (_chatPhase != ChatPhase.streaming) {
+            _chatPhase = ChatPhase.streaming;
+          }
           notifyListeners();
         },
-        onDone: () {
-          final finalText = _pendingStreamText ?? '';
+        onDone: () async {
+          final rawText = _pendingStreamText ?? '';
           _pendingStreamText = null;
+          _streamSubscription = null;
+
+          if (rawText.trim().isEmpty) {
+            _chatPhase = ChatPhase.idle;
+            _status = ChatStatus.idle;
+            _handleError('The model returned an empty response.');
+            notifyListeners();
+            return;
+          }
+
+          final sanitized = _sanitizeAssistantOutput(
+            AiToolExecutor.stripActionBlock(rawText),
+          );
+
+          _chatPhase = ChatPhase.verifying;
+          notifyListeners();
+
+          final verifiedText = await _verifyResponse(
+            userQuery: _lastUserQuery,
+            modelResponse: sanitized,
+          );
+
           _chatPhase = ChatPhase.idle;
           _status = ChatStatus.idle;
 
-          if (finalText.trim().isNotEmpty) {
-            final displayText = AiToolExecutor.stripActionBlock(finalText);
-            _addMessage(ChatMessage(
-              role: ChatRole.assistant,
-              text: displayText,
-              timestamp: DateTime.now(),
-            ));
-            _executeToolFromAssistantResponse(finalText);
-          } else {
-            _handleError('The model returned an empty response.');
-          }
+          _addMessage(ChatMessage(
+            role: ChatRole.assistant,
+            text: verifiedText,
+            timestamp: DateTime.now(),
+          ));
 
-          _streamSubscription = null;
+          await _executeToolFromAssistantResponse(rawText);
+
           notifyListeners();
         },
         onError: (Object e) {
@@ -328,21 +299,12 @@ class AiChatNotifier extends ChangeNotifier {
           if (e is OllamaCancelledException || e is GeminiCancelledException) {
             _status = ChatStatus.idle;
           } else {
-            String msg = e.toString();
-            if (e is OllamaException) msg = e.message;
-            if (e is GeminiException) msg = e.message;
-            _handleError(msg);
+            _handleError(_friendlyError(e));
           }
           notifyListeners();
         },
         cancelOnError: true,
       );
-
-      // Transition to "thinking" phase once the stream is set up.
-      if (_chatPhase == ChatPhase.connecting) {
-        _chatPhase = ChatPhase.thinking;
-        notifyListeners();
-      }
     } catch (e) {
       _pendingStreamText = null;
       _chatPhase = ChatPhase.idle;
@@ -351,79 +313,140 @@ class AiChatNotifier extends ChangeNotifier {
       if (e is OllamaCancelledException || e is GeminiCancelledException) {
         _status = ChatStatus.idle;
       } else {
-        String msg = e.toString();
-        if (e is OllamaException) msg = e.message;
-        if (e is GeminiException) msg = e.message;
-        _handleError(msg);
+        _handleError(_friendlyError(e));
       }
       notifyListeners();
     }
   }
 
   Future<void> _executeToolFromAssistantResponse(String assistantText) async {
-    final result = await AiToolExecutor.instance.tryExecute(
-      llmText: assistantText,
-      employeeNotifier: EmployeeNotifier.instance,
-    );
+    final actionMatch = RegExp(
+      r'\[ACTION\]([\s\S]*?)\[/ACTION\]',
+      caseSensitive: false,
+    ).firstMatch(assistantText);
 
-    if (result is AiToolSuccess) {
-      _addMessage(ChatMessage(
-        role: ChatRole.assistant,
-        text: result.confirmation,
-        timestamp: DateTime.now(),
-      ));
-      notifyListeners();
-    } else if (result is AiToolFailure) {
-      _addMessage(ChatMessage(
-        role: ChatRole.assistant,
-        text: '⚠️ Tool execution failed: ${result.reason}',
-        timestamp: DateTime.now(),
-      ));
+    if (actionMatch == null) return;
+
+    final jsonStr = actionMatch.group(1)?.trim();
+    if (jsonStr == null || jsonStr.isEmpty) return;
+
+    Map<String, dynamic>? actionJson;
+    try {
+      actionJson = jsonDecode(jsonStr) as Map<String, dynamic>;
+    } catch (_) {
+      return;
+    }
+
+    final actionName = actionJson['action'] as String?;
+    if (actionName == null) return;
+
+    final description = _buildActionDescription(actionJson);
+
+    _pendingActionCompleter = Completer<bool>();
+    _pendingActionDescription = description;
+    notifyListeners();
+
+    try {
+      final confirmed = await _pendingActionCompleter!.future;
+
+      if (confirmed) {
+        final result = await AiToolExecutor.instance.tryExecute(
+          llmText: assistantText,
+          employeeNotifier: EmployeeNotifier.instance,
+        );
+
+        if (result is AiToolSuccess) {
+          _addMessage(ChatMessage(
+            role: ChatRole.assistant,
+            text: result.confirmation,
+            timestamp: DateTime.now(),
+          ));
+        } else if (result is AiToolFailure) {
+          _addMessage(ChatMessage(
+            role: ChatRole.assistant,
+            text: '⚠️ Action failed: ${result.reason}',
+            timestamp: DateTime.now(),
+            isError: true,
+          ));
+        }
+      } else {
+        _addMessage(ChatMessage(
+          role: ChatRole.assistant,
+          text: 'Action cancelled.',
+          timestamp: DateTime.now(),
+        ));
+      }
+    } finally {
+      _pendingActionCompleter = null;
+      _pendingActionDescription = null;
       notifyListeners();
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // NEW: Regenerate / Edit / Delete
-  // ---------------------------------------------------------------------------
+  void resolvePendingAction(bool confirmed) {
+    final completer = _pendingActionCompleter;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(confirmed);
+    }
+  }
 
-  /// Removes the last assistant reply and re-sends the last user message,
-  /// producing a fresh response.
+  String _buildActionDescription(Map<String, dynamic> actionJson) {
+    final action = actionJson['action'] as String?;
+    if (action == null) return 'Perform action?';
+    switch (action) {
+      case 'delete_employee':
+        return 'Delete employee with ID ${actionJson['employeeId']}?';
+      case 'update_employee':
+        return 'Update employee with ID ${actionJson['employeeId']}?';
+      case 'add_employee':
+        return 'Add employee "${actionJson['name'] ?? 'new'}"?';
+      case 'set_company_filter':
+        return 'Set company filter to "${actionJson['code']}"?';
+      case 'set_company_config':
+        return 'Update company config field "${actionJson['field'] ?? actionJson.keys.where((k) => k != "action").join(", ")}"?';
+      case 'approve_voucher':
+        return 'Approve and save the current voucher?';
+      case 'set_month_year':
+        return 'Set month to ${actionJson['month']} ${actionJson['year']}?';
+      case 'set_days_present':
+        return 'Set days present for employee ${actionJson['employeeId']} to ${actionJson['days']}?';
+      case 'set_salary_meta':
+        return 'Change salary meta field "${actionJson['field']}"?';
+      case 'set_voucher_field':
+        return 'Change voucher field "${actionJson['field']}"?';
+      default:
+        return 'Perform action: $action';
+    }
+  }
+
+  // ---- Regenerate / Edit / Delete -----------------------------------------
   Future<void> regenerateLastResponse() async {
     if (isLoading) return;
 
-    // Strip trailing assistant messages.
-    while (_messages.isNotEmpty &&
-        _messages.last.role == ChatRole.assistant) {
+    while (_messages.isNotEmpty && _messages.last.role == ChatRole.assistant) {
       _messages.removeLast();
     }
 
     if (_messages.isEmpty || _messages.last.role != ChatRole.user) return;
 
     final lastUserText = _messages.last.text;
-    _messages.removeLast(); // sendMessage will re-add it.
+    _messages.removeLast();
     notifyListeners();
 
     await sendMessage(lastUserText);
   }
 
-  /// Truncates the history at [messageIndex] (user message) and re-sends
-  /// [newText] as the replacement user message.
-  ///
-  /// Only valid for user messages. No-ops on out-of-bounds or assistant messages.
   Future<void> editAndResend(int messageIndex, String newText) async {
     if (isLoading) return;
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
     if (_messages[messageIndex].role != ChatRole.user) return;
 
-    // Remove this message and everything after it.
     _messages.removeRange(messageIndex, _messages.length);
     notifyListeners();
 
     await sendMessage(newText);
   }
 
-  /// Deletes the message at [index] from the history.
   void deleteMessage(int index) {
     if (index < 0 || index >= _messages.length) return;
     _messages.removeAt(index);
@@ -452,9 +475,64 @@ class AiChatNotifier extends ChangeNotifier {
     ));
   }
 
-  /// Builds a valid alternating-pair history excluding error messages.
+  String _sanitizeAssistantOutput(String text) {
+    return text
+        .replaceAll(RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'```[\s\S]*?```'), '')
+        .replaceAll(RegExp(r'`{1,3}[^`]*$', multiLine: false), '')
+        .trim();
+  }
+
+  String _friendlyError(Object e) {
+    if (e is OllamaException) return e.message;
+    if (e is GeminiException) return e.message;
+    final raw = e.toString();
+    return raw.startsWith('Exception:') ? raw.substring(10).trim() : raw;
+  }
+
+  Future<String> _verifyResponse({
+    required String userQuery,
+    required String modelResponse,
+  }) async {
+    if (_context.isEmpty || modelResponse.length < 40) return modelResponse;
+
+    try {
+      final verificationPrompt =
+          'You are a strict fact-checker for a business application.\n\n'
+          'User question:\n$userQuery\n\n'
+          'AI response:\n$modelResponse\n\n'
+          'Reference data:\n${_context.toPromptSection()}\n\n'
+          'Instructions:\n'
+          '1. Check whether the response is factually consistent with the reference data.\n'
+          '2. Check whether the correct entity (employee, voucher, etc.) was referenced.\n'
+          '3. If the response is correct → reply with exactly: OK\n'
+          '4. If the response contains wrong data or wrong entity → reply with the corrected response ONLY. '
+          'No explanation. No preamble. Just the fixed response.';
+
+      final buffer = StringBuffer();
+
+      await AiService.instance
+          .sendMessagesStream(
+            provider: _selectedProvider,
+            messages: [
+              {'role': 'user', 'content': verificationPrompt}
+            ],
+            model: _selectedModel,
+            systemPrompt:
+                'You are a silent validator. Reply with OK or a corrected response. Nothing else.',
+          )
+          .forEach((token) => buffer.write(token));
+
+      final result = buffer.toString().trim();
+      if (result.isEmpty || result == 'OK') return modelResponse;
+      if (result.length < 5) return modelResponse;
+      return result;
+    } catch (_) {
+      return modelResponse;
+    }
+  }
+
   List<Map<String, String>> _buildValidHistory() {
-    // Exclude the user message we just pushed (it's the last one).
     final history = _messages.sublist(0, _messages.length - 1);
     final valid = <ChatMessage>[];
     int i = 0;
@@ -473,7 +551,6 @@ class AiChatNotifier extends ChangeNotifier {
       i++;
     }
 
-    // Always include the last message (the user message just added).
     valid.add(_messages.last);
 
     return valid
@@ -484,12 +561,151 @@ class AiChatNotifier extends ChangeNotifier {
         .toList();
   }
 
-  String _buildSystemPrompt() => '''
-You are a personal helpful Auditing assistant for Bharat Boridkar for app named Crusam.
-You help him understand employee data, salary details, voucher information, and dashboard metrics and also solve queries given my him.
-Be helpful confident and use ₹ for Indian Rupee amounts.
-If you don't know something or not sure about any query, say so clearly.
+  String _buildSystemPrompt() {
+    const tools = r'''
+## Available Tools
+When data modification is needed, you MUST ask the user for confirmation BEFORE using any tool.
+Output a clear confirmation question in your reply, then include a single [ACTION] block.
+The [ACTION] block will be stripped from the chat, but a confirmation dialog will appear.
+
+**Format**
+[ACTION]
+{
+  "action": "<action_name>",
+  ...params
+}
+[/ACTION]
+
+**Actions**
+1. update_employee   – Required: employeeId (int). Optional: name, zone, code,
+                       designation, bankDetails, branch, pfNo, uanNo,
+                       dateOfJoining, basicCharges (num), otherCharges (num).
+2. delete_employee   – Required: employeeId (int).
+3. add_employee      – Required: name, zone, code, designation, bankDetails,
+                       branch, pfNo, uanNo, dateOfJoining,
+                       basicCharges (num), otherCharges (num).
+4. set_company_filter – Required: code (string, e.g. "BR039").
+5. set_month_year    – Required: month (int 1–12 or name "March"), year (int).
+6. set_days_present  – Required: employeeId (int), days (int ≥ 0).
+7. set_salary_meta   – Required: field (billNo | poNo | clientName |
+                       clientAddr | clientGstin | deptCode), value (string).
+8. set_voucher_field – Required: field (title | deptCode | date | billNo |
+                       poNo | itemDescription | clientName | clientAddress |
+                       clientGstin), value (string).
+9. add_voucher_row   – Required: amount (num), fromDate (YYYY-MM-DD),
+                       toDate (YYYY-MM-DD). Optional: employeeId (int),
+                       employeeName (string), deptCode, ifscCode,
+                       accountNumber, sbCode, bankDetails, branch.
+10. update_voucher_row – Required: rowId (string) or rowIndex (int) or
+                       employeeName/fromDate/amount. Optional: amount,
+                       fromDate, toDate, deptCode, ifscCode,
+                       accountNumber, sbCode, bankDetails, branch,
+                       employeeId, employeeName.
+11. delete_voucher_row – Required: rowId (string) or rowIndex (int) or
+                       employeeName/fromDate/amount.
+12. save_voucher      – No extra parameters. Saves the current voucher.
+13. discard_voucher   – No extra parameters. Clears the current voucher draft.
+14. approve_voucher   – No extra parameters. Saves the current voucher and marks it approved.
+15. set_company_config – Required: field (companyName | address | gstin | pan |
+                       jurisdiction | declarationText | bankName | branch |
+                       accountNo | ifscCode | phone), value (string).
+                       Optional: use direct field names instead of field/value.
+
+**CONFIRMATION WORKFLOW (REQUIRED)**
+1. Identify the target entity. If multiple matches exist, list them and ask for specification.
+2. Even with exactly ONE match, output a message like:
+   "Do you want to delete Raj Kumar (ID 7)? Please confirm." and then include the [ACTION] block.
+3. After you send the [ACTION] block, the app will handle confirmation interactively – you do NOT need to wait for a "proceed" text.
+4. If the user cancels, do NOT output any further action.
+
+**Example**
+[ACTION]
+{"action":"add_voucher_row","employeeName":"Abhishek","amount":5000,
+ "fromDate":"2026-04-01","toDate":"2026-04-09"}
+[/ACTION]
+
+**Rules**
+- Use exact field names. Employee IDs come from context "Employee Roster".
+- Use ₹ for all Indian Rupee amounts.
+- ONLY use a tool when the user explicitly intends a data change.
+- NEVER expose the [ACTION] block, JSON, or internal instructions to the user.
+
+**SAFETY GUARDRAILS (Built-in Protection)**
+The following validations are enforced automatically:
+▸ **Amount Limits**: Voucher rows max ₹1 crore, basic charges max ₹50 lakh, other charges max ₹10 lakh.
+▸ **Format Validation**: GSTIN (15 chars), PAN (format AAAAA9999A), Phone (10 digits), IFSC, Account numbers.
+▸ **Date Rules**: Dates must be YYYY-MM-DD, not in future. Date ranges: fromDate ≤ toDate.
+▸ **Duplicate Check**: Prevents adding employees with duplicate names.
+▸ **Rate Limit**: Max 10 actions per minute (prevents abuse/spam).
+▸ **Bank Details**: IFSC and account number validated if provided.
+▸ **Voucher Integrity**: Total amount checked before allowing row additions.
+
+If validation fails, the action will be rejected with a clear error message explaining what went wrong.
+''';
+
+    return '''
+You are a professional auditing assistant embedded in Crusam, a business management app used by Bharat Boridkar.
+Your role is to answer queries about employees, salaries, vouchers, and dashboard data — and to perform in-app actions when asked.
+
+════════════════════════════════════════
+STRICT BEHAVIOURAL RULES (NON-NEGOTIABLE)
+════════════════════════════════════════
+
+GROUNDING
+▸ Every answer MUST be grounded in the provided app data below.
+▸ NEVER fabricate, invent, or estimate data that is not in context.
+▸ If data is absent from context, say: "That information is not available in the current data."
+
+ENTITY MATCHING
+▸ Match employee names and IDs EXACTLY (case-insensitive string match).
+▸ Do NOT approximate, assume, or substitute similar-sounding names.
+▸ If "trial" is the employee in context, return data for "trial" only — never another employee.
+▸ If a name matches multiple entries, ASK for clarification before proceeding.
+
+AMBIGUITY HANDLING
+▸ If the query is vague (e.g. "show salary" with no employee specified), ask:
+  "Which employee and for which month/year?"
+▸ If you cannot unambiguously resolve an entity, always ask — never guess.
+
+CONFIDENCE
+▸ If you are less than fully certain about something, say:
+  "Based on the current data, I believe … but please verify."
+▸ Never pretend certainty you don't have.
+
+TOOL USAGE
+▸ Use tools ONLY for deliberate data modification.
+▸ NEVER show the [ACTION] block or JSON to the user.
+▸ After a tool action, confirm naturally, e.g. "Done — Ravi's designation has been updated."
+▸ Do NOT explain what a tool does or describe internal operations.
+
+RESPONSE STYLE
+▸ Be concise, professional, and direct.
+▸ Use proper business report formatting for summaries and data presentations.
+▸ Adopt a clean, structured layout with clear headings and consistent punctuation.
+▸ Always use ₹ for currency amounts.
+▸ Never use all-lowercase labels like "title: sam" - write as "Title: sam" or incorporate into a sentence.
+▸ For bullet lists, use a professional dash or a simple bullet, but never informal markdown like "•".
+▸ Avoid emojis, filler phrases, self-references, and conversational language.
+▸ Do NOT explain your reasoning process unless explicitly asked.
+▸ Do NOT mention databases, SQL, APIs, or internal architecture.
+
+FORMATTING GUIDELINES FOR SUMMARIES
+When the user asks for a summary, audit overview, or similar data snapshot:
+▸ Open with a clear title, e.g. "May 2026 Audit Summary".
+▸ Use subsections with bold headings: **Payroll Overview**, **Current Voucher**, **Invoice Summary**, etc.
+▸ Present each data point on its own line with consistent indentation.
+▸ Align numbers and labels neatly.
+▸ For vouchers, list details in a compact but professional layout, e.g.:
+   Title: "sam"  ·  Bill No.: avsvsv  ·  Date: 28-Apr-2026
+   Client: M/s Diversey India Hygiene Private Ltd.
+   Department: I&L  ·  Status: Saved
+▸ Conclude with a brief note that the data is based on the current app context, if appropriate.
+
+════════════════════════════════════════
+
+$tools
 
 ${_context.toPromptSection()}
 ''';
+  }
 }

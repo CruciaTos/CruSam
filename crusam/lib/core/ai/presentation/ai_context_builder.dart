@@ -1,4 +1,4 @@
-import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
+import 'package:crusam/core/ai/models/app_context.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
@@ -10,13 +10,16 @@ import '../../../data/models/voucher_row_model.dart';
 /// Builds a rich [AppContext] from live notifier state for injection into
 /// [AiChatNotifier] before every message.
 ///
-/// Usage — call right before sending a message:
+/// **Important**: This automatically loads ALL historical data (employees, invoices)
+/// from the database before building context, ensuring Ollama sees all existing data.
+///
+/// Usage:
 ///
 /// ```dart
-/// final ctx = AiContextBuilder.build(
+/// final ctx = await AiContextBuilder.build(
 ///   employeeNotifier: EmployeeNotifier.instance,
 ///   voucherNotifier:  VoucherNotifier.instance,
-///   currentVoucher:   VoucherNotifier.instance.current,   // ← live draft
+///   currentVoucher:   VoucherNotifier.instance.current,
 /// );
 /// AiChatNotifier.instance.updateContext(ctx);
 /// AiChatNotifier.instance.sendMessage(text);
@@ -24,7 +27,7 @@ import '../../../data/models/voucher_row_model.dart';
 class AiContextBuilder {
   AiContextBuilder._();
 
-  static AppContext build({
+  static Future<AppContext> build({
     EmployeeNotifier? employeeNotifier,
     SalaryStateController? salaryStateController,
     SalaryDataNotifier? salaryDataNotifier,
@@ -33,7 +36,16 @@ class AiContextBuilder {
     /// Pass [VoucherNotifier.instance.current] for real-time draft data.
     VoucherModel? currentVoucher,
     Map<String, String>? extras,
-  }) {
+  }) async {
+    // **CRITICAL**: Load ALL historical data from database before building context.
+    // This ensures Ollama receives the complete picture, not just in-memory state.
+    if (employeeNotifier != null && employeeNotifier.employees.isEmpty) {
+      await employeeNotifier.load();
+    }
+    if (voucherNotifier != null && voucherNotifier.savedVouchers.isEmpty) {
+      await voucherNotifier.loadDependencies();
+    }
+
     final employeeSection     = _buildEmployeeSection(employeeNotifier);
     final salarySection       = _buildSalarySection(salaryStateController, salaryDataNotifier);
     final currentDraftSection = _buildCurrentDraftSection(currentVoucher);

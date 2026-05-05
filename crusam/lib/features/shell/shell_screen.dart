@@ -8,13 +8,13 @@ import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
-// ── AI chat integration imports ───────────────────────────────────────────
+// ── AI chat integration ─────────────────────────────────────────────────────
 import '../../core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
-import '../../shared/widgets/ai_chat_panel.dart';
+import '../../shared/widgets/ai_chat_panel.dart';   // ← AiChatScreen lives here
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -37,6 +37,7 @@ class _ShellColors {
   static const hoverOverlay = Color(0x1AF8FAFC);
   static const selectedOverlay = Color(0x261E3A8A);
   static const sectionHeader = Color(0xFF475569);
+  static const squeezeLimit = Color(0xFFEF4444);   // red when min width reached
 }
 
 // ── Nav model ──────────────────────────────────────────────────────────────
@@ -123,6 +124,37 @@ class _ShellScreenState extends State<ShellScreen> {
   String _activePath = '/dashboard';
   String _pageTitle = 'Dashboard';
 
+  // ─── Resizable AI panel state ───────────────────────────────────────────
+  bool   _isPanelOpen   = false;
+  double _panelWidth    = 400;
+  bool   _handleHovered = false;
+
+  static const double _minPanelWidth = 300;
+  static const double _maxPanelWidth = 700;
+  static const double _defaultWidth  = 400;
+
+  // Dynamic line colour – turns red when the panel can't be squeezed further
+  Color get _handleLineColor {
+    final atLimit = _panelWidth == _minPanelWidth;
+    if (atLimit) {
+      return _ShellColors.squeezeLimit.withOpacity(_handleHovered ? 0.8 : 0.4);
+    }
+    return _handleHovered ? Colors.white54 : Colors.white24;
+  }
+
+  void _togglePanel() {
+    setState(() {
+      if (_isPanelOpen) {
+        _isPanelOpen = false;
+      } else {
+        _isPanelOpen = true;
+        _panelWidth = _defaultWidth;
+      }
+    });
+  }
+
+  void _closePanel() => setState(() => _isPanelOpen = false);
+
   void _toggle(String label) => setState(() =>
       _open.contains(label) ? _open.remove(label) : _open.add(label));
 
@@ -144,147 +176,149 @@ class _ShellScreenState extends State<ShellScreen> {
     final w = _expanded ? AppSpacing.sidebarExpanded : AppSpacing.sidebarCollapsed;
 
     return Scaffold(
-      body: AiChatPanelOverlay(
-        notifier: AiChatNotifier.instance,
-        child: Stack(children: [
-          Positioned.fill(
-            child: RepaintBoundary(
-              child: Container(
-                color: _ShellColors.background,
-                child: const ParticleNetwork(
-                  particleColor: Color(0x3394A3B8),
-                  lineColor: Color(0x1A3B82F6),
-                  particleCount: 80,
-                  maxSpeed: 0.8,
-                  maxSize: 2.2,
-                  lineDistance: 120,
-                  drawNetwork: true,
-                  touchActivation: false,
-                  gravityType: GravityType.none,
-                  gravityStrength: 0.08,
-                ),
+      body: Stack(children: [
+        // Animated background particles
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: Container(
+              color: _ShellColors.background,
+              child: const ParticleNetwork(
+                particleColor: Color(0x3394A3B8),
+                lineColor: Color(0x1A3B82F6),
+                particleCount: 80,
+                maxSpeed: 0.8,
+                maxSize: 2.2,
+                lineDistance: 120,
+                drawNetwork: true,
+                touchActivation: false,
+                gravityType: GravityType.none,
+                gravityStrength: 0.08,
               ),
             ),
           ),
-          Row(children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: w,
-              decoration: BoxDecoration(
-                color: _ShellColors.surfaceGlass,
-                border: Border(right: BorderSide(color: _ShellColors.border)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 12,
-                    offset: const Offset(2, 0),
-                  ),
-                ],
-              ),
-              child: ClipRect(
-                child: _expanded
-                    ? _ExpandedSidebar(
-                        active: _activePath,
-                        openGroups: _open,
-                        onNavigate: (p) => context.go(p),
-                        onToggle: _toggle,
-                      )
-                    : _CollapsedSidebar(
-                        active: _activePath,
-                        onNavigate: (p) => context.go(p),
-                      ),
-              ),
+        ),
+        // Main layout – left sidebar + central area
+        Row(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: w,
+            decoration: BoxDecoration(
+              color: _ShellColors.surfaceGlass,
+              border: Border(right: BorderSide(color: _ShellColors.border)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 12,
+                  offset: const Offset(2, 0),
+                ),
+              ],
             ),
-            Expanded(
-              child: Column(children: [
+            child: ClipRect(
+              child: _expanded
+                  ? _ExpandedSidebar(
+                      active: _activePath,
+                      openGroups: _open,
+                      onNavigate: (p) => context.go(p),
+                      onToggle: _toggle,
+                    )
+                  : _CollapsedSidebar(
+                      active: _activePath,
+                      onNavigate: (p) => context.go(p),
+                    ),
+            ),
+          ),
+          // ───── Central area + resizable AI panel on the right ─────
+          Expanded(
+            child: Stack(children: [
+              Column(children: [
                 _Header(
                   expanded: _expanded,
                   onToggle: () => setState(() => _expanded = !_expanded),
                   title: _pageTitle,
+                  onAiTap: _togglePanel,
+                  isPanelOpen: _isPanelOpen,
                 ),
                 Expanded(child: widget.child),
               ]),
-            ),
-          ]),
-        ]),
-      ),
-    );
-  }
-}
-
-// ───── AI chat overlay ───────────────────────────────────────────────────────
-class AiChatPanelOverlay extends StatelessWidget {
-  final AiChatNotifier notifier;
-  final Widget child;
-
-  const AiChatPanelOverlay({
-    super.key,
-    required this.notifier,
-    required this.child,
-  });
-
-  static const double _panelWidth = 420;
-  static const Duration _animationDuration = Duration(milliseconds: 220);
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: notifier,
-      builder: (context, _) {
-        final isOpen = notifier.panelOpen;
-
-        return Stack(
-          children: [
-            child,
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: !isOpen,
-                child: AnimatedOpacity(
-                  opacity: isOpen ? 1 : 0,
-                  duration: _animationDuration,
-                  curve: Curves.easeOut,
+              // ── Resizable AI chat panel ──
+              if (_isPanelOpen) ...[
+                // Backdrop (tap to close)
+                Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTap: notifier.closePanel,
-                    child: Container(
-                      color: Colors.black.withOpacity(0.18),
-                    ),
+                    onTap: _closePanel,
+                    child: Container(color: Colors.black.withOpacity(0.18)),
                   ),
                 ),
-              ),
-            ),
-            AnimatedPositioned(
-              duration: _animationDuration,
-              curve: Curves.easeOutCubic,
-              top: 0,
-              right: isOpen ? 0 : -_panelWidth,
-              bottom: 0,
-              width: _panelWidth,
-              child: IgnorePointer(
-                ignoring: !isOpen,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    border: Border(
-                      left: BorderSide(color: _ShellColors.border),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.30),
-                        blurRadius: 24,
-                        offset: const Offset(-6, 0),
+                // Panel itself
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _panelWidth,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ══════ Drag handle – full‑height line on the right side ══════
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeColumn,
+                        onEnter: (_) => setState(() => _handleHovered = true),
+                        onExit:  (_) => setState(() => _handleHovered = false),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragUpdate: (details) {
+                            setState(() {
+                              _panelWidth -= details.delta.dx;
+                              _panelWidth = _panelWidth.clamp(_minPanelWidth, _maxPanelWidth);
+                            });
+                          },
+                          child: Container(
+                            width: 6,
+                            decoration: BoxDecoration(
+                              // The visible line is the right border of this thin zone
+                              border: Border(
+                                right: BorderSide(
+                                  color: _handleLineColor,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // ═══ Chat screen – with horizontal scroll when squeezed ═══
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SizedBox(
+                            width: _panelWidth,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surface,
+                                border: Border(
+                                  left: BorderSide(color: _ShellColors.border),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.30),
+                                    blurRadius: 24,
+                                    offset: const Offset(-6, 0),
+                                  ),
+                                ],
+                              ),
+                              child: const AiChatScreen(),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  child: const ClipRect(
-                    child: AiChatScreen(),
-                  ),
                 ),
-              ),
-            ),
-          ],
-        );
-      },
+              ],
+            ]),
+          ),
+        ]),
+      ]),
     );
   }
 }
@@ -986,17 +1020,21 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _Header – now StatefulWidget to handle AI button hover
+// _Header – with AI panel toggle
 // ══════════════════════════════════════════════════════════════════════════
 class _Header extends StatefulWidget {
   final bool expanded;
   final VoidCallback onToggle;
   final String title;
+  final VoidCallback onAiTap;
+  final bool isPanelOpen;
 
   const _Header({
     required this.expanded,
     required this.onToggle,
     required this.title,
+    required this.onAiTap,
+    required this.isPanelOpen,
   });
 
   @override
@@ -1030,37 +1068,34 @@ class _HeaderState extends State<_Header> {
             style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
         const Spacer(),
 
-        // AI Assistant toggle with hover glow
+        // AI Assistant – opens resizable right‑side panel
         MouseRegion(
           onEnter: (_) => setState(() => _isHoveredAI = true),
           onExit: (_) => setState(() => _isHoveredAI = false),
-          child: ListenableBuilder(
-            listenable: AiChatNotifier.instance,
-            builder: (context, _) {
-              final panelOpen = AiChatNotifier.instance.panelOpen;
-              final iconColor = panelOpen || _isHoveredAI ? primaryColor : null;
-
-              return IconButton(
-                icon: Icon(Icons.auto_awesome, color: iconColor),
-                tooltip: 'AI Assistant',
-                onPressed: () {
-                  final ctx = AiContextBuilder.build(
-                    employeeNotifier: EmployeeNotifier.instance,
-                    salaryStateController: SalaryStateController.instance,
-                    salaryDataNotifier: SalaryDataNotifier.instance,
-                    voucherNotifier: VoucherNotifier.instance,
-                    currentVoucher: VoucherNotifier.instance.current,
-                  );
-                  AiChatNotifier.instance.updateContext(ctx);
-                  AiChatNotifier.instance.togglePanel();
-                },
-              );
-            },
+          child: IconButton(
+            icon: Icon(
+              Icons.auto_awesome,
+              color: widget.isPanelOpen || _isHoveredAI
+                  ? primaryColor
+                  : _ShellColors.iconDefault,
+            ),
+            tooltip: 'AI Assistant',
+            onPressed: () async {           // ← add async
+  final ctx = await AiContextBuilder.build(   // ← add await
+    employeeNotifier: EmployeeNotifier.instance,
+    salaryStateController: SalaryStateController.instance,
+    salaryDataNotifier: SalaryDataNotifier.instance,
+    voucherNotifier: VoucherNotifier.instance,
+    currentVoucher: VoucherNotifier.instance.current,
+  );
+  AiChatNotifier.instance.updateContext(ctx);
+  widget.onAiTap();
+},
           ),
         ),
-        const SizedBox(width: 12), // padding between AI button and user info
+        const SizedBox(width: 12),
 
-        // User info – only name and avatar, centered vertically & horizontally
+        // User info
         ListenableBuilder(
           listenable: AuthNotifier.instance,
           builder: (ctx, _) {
@@ -1071,10 +1106,9 @@ class _HeaderState extends State<_Header> {
             return Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Name only – email removed
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center, // horizontally centered
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(name,
                         style: AppTextStyles.bodyMedium.copyWith(

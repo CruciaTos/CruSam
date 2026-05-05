@@ -66,7 +66,7 @@ class GeminiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Core request (existing — unchanged)
+  // Core request (fixed: reset _streamCancelled at start)
   // ---------------------------------------------------------------------------
 
   Future<String> sendMessages({
@@ -74,6 +74,9 @@ class GeminiService {
     String? systemPrompt,
     String model = model15Flash,
   }) async {
+    // ── FIX: reset cancellation flag before a new request ────────────
+    _streamCancelled = false;
+
     final apiKey = await getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
       throw GeminiException(
@@ -153,11 +156,7 @@ class GeminiService {
   }
 
   // ---------------------------------------------------------------------------
-  // NEW: Pseudo-streaming for Gemini.
-  //
-  // Gemini's REST endpoint doesn't stream in the same chunked way as Ollama.
-  // We fetch the full response, then yield it in small chunks with a tiny
-  // delay so the UI gets the same typewriter experience.
+  // Pseudo-streaming for Gemini
   // ---------------------------------------------------------------------------
 
   /// Streams the Gemini response token-by-token (simulated).
