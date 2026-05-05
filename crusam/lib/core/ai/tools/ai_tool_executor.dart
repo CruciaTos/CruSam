@@ -18,7 +18,7 @@ import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 sealed class AiToolResult {}
 
 class AiToolSuccess extends AiToolResult {
-  final String confirmation; // Human-readable success message shown in chat.
+  final String confirmation; // Human‑readable success message shown in chat.
   AiToolSuccess(this.confirmation);
 }
 
@@ -53,7 +53,6 @@ class AiToolNotPresent extends AiToolResult {
 //   basicCharges, otherCharges, zone, code, gender, bankDetails,
 //   branch, pfNo, uanNo, ifscCode, accountNumber, dateOfJoining,
 //   aartiAcNo, sbCode, name
-// ─────────────────────────────────────────────────────────────────────────────
 
 class AiToolExecutor {
   AiToolExecutor._();
@@ -72,15 +71,21 @@ class AiToolExecutor {
   // ── Action tracking for rate limiting ──────────────────────────────────────
   final Map<String, List<DateTime>> _actionTimestamps = {};
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  // ── Public helpers ─────────────────────────────────────────────────────────
 
+  /// Extracts every `[ACTION]…[/ACTION]` block and returns their JSON strings.
+  static List<String> extractAllActionJsons(String text) {
+    final regex = RegExp(r'\[ACTION\]([\s\S]*?)\[/ACTION\]', caseSensitive: false);
+    return regex.allMatches(text).map((m) => m.group(1)!.trim()).toList();
+  }
 
-  /// Scans [llmText] for an `[ACTION]...[/ACTION]` block.
-  ///
-  /// If found, executes the action and returns [AiToolSuccess] or
-  /// [AiToolFailure].  If not found, returns [AiToolNotPresent].
-  ///
-  /// Pass the live [employeeNotifier] so it can be reloaded after mutations.
+  /// Strips all `[ACTION]…[/ACTION]` blocks from the text.
+  static String stripActionBlock(String text) {
+    return text.replaceAll(RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false), '').trim();
+  }
+
+  // ── Execute a single action (original entry point, now delegates) ──────────
+
   Future<AiToolResult> tryExecute({
     required String llmText,
     required EmployeeNotifier employeeNotifier,
@@ -98,6 +103,72 @@ class AiToolExecutor {
       return AiToolFailure('Could not parse ACTION block JSON.');
     }
 
+    return _executePayload(
+      payload,
+      employeeNotifier: employeeNotifier,
+      salaryStateController: salaryStateController,
+      salaryDataNotifier: salaryDataNotifier,
+      voucherNotifier: voucherNotifier,
+    );
+  }
+
+  // ── Execute a batch of action JSON strings ─────────────────────────────────
+
+  Future<AiToolResult> executeBatch(
+    List<String> actionJsons, {
+    required EmployeeNotifier employeeNotifier,
+    SalaryStateController? salaryStateController,
+    SalaryDataNotifier? salaryDataNotifier,
+    VoucherNotifier? voucherNotifier,
+  }) async {
+    final successes = <String>[];
+    final failures = <String>[];
+
+    for (final json in actionJsons) {
+      Map<String, dynamic> payload;
+      try {
+        payload = jsonDecode(json) as Map<String, dynamic>;
+      } catch (_) {
+        failures.add('Invalid JSON: $json');
+        continue;
+      }
+
+      final result = await _executePayload(
+        payload,
+        employeeNotifier: employeeNotifier,
+        salaryStateController: salaryStateController,
+        salaryDataNotifier: salaryDataNotifier,
+        voucherNotifier: voucherNotifier,
+      );
+
+      if (result is AiToolSuccess) {
+        successes.add(result.confirmation);
+      } else if (result is AiToolFailure) {
+        failures.add(result.reason);
+      }
+    }
+
+    if (failures.isEmpty) {
+      return AiToolSuccess(successes.join('\n'));
+    } else if (successes.isEmpty) {
+      return AiToolFailure(failures.join('\n'));
+    } else {
+      return AiToolSuccess(
+        '${successes.length} action(s) succeeded, ${failures.length} failed:\n'
+        '${successes.join('\n')}\nFailures:\n${failures.join('\n')}',
+      );
+    }
+  }
+
+  // ── Private: execute a single parsed payload ───────────────────────────────
+
+  Future<AiToolResult> _executePayload(
+    Map<String, dynamic> payload, {
+    required EmployeeNotifier employeeNotifier,
+    SalaryStateController? salaryStateController,
+    SalaryDataNotifier? salaryDataNotifier,
+    VoucherNotifier? voucherNotifier,
+  }) async {
     final action = payload['action'] as String?;
     final salaryController = salaryStateController ?? SalaryStateController.instance;
     final salaryNotifier = salaryDataNotifier ?? SalaryDataNotifier.instance;
@@ -141,18 +212,7 @@ class AiToolExecutor {
     }
   }
 
-  /// Strips the `[ACTION]...[/ACTION]` block from LLM text so it is not
-  /// rendered verbatim in the chat bubble.
-  static String stripActionBlock(String text) {
-    final start = text.indexOf(_openTag);
-    final end = text.indexOf(_closeTag);
-    if (start == -1 || end == -1 || end < start) return text;
-    return (text.substring(0, start) +
-            text.substring(end + _closeTag.length))
-        .trim();
-  }
-
-  // ── Private helpers ────────────────────────────────────────────────────────
+  // ── Private: JSON extraction (single block, used by tryExecute) ────────────
 
   String? _extractJson(String text) {
     final start = text.indexOf(_openTag);
@@ -160,6 +220,10 @@ class AiToolExecutor {
     if (start == -1 || end == -1 || end < start) return null;
     return text.substring(start + _openTag.length, end).trim();
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Existing tool implementations (all unchanged)
+  // ═══════════════════════════════════════════════════════════════════════════
 
   int? _parseEmployeeId(dynamic value) {
     if (value is num) return value.toInt();
@@ -264,6 +328,10 @@ class AiToolExecutor {
   bool _isValidVoucherAmount(double amount) {
     return amount > 0 && amount <= maxVoucherAmount;
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Individual action handlers
+  // ═══════════════════════════════════════════════════════════════════════════
 
   Future<AiToolResult> _updateEmployee(
     Map<String, dynamic> p,
@@ -581,7 +649,7 @@ class AiToolExecutor {
         current.copyWith(rows: [...current.rows, row]));
 
     return AiToolSuccess(
-      '✅ Added voucher row for ${row.employeeName.isNotEmpty ? row.employeeName : 'employee'} ' 
+      '✅ Added voucher row for ${row.employeeName.isNotEmpty ? row.employeeName : 'employee'} '
       'with ₹${amount.toStringAsFixed(2)} from $fromDate to $toDate.',
     );
   }

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:crusam/core/ai/models/ai_image_settings.dart';
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/models/app_context.dart';
 import 'package:crusam/core/ai/presentation/ai_context_builder.dart';
@@ -13,6 +15,7 @@ import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum ChatPhase { idle, connecting, thinking, streaming, verifying }
 enum ChatRole { user, assistant }
@@ -53,7 +56,7 @@ class AiChatNotifier extends ChangeNotifier {
   bool _panelOpen = false;
   AppContext _context = const AppContext();
 
-  // ---- Provider-aware state -----------------------------------------------
+  // ---- Provider‑aware state -----------------------------------------------
   AiProvider _selectedProvider = AiProvider.ollama;
   String _selectedModel = '';
   List<AiModelInfo> _availableModels = [];
@@ -66,9 +69,21 @@ class AiChatNotifier extends ChangeNotifier {
   StreamSubscription<String>? _streamSubscription;
   String _lastUserQuery = '';
 
+  // ---- Extraction guard (step 1 of image pipeline) -----------------------
+  /// True while the minicpm-v OCR extraction is running (before the main
+  /// stream begins).  Used by [cancelGeneration] to abort that phase too.
+  bool _isExtracting = false;
+
+  // ---- Image settings (multimodal configuration) --------------------------
+  AiImageSettings _imageSettings = AiImageSettings.defaults;
+
   // ---- Pending action (interactive confirmation) --------------------------
   Completer<bool>? _pendingActionCompleter;
   String? _pendingActionDescription;
+
+  // ---- NEW: Rate limit for image extraction -------------------------------
+  DateTime? _lastExtractionTime;
+  static const Duration _extractionCooldown = Duration(seconds: 5);
 
   // ---- Public getters (chat) ----------------------------------------------
   List<ChatMessage> get messages => List.unmodifiable(_messages);
@@ -95,6 +110,9 @@ class AiChatNotifier extends ChangeNotifier {
   bool get isInitializing => _initializing;
   bool get isLoadingModels => _loadingModels;
 
+  // ---- Image settings getter ----------------------------------------------
+  AiImageSettings get imageSettings => _imageSettings;
+
   // ---- Initialization -----------------------------------------------------
   Future<void> initialize() async {
     _initializing = true;
@@ -102,14 +120,72 @@ class AiChatNotifier extends ChangeNotifier {
 
     try {
       _selectedProvider = await AiService.instance.getSelectedProvider();
+      await _loadImageSettings();
       await refreshModels();
     } catch (_) {
       _availableModels = [];
       _selectedModel = '';
+      _imageSettings = AiImageSettings.defaults;
     } finally {
       _initializing = false;
       notifyListeners();
     }
+  }
+
+  /// Load image settings from SharedPreferences
+  Future<void> _loadImageSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final settingsJson =
+          prefs.getString('ai_image_settings_json') ?? '';
+      if (settingsJson.isNotEmpty) {
+        final decoded =
+            jsonDecode(settingsJson) as Map<String, dynamic>;
+        _imageSettings = AiImageSettings.fromMap(decoded);
+      } else {
+        _imageSettings = AiImageSettings.defaults;
+      }
+    } catch (_) {
+      _imageSettings = AiImageSettings.defaults;
+    }
+  }
+
+  /// Save image settings to SharedPreferences
+  Future<void> _saveImageSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'ai_image_settings_json',
+        jsonEncode(_imageSettings.toMap()),
+      );
+    } catch (_) {
+      debugPrint('Failed to save image settings');
+    }
+  }
+
+  /// Update image processing model
+  Future<void> setImageProcessingModel(String modelName) async {
+    _imageSettings = _imageSettings.copyWith(
+      imageProcessingModel: modelName,
+    );
+    await _saveImageSettings();
+    notifyListeners();
+  }
+
+  /// Update analysis model
+  Future<void> setAnalysisModel(String? modelName) async {
+    _imageSettings = _imageSettings.copyWith(
+      analysisModel: modelName,
+    );
+    await _saveImageSettings();
+    notifyListeners();
+  }
+
+  /// Convenience to update the entire image settings object at once.
+  Future<void> updateImageSettings(AiImageSettings newSettings) async {
+    _imageSettings = newSettings;
+    await _saveImageSettings();
+    notifyListeners();
   }
 
   // ---- Provider & model management ----------------------------------------
@@ -192,12 +268,23 @@ class AiChatNotifier extends ChangeNotifier {
     updateContext(ctx);
   }
 
-  // ---- Cancel in-flight request -------------------------------------------
+  // ---- Cancel in‑flight request -------------------------------------------
   void cancelGeneration() {
     if (!isLoading) return;
+
+    // Cancel the main stream subscription (step 2).
     _streamSubscription?.cancel();
     _streamSubscription = null;
+
+    // Cancel the user-selected provider in case step 2 is already running.
     AiService.instance.cancelCurrentRequest(_selectedProvider);
+
+    // Also cancel Ollama if we are still in the extraction phase (step 1).
+    // OllamaService is always used for extraction regardless of _selectedProvider.
+    if (_isExtracting) {
+      OllamaService.instance.cancelCurrentRequest();
+      _isExtracting = false;
+    }
 
     _pendingStreamText = null;
     _chatPhase = ChatPhase.idle;
@@ -206,25 +293,63 @@ class AiChatNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- Messaging ----------------------------------------------------------
-  Future<void> sendMessage(String userText) async {
+  // ---- Messaging (accepts optional imageBytes) ----------------------------
+  Future<void> sendMessage(String userText, {Uint8List? imageBytes}) async {
     final trimmed = userText.trim();
-    if (trimmed.isEmpty || isLoading) return;
+    if (trimmed.isEmpty && imageBytes == null) return;
+    if (isLoading) return;
 
     await _refreshContext();
 
-    if (_selectedModel.isEmpty) {
-      _handleError('No AI model selected. Please select a model first.');
-      return;
+    // ── Image path: guard rails ───────────────────────────────────────────
+    if (imageBytes != null) {
+      // 1) Toggle check – feature enabled?
+      if (!_imageSettings.enableImageProcessing) {
+        _handleError('Image processing is disabled in settings. Enable it in the AI settings panel.');
+        return;
+      }
+
+      // 2) Rate limit – prevent rapid consecutive extractions
+      final now = DateTime.now();
+      if (_lastExtractionTime != null &&
+          now.difference(_lastExtractionTime!) < _extractionCooldown) {
+        _handleError('Please wait a few seconds before sending another image.');
+        return;
+      }
+
+      // 3) Validate the configured vision model is available & vision-capable
+      final modelOk = await OllamaService.instance.isVisionModel(
+        _imageSettings.imageProcessingModel,
+      );
+      if (!modelOk) {
+        _handleError(
+          'The selected vision model "${_imageSettings.imageProcessingModel}" '
+          'is not available or not a vision model.\n'
+          'Check your Image Processing settings and ensure the model is pulled.',
+        );
+        return;
+      }
+
+      // 4) Ensure a main model is selected for the second step
+      if (_selectedModel.isEmpty) {
+        _handleError('No main model selected. Please select a model first.');
+        return;
+      }
+
+      _lastExtractionTime = now;
     }
 
-    _lastUserQuery = trimmed;
+    // ── Add user message to the chat ──────────────────────────────────────
+    final userMessageText = imageBytes != null
+        ? (trimmed.isEmpty ? '📎 Image uploaded' : trimmed)
+        : trimmed;
 
-    _addMessage(ChatMessage(
+    final userMsg = ChatMessage(
       role: ChatRole.user,
-      text: trimmed,
+      text: userMessageText,
       timestamp: DateTime.now(),
-    ));
+    );
+    _addMessage(userMsg);
 
     _status = ChatStatus.loading;
     _errorMessage = null;
@@ -235,80 +360,120 @@ class AiChatNotifier extends ChangeNotifier {
     try {
       final history = _buildValidHistory();
 
-      final stream = AiService.instance.sendMessagesStream(
-        provider: _selectedProvider,
-        messages: history,
-        model: _selectedModel,
-        systemPrompt: _buildSystemPrompt(),
-      );
+      // ────────────────────────────────────────────────────────────────────
+      // IMAGE PROCESSING BRANCH (step-by-step)
+      // --------------------------------------------------------------------
+      if (imageBytes != null) {
+        _isExtracting = true;
 
-      _chatPhase = ChatPhase.thinking;
-      notifyListeners();
+        // Show a placeholder while we start extraction
+        _pendingStreamText = '🔍 Reading image with ${_imageSettings.imageProcessingModel}…';
+        _chatPhase = ChatPhase.thinking;
+        notifyListeners();
 
-      _streamSubscription = stream.listen(
-        (token) {
-          _pendingStreamText = (_pendingStreamText ?? '') + token;
-          if (_chatPhase != ChatPhase.streaming) {
-            _chatPhase = ChatPhase.streaming;
-          }
-          notifyListeners();
-        },
-        onDone: () async {
-          final rawText = _pendingStreamText ?? '';
+        // STEP 1: Real‑time streaming extraction from the vision model
+        final extractionStream = OllamaService.instance.sendMultimodalExtractionStream(
+          model: _imageSettings.imageProcessingModel,
+          prompt:
+              'Extract all readable text and data from this image. '
+              'If the image contains a table, preserve the row and column '
+              'structure by separating columns with " | " and each row on '
+              'its own line. Include all numbers, names, codes, and headers '
+              'exactly as they appear. Do not summarise or add commentary.',
+          imageBytes: imageBytes,
+          timeout: Duration(seconds: _imageSettings.extractionTimeoutSeconds),
+        );
+
+        final extractedBuffer = StringBuffer();
+        StreamSubscription<String>? extractionSub;
+
+        try {
+          final completer = Completer<void>();
+          extractionSub = extractionStream.listen(
+            (token) {
+              extractedBuffer.write(token);
+              // Show live extraction preview in the pending text area
+              _pendingStreamText = extractedBuffer.toString();
+              notifyListeners();
+            },
+            onDone: () => completer.complete(),
+            onError: (e) => completer.completeError(e),
+            cancelOnError: true,
+          );
+          await completer.future;
+        } on OllamaCancelledException {
+          // Cancelled by user – bail out cleanly
+          _isExtracting = false;
           _pendingStreamText = null;
-          _streamSubscription = null;
-
-          if (rawText.trim().isEmpty) {
-            _chatPhase = ChatPhase.idle;
-            _status = ChatStatus.idle;
-            _handleError('The model returned an empty response.');
-            notifyListeners();
-            return;
-          }
-
-          final sanitized = _sanitizeAssistantOutput(
-            AiToolExecutor.stripActionBlock(rawText),
-          );
-
-          _chatPhase = ChatPhase.verifying;
-          notifyListeners();
-
-          final verifiedText = await _verifyResponse(
-            userQuery: _lastUserQuery,
-            modelResponse: sanitized,
-          );
-
           _chatPhase = ChatPhase.idle;
           _status = ChatStatus.idle;
-
-          _addMessage(ChatMessage(
-            role: ChatRole.assistant,
-            text: verifiedText,
-            timestamp: DateTime.now(),
-          ));
-
-          await _executeToolFromAssistantResponse(rawText);
-
           notifyListeners();
-        },
-        onError: (Object e) {
+          return;
+        } on OllamaException catch (e) {
+          _isExtracting = false;
           _pendingStreamText = null;
           _chatPhase = ChatPhase.idle;
-          _streamSubscription = null;
+          final errorMsg =
+              '❌ Image processing failed: ${e.message}\n\n'
+              'Configured model: ${_imageSettings.imageProcessingModel}';
+          _handleError(errorMsg);
+          return;
+        } finally {
+          extractionSub?.cancel();
+        }
 
-          if (e is OllamaCancelledException || e is GeminiCancelledException) {
-            _status = ChatStatus.idle;
-          } else {
-            _handleError(_friendlyError(e));
-          }
-          notifyListeners();
-        },
-        cancelOnError: true,
-      );
+        _isExtracting = false;
+        final rawText = extractedBuffer.toString().trim();
+
+        if (rawText.isEmpty) {
+          _handleError('The vision model did not extract any text from the image.');
+          return;
+        }
+
+        // ---- Add an "Extracted Text" preview message (collapsible in UI) ----
+        _addMessage(ChatMessage(
+          role: ChatRole.assistant,
+          text: '[EXTRACTED_TEXT]\n$rawText\n[/EXTRACTED_TEXT]',
+          timestamp: DateTime.now(),
+        ));
+
+        // ---- Prepare for step 2 ----
+        final userQuestion = trimmed.isEmpty
+            ? 'Please summarise the key data shown in this image.'
+            : trimmed;
+        final analysisModel = _imageSettings.analysisModel ?? _selectedModel;
+        _pendingStreamText = '💬 Passing data to $analysisModel…';
+        _chatPhase = ChatPhase.connecting;
+        notifyListeners();
+
+        // Create the message for the analysis model
+        final analysisPrompt = '''
+[IMAGE DATA — text extracted from the uploaded image by vision model]
+$rawText
+[END IMAGE DATA]
+
+Using the image data above, please answer this question: $userQuestion
+''';
+
+        // Use the normal streaming pathway for the final answer
+        await _startStreamingAnswer(
+          messages: [
+            {'role': 'user', 'content': analysisPrompt}
+          ],
+          model: analysisModel,
+        );
+      } else {
+        // --- Normal text‑only stream ---
+        await _startStreamingAnswer(
+          messages: history,
+          model: _selectedModel,
+        );
+      }
     } catch (e) {
       _pendingStreamText = null;
       _chatPhase = ChatPhase.idle;
       _streamSubscription = null;
+      _isExtracting = false;
 
       if (e is OllamaCancelledException || e is GeminiCancelledException) {
         _status = ChatStatus.idle;
@@ -319,28 +484,95 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
+  // ---- Helper to start the final streaming response -----------------------
+  Future<void> _startStreamingAnswer({
+    required List<Map<String, String>> messages,
+    required String model,
+  }) async {
+    // Cancel any previous stream
+    _streamSubscription?.cancel();
+
+    final stream = AiService.instance.sendMessagesStream(
+      provider: _selectedProvider,
+      messages: messages,
+      model: model,
+      systemPrompt: _buildSystemPrompt(),
+    );
+
+    _chatPhase = ChatPhase.thinking;
+    notifyListeners();
+
+    _streamSubscription = stream.listen(
+      (token) {
+        _pendingStreamText = (_pendingStreamText ?? '') + token;
+        if (_chatPhase != ChatPhase.streaming) {
+          _chatPhase = ChatPhase.streaming;
+        }
+        notifyListeners();
+      },
+      onDone: () async {
+        final rawStreamText = _pendingStreamText ?? '';
+        _pendingStreamText = null;
+        _streamSubscription = null;
+
+        if (rawStreamText.trim().isEmpty) {
+          _chatPhase = ChatPhase.idle;
+          _status = ChatStatus.idle;
+          _handleError('The model returned an empty response.');
+          notifyListeners();
+          return;
+        }
+
+        final sanitized = _sanitizeAssistantOutput(
+          AiToolExecutor.stripActionBlock(rawStreamText),
+        );
+
+        _chatPhase = ChatPhase.verifying;
+        notifyListeners();
+
+        final verifiedText = await _verifyResponse(
+          userQuery: _lastUserQuery,
+          modelResponse: sanitized,
+        );
+
+        _chatPhase = ChatPhase.idle;
+        _status = ChatStatus.idle;
+
+        _addMessage(ChatMessage(
+          role: ChatRole.assistant,
+          text: verifiedText,
+          timestamp: DateTime.now(),
+        ));
+
+        // Execute any tool actions (single or batch).
+        await _executeToolFromAssistantResponse(rawStreamText);
+
+        notifyListeners();
+      },
+      onError: (Object e) {
+        _pendingStreamText = null;
+        _chatPhase = ChatPhase.idle;
+        _streamSubscription = null;
+
+        if (e is OllamaCancelledException || e is GeminiCancelledException) {
+          _status = ChatStatus.idle;
+        } else {
+          _handleError(_friendlyError(e));
+        }
+        notifyListeners();
+      },
+      cancelOnError: true,
+    );
+  }
+
+  // ---- Tool execution from assistant response (now handles batch actions) ---
   Future<void> _executeToolFromAssistantResponse(String assistantText) async {
-    final actionMatch = RegExp(
-      r'\[ACTION\]([\s\S]*?)\[/ACTION\]',
-      caseSensitive: false,
-    ).firstMatch(assistantText);
+    final actionJsons = AiToolExecutor.extractAllActionJsons(assistantText);
+    if (actionJsons.isEmpty) return;
 
-    if (actionMatch == null) return;
-
-    final jsonStr = actionMatch.group(1)?.trim();
-    if (jsonStr == null || jsonStr.isEmpty) return;
-
-    Map<String, dynamic>? actionJson;
-    try {
-      actionJson = jsonDecode(jsonStr) as Map<String, dynamic>;
-    } catch (_) {
-      return;
-    }
-
-    final actionName = actionJson['action'] as String?;
-    if (actionName == null) return;
-
-    final description = _buildActionDescription(actionJson);
+    final description = actionJsons.length == 1
+        ? _buildSingleActionDescription(actionJsons.first)
+        : 'Add ${actionJsons.length} voucher rows?';
 
     _pendingActionCompleter = Completer<bool>();
     _pendingActionDescription = description;
@@ -350,9 +582,10 @@ class AiChatNotifier extends ChangeNotifier {
       final confirmed = await _pendingActionCompleter!.future;
 
       if (confirmed) {
-        final result = await AiToolExecutor.instance.tryExecute(
-          llmText: assistantText,
+        final result = await AiToolExecutor.instance.executeBatch(
+          actionJsons,
           employeeNotifier: EmployeeNotifier.instance,
+          voucherNotifier: VoucherNotifier.instance,
         );
 
         if (result is AiToolSuccess) {
@@ -364,7 +597,7 @@ class AiChatNotifier extends ChangeNotifier {
         } else if (result is AiToolFailure) {
           _addMessage(ChatMessage(
             role: ChatRole.assistant,
-            text: '⚠️ Action failed: ${result.reason}',
+            text: '⚠️ Actions failed: ${result.reason}',
             timestamp: DateTime.now(),
             isError: true,
           ));
@@ -380,6 +613,15 @@ class AiChatNotifier extends ChangeNotifier {
       _pendingActionCompleter = null;
       _pendingActionDescription = null;
       notifyListeners();
+    }
+  }
+
+  String _buildSingleActionDescription(String json) {
+    try {
+      final action = jsonDecode(json) as Map<String, dynamic>;
+      return _buildActionDescription(action);
+    } catch (_) {
+      return 'Perform this action?';
     }
   }
 
@@ -414,6 +656,8 @@ class AiChatNotifier extends ChangeNotifier {
         return 'Change salary meta field "${actionJson['field']}"?';
       case 'set_voucher_field':
         return 'Change voucher field "${actionJson['field']}"?';
+      case 'add_voucher_row':
+        return 'Add voucher row for ${actionJson['employeeName'] ?? 'employee'} (₹${actionJson['amount'] ?? '?'})?';
       default:
         return 'Perform action: $action';
     }
@@ -498,7 +742,7 @@ class AiChatNotifier extends ChangeNotifier {
 
     try {
       final verificationPrompt =
-          'You are a strict fact-checker for a business application.\n\n'
+          'You are a strict fact‑checker for a business application.\n\n'
           'User question:\n$userQuery\n\n'
           'AI response:\n$modelResponse\n\n'
           'Reference data:\n${_context.toPromptSection()}\n\n'
@@ -533,6 +777,8 @@ class AiChatNotifier extends ChangeNotifier {
   }
 
   List<Map<String, String>> _buildValidHistory() {
+    if (_messages.isEmpty) return [];
+
     final history = _messages.sublist(0, _messages.length - 1);
     final valid = <ChatMessage>[];
     int i = 0;
@@ -561,7 +807,7 @@ class AiChatNotifier extends ChangeNotifier {
         .toList();
   }
 
-  String _buildSystemPrompt() {
+  String _buildSystemPrompt({bool hasImage = false}) {
     const tools = r'''
 ## Available Tools
 When data modification is needed, you MUST ask the user for confirmation BEFORE using any tool.
@@ -643,6 +889,23 @@ The following validations are enforced automatically:
 If validation fails, the action will be rejected with a clear error message explaining what went wrong.
 ''';
 
+    final imageInstructions = hasImage ? '''
+════════════════════════════════════════
+IMAGE PARSING MODE (UPLOADED VOUCHER)
+════════════════════════════════════════
+▸ The user has uploaded an image of a voucher/employee list.
+▸ The raw text has already been extracted from the image for you.
+▸ Your ONLY task is to parse that raw text and emit one ACTION block per row.
+▸ Each row must contain: employee name, amount, from‑date, to‑date.
+▸ Output EXACTLY one [ACTION] block for each row using add_voucher_row.
+▸ Do NOT output any commentary, greetings, or summaries – ONLY the ACTION blocks.
+▸ Example for one row:
+[ACTION]{"action":"add_voucher_row","employeeName":"Raj Kumar","amount":4500,"fromDate":"2026-04-01","toDate":"2026-04-07"}[/ACTION]
+▸ If the raw text contains no recognisable rows, output a single message explaining why.
+▸ Keep amounts as numbers (no currency symbols inside the JSON value).
+────────────────────────────────────────
+''' : '';
+
     return '''
 You are a professional auditing assistant embedded in Crusam, a business management app used by Bharat Boridkar.
 Your role is to answer queries about employees, salaries, vouchers, and dashboard data — and to perform in-app actions when asked.
@@ -702,6 +965,8 @@ When the user asks for a summary, audit overview, or similar data snapshot:
 ▸ Conclude with a brief note that the data is based on the current app context, if appropriate.
 
 ════════════════════════════════════════
+
+$imageInstructions
 
 $tools
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,7 +67,7 @@ class GeminiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Core request (fixed: reset _streamCancelled at start)
+  // Core request (text‑only)
   // ---------------------------------------------------------------------------
 
   Future<String> sendMessages({
@@ -74,7 +75,6 @@ class GeminiService {
     String? systemPrompt,
     String model = model15Flash,
   }) async {
-    // ── FIX: reset cancellation flag before a new request ────────────
     _streamCancelled = false;
 
     final apiKey = await getApiKey();
@@ -156,13 +156,115 @@ class GeminiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Pseudo-streaming for Gemini
+  // Multimodal request (image + text) – NEW
   // ---------------------------------------------------------------------------
 
-  /// Streams the Gemini response token-by-token (simulated).
-  ///
-  /// Fetches the full response first, then yields small character chunks
-  /// with a short delay to produce a natural typewriter effect.
+  /// Sends a text prompt along with an image and returns the full text response.
+  /// [imageBytes] should be raw JPEG/PNG bytes.
+  Future<String> sendMultimodalMessage({
+    required String prompt,
+    required Uint8List imageBytes,
+    String? systemPrompt,
+    String model = model15Flash,
+  }) async {
+    _streamCancelled = false;
+
+    final apiKey = await getApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      throw GeminiException(
+        code: 'NO_API_KEY',
+        message: 'No Gemini API key configured.',
+      );
+    }
+
+    final url = Uri.parse(
+      '$_baseUrl/models/$model:generateContent?key=$apiKey',
+    );
+
+    final content = {
+      'role': 'user',
+      'parts': [
+        {'text': prompt},
+        {
+          'inline_data': {
+            'mime_type': 'image/jpeg', // adjust if you need PNG detection
+            'data': base64Encode(imageBytes),
+          }
+        }
+      ],
+    };
+
+    final body = <String, dynamic>{
+      'contents': [content],
+      'generationConfig': {
+        'temperature': 0.2,  // lower temperature for structured extraction
+        'maxOutputTokens': 2048,
+      },
+    };
+
+    if (systemPrompt != null && systemPrompt.isNotEmpty) {
+      body['systemInstruction'] = {
+        'parts': [
+          {'text': systemPrompt}
+        ],
+      };
+    }
+
+    final client = http.Client();
+    _activeClient = client;
+
+    try {
+      final response = await client.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode != 200) {
+        final decoded = _tryDecode(response.body);
+        final errMsg = decoded?['error']?['message'] as String? ??
+            'HTTP ${response.statusCode}';
+        throw GeminiException(
+          code: 'API_ERROR_${response.statusCode}',
+          message: errMsg,
+        );
+      }
+
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final candidatesRaw = decoded['candidates'];
+      final candidates = (candidatesRaw is List)
+          ? candidatesRaw.cast<Map<String, dynamic>>()
+          : <Map<String, dynamic>>[];
+      final firstCandidate = candidates.isNotEmpty ? candidates.first : null;
+      final contentResp = firstCandidate?['content'] as Map<String, dynamic>?;
+      final partsRaw = contentResp?['parts'];
+      final parts = (partsRaw is List)
+          ? partsRaw.cast<Map<String, dynamic>>()
+          : <Map<String, dynamic>>[];
+      final firstPart = parts.isNotEmpty ? parts.first : null;
+      final text = firstPart?['text'] as String?;
+
+      if (text == null || text.isEmpty) {
+        throw GeminiException(
+          code: 'EMPTY_RESPONSE',
+          message: 'Gemini returned an empty response.',
+        );
+      }
+
+      return text;
+    } on http.ClientException {
+      throw GeminiCancelledException();
+    } finally {
+      if (_activeClient == client) _activeClient = null;
+      client.close();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pseudo‑streaming for Gemini (text‑only)
+  // ---------------------------------------------------------------------------
+
+  /// Streams the Gemini response token‑by‑token (simulated).
   Stream<String> sendMessagesStream({
     required List<Map<String, dynamic>> messages,
     String? systemPrompt,
@@ -170,14 +272,12 @@ class GeminiService {
   }) async* {
     _streamCancelled = false;
 
-    // Fetch the full response first.
     final fullText = await sendMessages(
       messages: messages,
       systemPrompt: systemPrompt,
       model: model,
     );
 
-    // Yield in small chunks to create the typewriter effect.
     const chunkSize = 4;
     const delayMs = 12;
 
@@ -188,6 +288,10 @@ class GeminiService {
       await Future.delayed(const Duration(milliseconds: delayMs));
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
 
   Map<String, dynamic>? _tryDecode(String body) {
     try {

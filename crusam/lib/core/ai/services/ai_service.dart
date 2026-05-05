@@ -1,14 +1,16 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ai_provider.dart';
 import 'ollama_service.dart';
 import 'gemini_service.dart';
 
-/// Provider-agnostic AI facade that routes requests to the selected provider.
+/// Provider‑agnostic AI facade that routes requests to the selected provider.
 class AiService {
   AiService._();
 
-  /// The single instance of [AiService].
   static final AiService instance = AiService._();
 
   static const String _providerKey = 'ai_provider';
@@ -20,20 +22,17 @@ class AiService {
     return _prefs!;
   }
 
-  /// Returns the currently saved AI provider, defaulting to [AiProvider.ollama].
   Future<AiProvider> getSelectedProvider() async {
     final prefs = await _getPrefs();
     final id = prefs.getString(_providerKey);
     return AiProviderX.fromId(id);
   }
 
-  /// Saves the given [provider] to preferences.
   Future<void> saveSelectedProvider(AiProvider provider) async {
     final prefs = await _getPrefs();
     await prefs.setString(_providerKey, provider.id);
   }
 
-  /// Fetches available models for the given [provider].
   Future<List<AiModelInfo>> getAvailableModels(AiProvider provider) async {
     switch (provider) {
       case AiProvider.ollama:
@@ -43,8 +42,6 @@ class AiService {
     }
   }
 
-  /// Sends a list of [messages] to the AI [provider] and returns the full
-  /// response as a single string (non-streaming).
   Future<String> sendMessages({
     required AiProvider provider,
     required List<Map<String, String>> messages,
@@ -68,19 +65,6 @@ class AiService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // NEW: Streaming facade — routes to the appropriate stream implementation.
-  // ---------------------------------------------------------------------------
-
-  /// Streams response tokens from the AI [provider] one chunk at a time.
-  ///
-  /// For Ollama this is true server-side streaming (NDJSON).
-  /// For Gemini this is pseudo-streaming (full response fetched, then yielded
-  /// in small chunks) because the Gemini REST API requires a different setup
-  /// for real SSE.
-  ///
-  /// The returned [Stream<String>] yields successive text chunks that should
-  /// be appended together to form the complete reply.
   Stream<String> sendMessagesStream({
     required AiProvider provider,
     required List<Map<String, String>> messages,
@@ -104,7 +88,40 @@ class AiService {
     }
   }
 
-  /// Cancels any in-flight request for the given [provider].
+  // ---------------------------------------------------------------------------
+  // Multimodal streaming – NEW
+  // ---------------------------------------------------------------------------
+
+  /// Streams a Gemini multimodal response (image + prompt) token‑by‑token (simulated).
+  /// Only supports Gemini; other providers will throw an [UnsupportedError].
+  Stream<String> sendMultimodalMessageStream({
+    required AiProvider provider,
+    required String prompt,
+    required Uint8List imageBytes,
+    required String model,
+    String? systemPrompt,
+  }) async* {
+    if (provider != AiProvider.gemini) {
+      throw UnsupportedError('Image parsing is only available with Gemini.');
+    }
+
+    final fullText = await GeminiService.instance.sendMultimodalMessage(
+      prompt: prompt,
+      imageBytes: imageBytes,
+      systemPrompt: systemPrompt,
+      model: model,
+    );
+
+    const chunkSize = 4;
+    const delayMs = 12;
+    for (int i = 0; i < fullText.length; i += chunkSize) {
+      final end = (i + chunkSize).clamp(0, fullText.length);
+      yield fullText.substring(i, end);
+      await Future.delayed(const Duration(milliseconds: delayMs));
+    }
+  }
+
+  /// Cancels any in‑flight request for the given [provider].
   void cancelCurrentRequest(AiProvider provider) {
     switch (provider) {
       case AiProvider.ollama:
@@ -120,9 +137,6 @@ class AiService {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  /// Converts the generic `{role, content}` message format to Gemini's
-  /// `contents` format (`role` with `parts[{text}]`), swapping `assistant`
-  /// to `model` as required by the Gemini API.
   List<Map<String, dynamic>> _toGeminiContents(
     List<Map<String, String>> messages,
   ) {

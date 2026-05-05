@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
@@ -13,33 +15,26 @@ import 'package:crusam/core/ai/services/gemini_service.dart';
 // =============================================================================
 
 class _K {
-  // Backgrounds
   static const bg = Color(0xFF121212);
   static const surface = Color(0xFF1E1E1E);
   static const surfaceElevated = Color(0xFF252525);
 
-  // Borders – very subtle
   static const border = Color(0x1AFFFFFF);
   static const borderFocus = Color(0x33FFFFFF);
 
-  // Accent – understated blue-grey
   static const accent = Color(0xFF8AB4F8);
   static const accentMuted = Color(0xFF5F8BCF);
 
-  // Status
   static const online = Color(0xFF66BB6A);
   static const error = Color(0xFFEF5350);
 
-  // Text
   static const textPrimary = Color(0xFFE8EAED);
   static const textSecondary = Color(0xFF9AA0A6);
   static const textMuted = Color(0xFF6B7280);
 
-  // Message bubbles – almost invisible difference
   static const userBubble = Color(0xFF2D2D30);
   static const aiBubble = surface;
 
-  // Radii – consistent 8
   static const r8 = Radius.circular(8);
   static const r12 = Radius.circular(12);
   static const rFull = Radius.circular(999);
@@ -68,7 +63,6 @@ class AiChatScreen extends StatefulWidget {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: Column(
                 children: [
-                  // Drag handle
                   Container(
                     color: _K.surface,
                     child: Center(
@@ -101,6 +95,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _scrollController = ScrollController();
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
+  final _picker = ImagePicker();
 
   int _editingIndex = -1;
   bool _showSlashCommands = false;
@@ -108,7 +103,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool _contextExpanded = false;
   String? _smartSuggestion;
 
-  // ---- NEW: Prevent duplicate dialogs for pending actions ----
+  Uint8List? _pendingImageBytes;
+  String? _pendingImagePath;
+
   bool _showingPendingDialog = false;
 
   static const _slashCommands = [
@@ -132,7 +129,23 @@ class _AiChatScreenState extends State<AiChatScreen> {
   void initState() {
     super.initState();
     _inputController.addListener(_onInputChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _inputFocus.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _inputFocus.requestFocus();
+      _applyHardcodedModels();
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Hardcode the models for Local (Ollama) provider
+  // ---------------------------------------------------------------
+  void _applyHardcodedModels() {
+    final notifier = AiChatNotifier.instance;
+    if (notifier.selectedProvider == AiProvider.ollama) {
+      notifier.selectModel('qwen2.3');               // main chat model
+      notifier.setImageProcessingModel('minicpm-v:8b'); // vision model for extraction
+      notifier.setAnalysisModel(null);               // use the main model for final answer
+    }
+    // Gemini keeps whatever was selected (or default) – no change.
   }
 
   @override
@@ -183,12 +196,43 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(source: source, imageQuality: 85);
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        setState(() {
+          _pendingImageBytes = bytes;
+          _pendingImagePath = picked.path.split('/').last;
+        });
+        _inputFocus.requestFocus();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick image: $e')),
+        );
+      }
+    }
+  }
+
+  void _clearPendingImage() {
+    setState(() {
+      _pendingImageBytes = null;
+      _pendingImagePath = null;
+    });
+  }
+
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty) return;
+    final imageBytes = _pendingImageBytes;
+    if (text.isEmpty && imageBytes == null) return;
+
     final notifier = AiChatNotifier.instance;
     if (notifier.isLoading) return;
+
     _inputController.clear();
+    _clearPendingImage();
     setState(() {
       _showSlashCommands = false;
       _smartSuggestion = null;
@@ -196,11 +240,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
     _scrollToBottom();
 
-    if (_editingIndex >= 0) {
-      await notifier.editAndResend(_editingIndex, text);
-    } else {
-      await notifier.sendMessage(text);
-    }
+    await notifier.sendMessage(text, imageBytes: imageBytes);
     _scrollToBottom();
   }
 
@@ -229,11 +269,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _inputFocus.requestFocus();
   }
 
-  // ---- NEW: Show interactive confirmation dialog when a tool action is pending ----
   void _showPendingActionDialog(BuildContext context, AiChatNotifier notifier) {
     showDialog(
       context: context,
-      barrierDismissible: false,  // user must tap a button
+      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: _K.surface,
         title: const Text('Confirm Action', style: TextStyle(color: _K.textPrimary)),
@@ -277,7 +316,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
           final notifier = AiChatNotifier.instance;
           if (notifier.isLoading) _scrollToBottom();
 
-          // ---- Show confirmation dialog when a pending action appears ----
           if (notifier.hasPendingAction && !_showingPendingDialog) {
             _showingPendingDialog = true;
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -286,7 +324,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
               }
             });
           }
-          // -----------------------------------------------------------------
 
           return Scaffold(
             backgroundColor: _K.bg,
@@ -330,6 +367,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   slashQuery: _slashQuery,
                   slashCommands: _slashCommands,
                   smartSuggestion: _smartSuggestion,
+                  pendingImageBytes: _pendingImageBytes,
+                  pendingImageName: _pendingImagePath,
                   onSend: _sendMessage,
                   onCancel: notifier.isLoading
                       ? notifier.cancelGeneration
@@ -344,6 +383,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     setState(() => _smartSuggestion = null);
                     _inputFocus.requestFocus();
                   },
+                  onPickImage: _pickImage,
+                  onClearImage: _clearPendingImage,
                 ),
               ],
             ),
@@ -364,7 +405,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 }
 
 // =============================================================================
-// HEADER
+// HEADER – unchanged
 // =============================================================================
 
 class _ChatHeader extends StatelessWidget {
@@ -421,7 +462,7 @@ class _ChatHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: phaseColor.withOpacity(0.12),
+              color: phaseColor.withAlpha(30),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Text(
@@ -485,11 +526,7 @@ class _ChatHeader extends StatelessWidget {
 }
 
 class _HeaderIcon extends StatelessWidget {
-  const _HeaderIcon({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
+  const _HeaderIcon({required this.icon, required this.tooltip, required this.onTap});
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
@@ -511,7 +548,7 @@ class _HeaderIcon extends StatelessWidget {
 }
 
 // =============================================================================
-// CONTEXT PANEL
+// CONTEXT PANEL – unchanged
 // =============================================================================
 
 class _ContextPanel extends StatelessWidget {
@@ -543,7 +580,7 @@ class _ContextPanel extends StatelessWidget {
 }
 
 // =============================================================================
-// MESSAGE LIST
+// MESSAGE LIST – unchanged
 // =============================================================================
 
 class _MessageList extends StatelessWidget {
@@ -619,7 +656,7 @@ class _MessageList extends StatelessWidget {
 }
 
 // =============================================================================
-// MESSAGE BUBBLE – stripped down
+// MESSAGE BUBBLE – updated to handle EXTRACTED_TEXT blocks
 // =============================================================================
 
 class _MessageBubble extends StatefulWidget {
@@ -646,6 +683,7 @@ class _MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _hovered = false;
   bool _copied = false;
+  bool _extractedExpanded = false; // toggle for the collapsible section
 
   @override
   Widget build(BuildContext context) {
@@ -655,6 +693,22 @@ class _MessageBubbleState extends State<_MessageBubble> {
         : isUser
             ? _K.userBubble
             : _K.aiBubble;
+
+    // Check if this assistant message contains extracted text
+    final hasExtractedText = !isUser && widget.message.text.contains('[EXTRACTED_TEXT]');
+    String displayText = widget.message.text;
+    String? extractedContent;
+    if (hasExtractedText) {
+      final start = displayText.indexOf('[EXTRACTED_TEXT]');
+      final end = displayText.indexOf('[/EXTRACTED_TEXT]');
+      if (start != -1 && end != -1 && end > start) {
+        // Extract content and remove the markers for the main display
+        extractedContent = displayText.substring(start + '[EXTRACTED_TEXT]'.length, end).trim();
+        // Build a clean display line (short summary, e.g. "Extracted text from image")
+        displayText = '🔍 **Image text extracted** (tap to view)  \n' +
+                      '${extractedContent!.split('\n').take(2).join('\n')}${extractedContent!.split('\n').length > 2 ? '…' : ''}';
+      }
+    }
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -688,13 +742,85 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  isUser
-                      ? SelectableText(
-                          widget.message.text,
+                  if (hasExtractedText && extractedContent != null) ...[
+                    // Collapsible extracted text section
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => _extractedExpanded = !_extractedExpanded),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.article_outlined, size: 14, color: _K.accent),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Extracted Text from Image',
+                                style: const TextStyle(
+                                  color: _K.accent,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              Icon(
+                                _extractedExpanded ? Icons.expand_less : Icons.expand_more,
+                                size: 16,
+                                color: _K.textMuted,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_extractedExpanded) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _K.bg,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: _K.border),
+                            ),
+                            child: SelectableText(
+                              extractedContent,
+                              style: const TextStyle(
+                                color: _K.textPrimary,
+                                fontSize: 12,
+                                height: 1.4,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                    // Show the answer's main text (the AI's response) after the collapsible block
+                    if (!widget.message.text.contains('[EXTRACTED_TEXT]')) ...[
+                      // If not an extracted text message, just render normally
+                      if (isUser)
+                        SelectableText(
+                          displayText,
                           style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.45),
                         )
-                      : _MarkdownView(text: widget.message.text),
-                  if (_hovered || widget.isLast)
+                      else
+                        _MarkdownView(text: displayText),
+                    ] else ...[
+                      // This is the extracted text message; we already displayed the collapsible block.
+                      // Show a small note below the collapsible that the answer is being processed.
+                      const SizedBox(height: 4),
+                      const Text(
+                        'The extracted data will be analysed by the AI…',
+                        style: TextStyle(color: _K.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ] else if (isUser) ...[
+                    SelectableText(
+                      displayText,
+                      style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.45),
+                    ),
+                  ] else ...[
+                    _MarkdownView(text: displayText),
+                  ],
+                  if ((_hovered || widget.isLast) && !hasExtractedText)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Row(
@@ -747,7 +873,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
     });
   }
 
-  String _formatTime(DateTime dt) => '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  String _formatTime(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 }
 
 class _MsgAction extends StatelessWidget {
@@ -778,8 +905,10 @@ class _MsgAction extends StatelessWidget {
   }
 }
 
+// (rest of the file – typing indicator, markdown, code block, empty state, etc. – remains unchanged)
+
 // =============================================================================
-// TYPING INDICATOR
+// TYPING INDICATOR – unchanged
 // =============================================================================
 
 class _TypingIndicator extends StatefulWidget {
@@ -835,12 +964,11 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 }
 
 // =============================================================================
-// MARKDOWN
+// MARKDOWN / CODE BLOCKS – unchanged
 // =============================================================================
 
 class _MarkdownView extends StatelessWidget {
   const _MarkdownView({required this.text});
-
   final String text;
 
   @override
@@ -1010,7 +1138,7 @@ class _MarkdownView extends StatelessWidget {
 }
 
 // =============================================================================
-// CODE BLOCK
+// CODE BLOCK – unchanged
 // =============================================================================
 
 class _CodeBlock extends StatefulWidget {
@@ -1091,7 +1219,7 @@ class _CodeBlockState extends State<_CodeBlock> {
 }
 
 // =============================================================================
-// EMPTY STATE
+// EMPTY STATE – unchanged
 // =============================================================================
 
 class _EmptyState extends StatelessWidget {
@@ -1169,16 +1297,11 @@ class _EmptyState extends StatelessWidget {
 }
 
 // =============================================================================
-// ERROR BANNER
+// ERROR BANNER – unchanged
 // =============================================================================
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({
-    required this.message,
-    required this.onRetry,
-    required this.onSwitchModel,
-  });
-
+  const _ErrorBanner({required this.message, required this.onRetry, required this.onSwitchModel});
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onSwitchModel;
@@ -1219,7 +1342,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // =============================================================================
-// INPUT AREA
+// INPUT AREA – updated with image picker & preview
 // =============================================================================
 
 class _InputArea extends StatelessWidget {
@@ -1232,10 +1355,14 @@ class _InputArea extends StatelessWidget {
     required this.slashQuery,
     required this.slashCommands,
     required this.smartSuggestion,
+    this.pendingImageBytes,
+    this.pendingImageName,
     required this.onSend,
     required this.onCancel,
     required this.onApplySlash,
     required this.onApplySuggestion,
+    required this.onPickImage,
+    required this.onClearImage,
   });
 
   final TextEditingController controller;
@@ -1246,10 +1373,14 @@ class _InputArea extends StatelessWidget {
   final String slashQuery;
   final List<_SlashCommand> slashCommands;
   final String? smartSuggestion;
+  final Uint8List? pendingImageBytes;
+  final String? pendingImageName;
   final VoidCallback onSend;
   final VoidCallback? onCancel;
   final void Function(_SlashCommand) onApplySlash;
   final void Function(String) onApplySuggestion;
+  final void Function(ImageSource source) onPickImage;
+  final VoidCallback onClearImage;
 
   @override
   Widget build(BuildContext context) {
@@ -1317,6 +1448,42 @@ class _InputArea extends StatelessWidget {
               ),
             ),
 
+          if (pendingImageBytes != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: _K.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.memory(
+                      pendingImageBytes!,
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      pendingImageName ?? 'Image',
+                      style: const TextStyle(color: _K.textSecondary, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 16, color: _K.textMuted),
+                    splashRadius: 14,
+                    onPressed: onClearImage,
+                  ),
+                ],
+              ),
+            ),
+
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
@@ -1327,6 +1494,11 @@ class _InputArea extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file, color: _K.textSecondary, size: 20),
+                  splashRadius: 18,
+                  onPressed: () => _showAttachmentSheet(context),
+                ),
                 Expanded(
                   child: TextField(
                     controller: controller,
@@ -1373,18 +1545,43 @@ class _InputArea extends StatelessWidget {
       ),
     );
   }
+
+  void _showAttachmentSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _K.surfaceElevated,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined, color: _K.textPrimary),
+              title: const Text('Gallery', style: TextStyle(color: _K.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                onPickImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: _K.textPrimary),
+              title: const Text('Camera', style: TextStyle(color: _K.textPrimary)),
+              onTap: () {
+                Navigator.pop(ctx);
+                onPickImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // =============================================================================
-// SLASH COMMANDS OVERLAY
+// SLASH COMMANDS OVERLAY – unchanged
 // =============================================================================
 
 class _SlashCommandsOverlay extends StatelessWidget {
-  const _SlashCommandsOverlay({
-    required this.commands,
-    required this.onTap,
-  });
-
+  const _SlashCommandsOverlay({required this.commands, required this.onTap});
   final List<_SlashCommand> commands;
   final void Function(_SlashCommand) onTap;
 
@@ -1428,7 +1625,7 @@ class _SlashCommandsOverlay extends StatelessWidget {
 }
 
 // =============================================================================
-// MODEL PICKER BOTTOM SHEET (simplified)
+// MODEL PICKER BOTTOM SHEET – simplified (no model selection)
 // =============================================================================
 
 class _ModelPickerSheet extends StatefulWidget {
@@ -1440,6 +1637,7 @@ class _ModelPickerSheet extends StatefulWidget {
 }
 
 class _ModelPickerSheetState extends State<_ModelPickerSheet> {
+  // --- Server / Gemini state ---
   String _serverMode = 'local';
   final _remoteUrlCtrl = TextEditingController();
   bool _testing = false;
@@ -1448,6 +1646,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
   final _geminiKeyCtrl = TextEditingController();
   bool _geminiKeySaved = false;
   bool _obscureKey = true;
+
+  // --- Image settings state ---
+  bool _imageSettingsExpanded = false;
+  int _extractionTimeout = 30;
 
   @override
   void initState() {
@@ -1459,6 +1661,9 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
     final mode = await OllamaService.instance.getServerMode();
     final remoteUrl = await OllamaService.instance.getRemoteUrl();
     final geminiKey = await GeminiService.instance.getApiKey() ?? '';
+
+    final imgSettings = widget.notifier.imageSettings;
+    _extractionTimeout = imgSettings.extractionTimeoutSeconds;
 
     if (mounted) {
       setState(() {
@@ -1477,10 +1682,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
   }
 
   Future<void> _onServerModeChanged(String mode) async {
-    setState(() {
-      _serverMode = mode;
-      _connStatus = _ConnStatus.idle;
-    });
+    setState(() { _serverMode = mode; _connStatus = _ConnStatus.idle; });
     await OllamaService.instance.saveServerMode(mode);
     await widget.notifier.refreshModels();
   }
@@ -1489,18 +1691,12 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
     final url = _remoteUrlCtrl.text.trim();
     if (url.isEmpty) return;
 
-    setState(() {
-      _testing = true;
-      _connStatus = _ConnStatus.idle;
-    });
-
+    setState(() { _testing = true; _connStatus = _ConnStatus.idle; });
     final ok = await OllamaService.instance.testConnection(url);
-
     if (ok) {
       await OllamaService.instance.saveRemoteUrl(url);
       await widget.notifier.refreshModels();
     }
-
     if (mounted) {
       setState(() {
         _testing = false;
@@ -1526,8 +1722,6 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return ListenableBuilder(
       listenable: widget.notifier,
       builder: (context, _) {
@@ -1542,6 +1736,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Header
               Row(
                 children: [
                   const Icon(Icons.tune_outlined, size: 18),
@@ -1552,7 +1747,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
               ),
               const SizedBox(height: 16),
 
-              // Provider
+              // Provider toggle
               _SectionLabel(label: 'Provider', icon: Icons.smart_toy_outlined),
               const SizedBox(height: 8),
               SegmentedButton<AiProvider>(
@@ -1564,8 +1759,35 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                         ))
                     .toList(),
                 selected: {widget.notifier.selectedProvider},
-                onSelectionChanged: (s) => widget.notifier.selectProvider(s.first),
+                onSelectionChanged: (s) {
+                  widget.notifier.selectProvider(s.first);
+                  // Reapply hardcoded models when switching to Ollama
+                  if (s.first == AiProvider.ollama) {
+                    widget.notifier.selectModel('qwen2.3');
+                    widget.notifier.setImageProcessingModel('minicpm-v:8b');
+                    widget.notifier.setAnalysisModel(null);
+                  }
+                  // For Gemini, the notifier will load its own models
+                },
               ),
+
+              // ------------------------------------------------------------------
+              // Chat model info (non-editable)
+              // ------------------------------------------------------------------
+              const SizedBox(height: 12),
+              if (widget.notifier.selectedProvider == AiProvider.ollama)
+                _ModelInfoLine(
+                  icon: Icons.chat_outlined,
+                  label: 'Chat model',
+                  value: 'qwen2.3',
+                )
+              else if (widget.notifier.selectedProvider == AiProvider.gemini)
+                _ModelInfoLine(
+                  icon: Icons.chat_outlined,
+                  label: 'Chat model',
+                  value: 'Gemini 1.5 Flash', // adjust as needed
+                ),
+
               const SizedBox(height: 16),
 
               // Ollama server config
@@ -1654,43 +1876,106 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                 const SizedBox(height: 16),
               ],
 
-              // Model selection
-              _SectionLabel(label: 'Model', icon: Icons.model_training_outlined),
-              const SizedBox(height: 8),
-              if (widget.notifier.isLoadingModels)
-                const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
-              else if (widget.notifier.availableModels.isEmpty)
-                Text(
-                  widget.notifier.selectedProvider == AiProvider.ollama
-                      ? 'No models found. Run: ollama pull llama3.2:3b'
-                      : 'Enter a valid Gemini API key.',
-                  style: const TextStyle(color: _K.error, fontSize: 12),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.notifier.availableModels.map((m) {
-                    final selected = m.id == widget.notifier.selectedModel;
-                    return FilterChip(
-                      label: Text(m.label, style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
-                      selected: selected,
-                      onSelected: (_) {
-                        widget.notifier.selectModel(m.id);
-                        Navigator.pop(context);
-                      },
-                    );
-                  }).toList(),
+              // --- Image Processing Section (simplified, no model pickers) ---
+              InkWell(
+                onTap: () => setState(() => _imageSettingsExpanded = !_imageSettingsExpanded),
+                child: Row(
+                  children: [
+                    const Icon(Icons.image_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Image Processing',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const Spacer(),
+                    Icon(_imageSettingsExpanded ? Icons.expand_less : Icons.expand_more),
+                  ],
                 ),
-              TextButton.icon(
-                onPressed: widget.notifier.refreshModels,
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Refresh models'),
               ),
+              if (_imageSettingsExpanded) ...[
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  title: const Text('Enable image analysis'),
+                  subtitle: const Text('Allow images to be processed by a vision model'),
+                  value: widget.notifier.imageSettings.enableImageProcessing,
+                  onChanged: (val) {
+                    widget.notifier.updateImageSettings(
+                      widget.notifier.imageSettings.copyWith(enableImageProcessing: val),
+                    );
+                  },
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const Divider(),
+
+                // Show fixed models when Ollama is selected
+                if (widget.notifier.selectedProvider == AiProvider.ollama) ...[
+                  _ModelInfoLine(
+                    icon: Icons.remove_red_eye_outlined,
+                    label: 'Vision model',
+                    value: 'minicpm-v:8b',
+                  ),
+                  const SizedBox(height: 8),
+                  _ModelInfoLine(
+                    icon: Icons.psychology_outlined,
+                    label: 'Analysis model',
+                    value: 'qwen2.3 (same as chat)',
+                  ),
+                ],
+
+                // Timeout slider
+                ListTile(
+                  title: Text('Extraction timeout ($_extractionTimeout s)'),
+                  subtitle: Slider(
+                    value: _extractionTimeout.toDouble(),
+                    min: 5,
+                    max: 60,
+                    divisions: 11,
+                    label: '$_extractionTimeout s',
+                    onChanged: (val) {
+                      setState(() => _extractionTimeout = val.toInt());
+                      widget.notifier.updateImageSettings(
+                        widget.notifier.imageSettings.copyWith(extractionTimeoutSeconds: val.toInt()),
+                      );
+                    },
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+// A small widget to display a read-only model info line
+class _ModelInfoLine extends StatelessWidget {
+  const _ModelInfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: _K.textSecondary),
+        const SizedBox(width: 8),
+        Text('$label: ', style: const TextStyle(color: _K.textSecondary, fontSize: 13)),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(color: _K.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

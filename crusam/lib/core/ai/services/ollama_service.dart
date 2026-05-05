@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,7 +18,7 @@ class OllamaService {
   /// Preference key for the Ollama base URL (legacy, used for backward compatibility).
   static const String _baseUrlKey = 'ollama_base_url';
 
-  // ── NEW PREFS KEYS ─────────────────────────────────────────────────────────
+  // ── PREFS KEYS ─────────────────────────────────────────────────────────────
   static const String _serverModeKey = 'ollama_server_mode'; // 'local' | 'remote'
   static const String _remoteUrlKey  = 'ollama_remote_url';  // e.g. http://192.168.1.5:11434
 
@@ -37,7 +39,7 @@ class OllamaService {
     return _prefs!;
   }
 
-  // ── MODE-AWARE getBaseUrl ───────────────────────────────────────────────────
+  // ── MODE-AWARE getBaseUrl ─────────────────────────────────────────────────
   /// Returns the active Ollama base URL based on the current server mode.
   ///
   /// In 'remote' mode the saved remote URL is used; in 'local' mode (default)
@@ -49,10 +51,10 @@ class OllamaService {
       if (remote.isNotEmpty) return remote;
     }
     // local mode (default)
-    return defaultBaseUrl; // 'http://127.0.0.1:11434'
+    return defaultBaseUrl;
   }
 
-  // ── OLD saveBaseUrl (kept for backward compatibility) ────────────────────────
+  // ── OLD saveBaseUrl (kept for backward compatibility) ──────────────────────
   /// Persists a legacy base URL. New code should prefer `saveRemoteUrl`.
   Future<void> saveBaseUrl(String url) async {
     final prefs = await _getPrefs();
@@ -134,6 +136,102 @@ class OllamaService {
     }
   }
 
+  /// Known vision-capable model keywords.
+  /// Add more if needed (e.g., 'internvl', 'yi-vl').
+  static const List<String> visionModelKeywords = [
+    'minicpm',
+    'llava',
+    'internvl',
+    'yi-vl',
+    'qwen-vl',
+    'vision',
+  ];
+
+  /// Checks if a model name suggests it's vision-capable.
+  /// Compares against known vision model keywords (case-insensitive).
+  bool _isLikelyVisionModel(String modelName) {
+    final lower = modelName.toLowerCase();
+    return visionModelKeywords.any((keyword) => lower.contains(keyword));
+  }
+
+  /// Fetches and filters for vision-capable (image-processing) models.
+  /// Returns models that match known vision model patterns.
+  Future<List<AiModelInfo>> getAvailableImageModels() async {
+    try {
+      final allModels = await fetchModels();
+      final visionModels = allModels
+          .where((model) => _isLikelyVisionModel(model.id))
+          .toList();
+      return visionModels;
+    } catch (_) {
+      // If fetch fails, return an empty list (caller should handle)
+      return <AiModelInfo>[];
+    }
+  }
+
+  /// Checks if a specific model is vision-capable (for validation).
+  Future<bool> isVisionModel(String modelName) async {
+    final allModels = await fetchModels();
+    final exists =
+        allModels.any((m) => m.id == modelName);
+    if (!exists) return false; // model not found at all
+    return _isLikelyVisionModel(modelName);
+  }
+
+  /// Sends a multimodal message with fallback logic.
+  /// If [model] fails or is not available, tries fallback models.
+  ///
+  /// Returns the extracted/processed text.
+  /// Throws [OllamaException] if all attempts fail.
+  /// 
+  /// **NEW**: Accepts an optional [timeout] duration. Each attempt will be
+  /// aborted after this duration. Defaults to 30 seconds.
+  Future<String> sendMultimodalMessageWithFallback({
+    required String prompt,
+    required Uint8List imageBytes,
+    required String model,
+    String? systemPrompt,
+    List<String>? fallbackModels,
+    Duration? timeout,                 // NEW
+  }) async {
+    final modelsToTry = [
+      model,
+      ...?fallbackModels,
+      'minicpm-v:8b', // ultimate fallback
+    ];
+
+    OllamaException? lastError;
+
+    for (final currentModel in modelsToTry) {
+      try {
+        return await sendMultimodalMessage(
+          prompt: prompt,
+          imageBytes: imageBytes,
+          model: currentModel,
+          systemPrompt: systemPrompt,
+          timeout: timeout,            // pass through
+        );
+      } on OllamaCancelledException {
+        rethrow; // don't catch user cancellations
+      } on OllamaException catch (e) {
+        lastError = e;
+        // Log and continue to next fallback model
+        debugPrint(
+          'Image extraction failed with model "$currentModel": ${e.message}. '
+          'Trying next model...',
+        );
+        continue;
+      }
+    }
+
+    // All models failed
+    throw OllamaException(
+      'Image extraction failed with all available models. '
+      'Last error: ${lastError?.message ?? "Unknown"}. '
+      'Ensure a vision model (minicpm-v, llava, etc.) is installed and running.',
+    );
+  }
+
   /// Sends a chat request to Ollama via `POST /api/chat`.
   /// Returns the complete response as a single string.
   Future<String> sendMessages({
@@ -203,15 +301,231 @@ class OllamaService {
   }
 
   // ---------------------------------------------------------------------------
-  // NEW: Real token-by-token streaming via Ollama's SSE / NDJSON endpoint.
+  // Multimodal message (image + prompt) – for minicpm-v and similar VLMs
+  // ---------------------------------------------------------------------------
+
+  /// Sends a text prompt together with an image to a vision-capable Ollama model
+  /// (e.g. `minicpm-v:8b`) and returns the full response as a single string.
+  ///
+  /// The image is passed via the `images` field of the Ollama chat message, which
+  /// accepts a list of base-64 encoded strings (no data-URI prefix required).
+  ///
+  /// This call is **not** streamed; it blocks until Ollama returns the complete
+  /// response.  Use [sendMultimodalExtractionStream] for real-time feedback.
+  ///
+  /// The call honours [cancelCurrentRequest]: if cancelled while awaiting the
+  /// response, an [OllamaCancelledException] is thrown.
+  ///
+  /// **NEW**: The [timeout] parameter limits the HTTP request duration.
+  /// Defaults to 30 seconds if not supplied.
+  Future<String> sendMultimodalMessage({
+    required String prompt,
+    required Uint8List imageBytes,
+    required String model,
+    String? systemPrompt,
+    Duration? timeout,               // NEW
+  }) async {
+    cancelCurrentRequest();
+    _currentClient = http.Client();
+    _cancelled = false;
+
+    final baseUrl = await getBaseUrl();
+    final uri = Uri.parse('$baseUrl/api/chat');
+
+    // Ollama expects a plain base-64 string inside the `images` array —
+    // no "data:image/jpeg;base64," prefix.
+    final base64Image = base64Encode(imageBytes);
+
+    final List<Map<String, dynamic>> payload = [];
+
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      payload.add({
+        'role': 'system',
+        'content': systemPrompt.trim(),
+      });
+    }
+
+    payload.add({
+      'role': 'user',
+      'content': prompt,
+      'images': [base64Image],
+    });
+
+    try {
+      final response = await _currentClient!.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'model': model,
+          'stream': false,
+          'messages': payload,
+        }),
+      ).timeout(timeout ?? const Duration(seconds: 30));   // timeout applied
+
+      if (_cancelled) {
+        throw OllamaCancelledException('Request was cancelled.');
+      }
+
+      if (response.statusCode != 200) {
+        throw OllamaException(
+          'Ollama returned an error (${response.statusCode}): '
+          '${response.body}',
+        );
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final content = data['message']?['content'] as String?;
+
+      if (content == null || content.trim().isEmpty) {
+        throw OllamaException('Ollama returned an empty response.');
+      }
+
+      return content;
+    } on http.ClientException catch (e) {
+      // Timeout errors manifest as ClientException with "Closed" or similar
+      throw OllamaException('Image extraction timed out: $e');
+    } catch (e) {
+      if (_cancelled) throw OllamaCancelledException('Request was cancelled.');
+      if (e is OllamaException || e is OllamaCancelledException) rethrow;
+      throw OllamaException(
+        'Could not connect to Ollama. '
+        'Make sure Ollama is running and the base URL is correct.',
+      );
+    } finally {
+      _currentClient?.close();
+      _currentClient = null;
+      _cancelled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // STREAMING MULTIMODAL EXTRACTION (real‑time token streaming)
+  // ---------------------------------------------------------------------------
+
+  /// Streams raw text tokens from a vision model (image + prompt) in real time.
+  ///
+  /// This method uses `stream: true` and emits each token as it arrives from the
+  /// SSE/NDJSON endpoint, providing immediate feedback to the caller.
+  ///
+  /// Callers can use this to display a live preview of the extracted text.
+  Stream<String> sendMultimodalExtractionStream({
+    required String prompt,
+    required Uint8List imageBytes,
+    required String model,
+    String? systemPrompt,
+    Duration? timeout,
+  }) async* {
+    cancelCurrentRequest();
+    final client = http.Client();
+    _currentClient = client;
+    _cancelled = false;
+
+    final baseUrl = await getBaseUrl();
+    final uri = Uri.parse('$baseUrl/api/chat');
+
+    final base64Image = base64Encode(imageBytes);
+
+    final List<Map<String, dynamic>> payload = [];
+    if (systemPrompt != null && systemPrompt.trim().isNotEmpty) {
+      payload.add({'role': 'system', 'content': systemPrompt.trim()});
+    }
+    payload.add({
+      'role': 'user',
+      'content': prompt,
+      'images': [base64Image],
+    });
+
+    try {
+      final request = http.Request('POST', uri)
+        ..headers['Content-Type'] = 'application/json'
+        ..body = jsonEncode({
+          'model': model,
+          'stream': true,
+          'messages': payload,
+        });
+
+      final streamedResponse = await client.send(request);
+
+      if (streamedResponse.statusCode != 200) {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        throw OllamaException(
+          'Ollama returned ${streamedResponse.statusCode}: $errorBody',
+        );
+      }
+
+      final lines = streamedResponse.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lines) {
+        if (_cancelled) break;
+        if (line.isEmpty) continue;
+
+        // Handle both plain NDJSON and SSE-formatted lines
+        String jsonLine = line;
+        if (jsonLine.startsWith('data: ')) {
+          jsonLine = jsonLine.substring(6);
+        }
+        if (jsonLine.trim() == '[DONE]') break;
+
+        try {
+          final data = jsonDecode(jsonLine) as Map<String, dynamic>;
+          if (data['done'] == true) break;
+          final content = data['message']?['content'] as String?;
+          if (content != null && content.isNotEmpty) {
+            yield content;
+          }
+        } catch (_) {
+          // Skip unparseable lines (e.g. empty, comments)
+        }
+      }
+    } catch (e) {
+      if (_cancelled) throw OllamaCancelledException('Extraction cancelled.');
+      if (e is OllamaException || e is OllamaCancelledException) rethrow;
+      throw OllamaException('Image extraction stream failed: $e');
+    } finally {
+      if (_currentClient == client) _currentClient = null;
+      client.close();
+      _cancelled = false;
+    }
+  }
+
+  /// Simulated token-by-token streaming wrapper around [sendMultimodalMessage].
+  /// (kept for backward compatibility)
+  Stream<String> sendMultimodalMessageStream({
+    required String prompt,
+    required Uint8List imageBytes,
+    required String model,
+    String? systemPrompt,
+    Duration? timeout,               // NEW
+  }) async* {
+    final fullText = await sendMultimodalMessage(
+      prompt: prompt,
+      imageBytes: imageBytes,
+      model: model,
+      systemPrompt: systemPrompt,
+      timeout: timeout,
+    );
+
+    const chunkSize = 4;
+    const delayMs = 12;
+
+    for (int i = 0; i < fullText.length; i += chunkSize) {
+      if (_cancelled) break;
+      final end = (i + chunkSize).clamp(0, fullText.length);
+      yield fullText.substring(i, end);
+      await Future.delayed(const Duration(milliseconds: delayMs));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Real token-by-token streaming via Ollama's SSE / NDJSON endpoint.
   // ---------------------------------------------------------------------------
 
   /// Streams tokens from Ollama using `stream: true`.
   ///
-  /// Yields each content chunk as it arrives so the UI can render
-  /// a typewriter effect in real time.
-  ///
-  /// The stream can be cancelled by calling [cancelCurrentRequest].
+  /// Now correctly handles SSE lines that start with `data: ` and
+  /// the `[DONE]` sentinel.
   Stream<String> sendMessagesStream({
     required List<Map<String, String>> messages,
     required String model,
@@ -248,22 +562,31 @@ class OllamaService {
         );
       }
 
-      // Ollama streams newline-delimited JSON (NDJSON).
-      await for (final line in streamedResponse.stream
+      final lines = streamedResponse.stream
           .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+          .transform(const LineSplitter());
+
+      await for (final line in lines) {
         if (_cancelled) break;
-        if (line.trim().isEmpty) continue;
+        if (line.isEmpty) continue;
+
+        // ---------- SSE fix ----------
+        String jsonLine = line;
+        if (jsonLine.startsWith('data: ')) {
+          jsonLine = jsonLine.substring(6);
+        }
+        if (jsonLine.trim() == '[DONE]') break;
+        // -----------------------------
 
         try {
-          final data = jsonDecode(line) as Map<String, dynamic>;
+          final data = jsonDecode(jsonLine) as Map<String, dynamic>;
           if (data['done'] == true) break;
           final content = data['message']?['content'] as String?;
           if (content != null && content.isNotEmpty) {
             yield content;
           }
         } catch (_) {
-          // Skip any malformed JSON lines.
+          // Skip any line that cannot be parsed (e.g. comment lines).
         }
       }
     } catch (e) {
