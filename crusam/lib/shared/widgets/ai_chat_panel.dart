@@ -1,11 +1,16 @@
+// ============================================================
+// ai_chat_panel.dart – final file with batch sync & file context
+// ============================================================
+
 import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart'; // ADDED – file picker for PDF/Excel
-import 'package:crusam/core/ai/services/file_extraction_service.dart'; // ADDED – for type references
+import 'package:file_picker/file_picker.dart';
+import 'package:crusam/core/ai/services/file_extraction_service.dart';
+import 'package:crusam/core/ai/services/batch_sync_manager.dart'; // ADDED
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
@@ -62,7 +67,8 @@ class AiChatScreen extends StatefulWidget {
           expand: false,
           builder: (_, scrollController) {
             return ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(16)),
               child: Column(
                 children: [
                   Container(
@@ -110,7 +116,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   // ── Pending file (PDF / Excel) ─────────────────────────────────────────
   Uint8List? _pendingFileBytes;
-  String? _pendingFileType;   // 'pdf' | 'excel'
+  String? _pendingFileType; // 'pdf' | 'excel'
   String? _pendingFileName;
 
   bool _showingPendingDialog = false;
@@ -148,9 +154,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   void _applyHardcodedModels() {
     final notifier = AiChatNotifier.instance;
     if (notifier.selectedProvider == AiProvider.ollama) {
-      notifier.selectModel('qwen2.3');               // main chat model
-      notifier.setImageProcessingModel('minicpm-v:8b'); // vision model for extraction
-      notifier.setAnalysisModel(null);               // use the main model for final answer
+      notifier.selectModel('qwen2.3'); // main chat model
+      notifier.setImageProcessingModel(
+          'minicpm-v:8b'); // vision model for extraction
+      notifier.setAnalysisModel(null); // use the main model for final answer
     }
     // Gemini keeps whatever was selected (or default) – no change.
   }
@@ -196,7 +203,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final max = _scrollController.position.maxScrollExtent;
       if (animated) {
         _scrollController.animateTo(max,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut);
       } else {
         _scrollController.jumpTo(max);
       }
@@ -205,7 +213,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final picked = await _picker.pickImage(source: source, imageQuality: 85);
+      final picked =
+          await _picker.pickImage(source: source, imageQuality: 85);
       if (picked != null) {
         final bytes = await picked.readAsBytes();
         setState(() {
@@ -309,8 +318,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   void _applySlashCommand(_SlashCommand cmd) {
     _inputController.text = cmd.description;
-    _inputController.selection =
-        TextSelection.fromPosition(TextPosition(offset: cmd.description.length));
+    _inputController.selection = TextSelection.fromPosition(
+        TextPosition(offset: cmd.description.length));
     setState(() {
       _showSlashCommands = false;
       _slashQuery = '';
@@ -338,20 +347,24 @@ class _AiChatScreenState extends State<AiChatScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: _K.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('Confirm Action', style: TextStyle(color: _K.textPrimary)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text('Confirm Action',
+            style: TextStyle(color: _K.textPrimary)),
         content: Text(
           notifier.pendingActionDescription ?? 'Perform this action?',
           style: const TextStyle(color: _K.textSecondary, height: 1.4),
         ),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        actionsPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         actions: [
           Expanded(
             child: OutlinedButton(
               style: OutlinedButton.styleFrom(
                 foregroundColor: _K.textPrimary,
                 side: const BorderSide(color: _K.border),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () {
                 Navigator.pop(ctx);
@@ -367,7 +380,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _K.accent,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
               onPressed: () {
                 Navigator.pop(ctx);
@@ -412,8 +426,22 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 _ChatHeader(notifier: notifier),
                 if (_contextExpanded)
                   _ContextPanel(
-                    onToggle: () => setState(() => _contextExpanded = false),
+                    onToggle: () =>
+                        setState(() => _contextExpanded = false),
                   ),
+
+                // ── NEW: file context badge ──────────────────────────────────
+                if (notifier.hasActiveFileContext &&
+                    !notifier.hasBatchSyncActive)
+                  FileContextBadge(
+                    fileName: notifier.activeFileName ?? 'file',
+                    onClear: () => notifier.clearFileContext(),
+                  ),
+
+                // ── NEW: batch sync progress bar ────────────────────────────
+                if (notifier.hasBatchSyncActive)
+                  BatchSyncBar(notifier: notifier),
+
                 Expanded(
                   child: _MessageList(
                     notifier: notifier,
@@ -428,7 +456,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     message: notifier.errorMessage ?? 'An error occurred.',
                     onRetry: () {
                       final msgs = notifier.messages;
-                      if (msgs.isNotEmpty && msgs.last.isError && msgs.length >= 2) {
+                      if (msgs.isNotEmpty &&
+                          msgs.last.isError &&
+                          msgs.length >= 2) {
                         final userMsg = msgs[msgs.length - 2];
                         if (userMsg.role == ChatRole.user) {
                           notifier.deleteMessage(msgs.length - 1);
@@ -460,8 +490,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   onApplySlash: _applySlashCommand,
                   onApplySuggestion: (s) {
                     _inputController.text = s;
-                    _inputController.selection =
-                        TextSelection.fromPosition(TextPosition(offset: s.length));
+                    _inputController.selection = TextSelection.fromPosition(
+                        TextPosition(offset: s.length));
                     setState(() => _smartSuggestion = null);
                     _inputFocus.requestFocus();
                   },
@@ -489,7 +519,163 @@ class _AiChatScreenState extends State<AiChatScreen> {
 }
 
 // =============================================================================
-// HEADER – unchanged
+// NEW WIDGET: BATCH SYNC BAR
+// =============================================================================
+
+class BatchSyncBar extends StatelessWidget {
+  const BatchSyncBar({super.key, required this.notifier});
+  final AiChatNotifier notifier;
+
+  static const _accent = Color(0xFF8AB4F8);
+  static const _surface = Color(0xFF1E1E1E);
+  static const _border = Color(0x1AFFFFFF);
+  static const _error = Color(0xFFEF5350);
+  static const _textSecondary = Color(0xFF9AA0A6);
+  static const _online = Color(0xFF66BB6A);
+
+  @override
+  Widget build(BuildContext context) {
+    final mgr = BatchSyncManager.instance;
+    final prog = mgr.progress;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: _accent.withOpacity(0.08),
+        border: const Border(
+          top: BorderSide(color: _border),
+          bottom: BorderSide(color: _border),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Sync icon
+          const Icon(Icons.sync, size: 14, color: _accent),
+          const SizedBox(width: 8),
+          // Progress text
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Employee Sync — ${prog.processed} done  ·  '
+                  '${prog.skipped} skipped  ·  '
+                  '${prog.remaining} remaining',
+                  style: const TextStyle(
+                    color: _accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                // Mini progress bar
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: prog.total == 0
+                        ? 0
+                        : (prog.processed + prog.skipped) / prog.total,
+                    backgroundColor: _border,
+                    color: _online,
+                    minHeight: 3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Stop button
+          GestureDetector(
+            onTap: () {
+              BatchSyncManager.instance.clear();
+              notifier.sendMessage('Sync stopped by user.');
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: _error.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: _error.withOpacity(0.4)),
+              ),
+              child: const Text(
+                'Stop',
+                style: TextStyle(
+                  color: _error,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// NEW WIDGET: FILE CONTEXT BADGE
+// =============================================================================
+
+class FileContextBadge extends StatelessWidget {
+  const FileContextBadge({
+    super.key,
+    required this.fileName,
+    required this.onClear,
+  });
+
+  final String fileName;
+  final VoidCallback onClear;
+
+  static const _accent = Color(0xFF8AB4F8);
+  static const _surface = Color(0xFF1E1E1E);
+  static const _border = Color(0x1AFFFFFF);
+  static const _textSecondary = Color(0xFF9AA0A6);
+  static const _textMuted = Color(0xFF6B7280);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: const BoxDecoration(
+        color: _surface,
+        border: Border(bottom: BorderSide(color: _border)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.description_outlined, size: 12, color: _accent),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'File loaded: $fileName',
+              style: const TextStyle(
+                color: _textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text(
+            'Ask follow-up questions',
+            style: TextStyle(color: _textMuted, fontSize: 10),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(Icons.close, size: 12, color: _textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// HEADER (modified clear to also clear file context)
 // =============================================================================
 
 class _ChatHeader extends StatelessWidget {
@@ -602,6 +788,7 @@ class _ChatHeader extends StatelessWidget {
             onPressed: () {
               Navigator.pop(context);
               notifier.clearHistory();
+              notifier.clearFileContext(); // ← ADDED
             },
             child: const Text('Clear', style: TextStyle(color: _K.error)),
           ),
@@ -621,7 +808,8 @@ class _ChatHeader extends StatelessWidget {
 }
 
 class _HeaderIcon extends StatelessWidget {
-  const _HeaderIcon({required this.icon, required this.tooltip, required this.onTap});
+  const _HeaderIcon(
+      {required this.icon, required this.tooltip, required this.onTap});
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
@@ -661,7 +849,10 @@ class _ContextPanel extends StatelessWidget {
           const SizedBox(width: 6),
           const Text(
             'Live data loaded',
-            style: TextStyle(color: _K.textSecondary, fontSize: 12, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                color: _K.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500),
           ),
           const Spacer(),
           InkWell(
@@ -741,7 +932,9 @@ class _MessageList extends StatelessWidget {
           message: msg,
           index: index,
           isLast: isLastAssistant,
-          onEdit: msg.role == ChatRole.user ? () => onEdit(index, msg.text) : null,
+          onEdit: msg.role == ChatRole.user
+              ? () => onEdit(index, msg.text)
+              : null,
           onDelete: () => onDelete(index),
           onRegenerate: isLastAssistant && !isLoading ? onRegenerate : null,
         );
@@ -751,7 +944,7 @@ class _MessageList extends StatelessWidget {
 }
 
 // =============================================================================
-// MESSAGE BUBBLE – updated to handle EXTRACTED_TEXT and EXTRACTED_FILE blocks
+// MESSAGE BUBBLE – unchanged (already handles extraction blocks)
 // =============================================================================
 
 class _MessageBubble extends StatefulWidget {
@@ -790,21 +983,26 @@ class _MessageBubbleState extends State<_MessageBubble> {
             : _K.aiBubble;
 
     // Check if this assistant message contains extracted text (image or file)
-    final hasExtractedText = !isUser && widget.message.text.contains('[EXTRACTED_TEXT]');
-    final hasExtractedFile = !isUser && widget.message.text.contains('[EXTRACTED_FILE]');
+    final hasExtractedText =
+        !isUser && widget.message.text.contains('[EXTRACTED_TEXT]');
+    final hasExtractedFile =
+        !isUser && widget.message.text.contains('[EXTRACTED_FILE]');
     final hasExtractedBlock = hasExtractedText || hasExtractedFile;
     String displayText = widget.message.text;
-    final hasFollowUpChips = !isUser && !hasExtractedBlock && _isFollowupQuestion(displayText);
+    final hasFollowUpChips =
+        !isUser && !hasExtractedBlock && _isFollowupQuestion(displayText);
     String? extractedContent;
     if (hasExtractedText) {
       final start = displayText.indexOf('[EXTRACTED_TEXT]');
       final end = displayText.indexOf('[/EXTRACTED_TEXT]');
       if (start != -1 && end != -1 && end > start) {
         // Extract content and remove the markers for the main display
-        extractedContent = displayText.substring(start + '[EXTRACTED_TEXT]'.length, end).trim();
+        extractedContent = displayText
+            .substring(start + '[EXTRACTED_TEXT]'.length, end)
+            .trim();
         // Build a clean display line (short summary, e.g. "Extracted text from image")
         displayText = '🔍 **Image text extracted** (tap to view)  \n' +
-                      '${extractedContent!.split('\n').take(2).join('\n')}${extractedContent!.split('\n').length > 2 ? '…' : ''}';
+            '${extractedContent!.split('\n').take(2).join('\n')}${extractedContent!.split('\n').length > 2 ? '…' : ''}';
       }
     }
 
@@ -814,25 +1012,31 @@ class _MessageBubbleState extends State<_MessageBubble> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Column(
-          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   isUser ? 'You' : 'AI',
-                  style: const TextStyle(color: _K.textSecondary, fontSize: 11, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      color: _K.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   _formatTime(widget.message.timestamp),
-                  style: const TextStyle(color: _K.textMuted, fontSize: 10),
+                  style:
+                      const TextStyle(color: _K.textMuted, fontSize: 10),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: bgColor,
                 borderRadius: const BorderRadius.all(_K.r8),
@@ -849,10 +1053,12 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         InkWell(
-                          onTap: () => setState(() => _extractedExpanded = !_extractedExpanded),
+                          onTap: () => setState(() =>
+                              _extractedExpanded = !_extractedExpanded),
                           child: Row(
                             children: [
-                              const Icon(Icons.article_outlined, size: 14, color: _K.accent),
+                              const Icon(Icons.article_outlined,
+                                  size: 14, color: _K.accent),
                               const SizedBox(width: 6),
                               Text(
                                 'Extracted Text from Image',
@@ -864,7 +1070,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               ),
                               const Spacer(),
                               Icon(
-                                _extractedExpanded ? Icons.expand_less : Icons.expand_more,
+                                _extractedExpanded
+                                    ? Icons.expand_less
+                                    : Icons.expand_more,
                                 size: 16,
                                 color: _K.textMuted,
                               ),
@@ -895,12 +1103,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       ],
                     ),
                     // Show the answer's main text (the AI's response) after the collapsible block
-                    if (!widget.message.text.contains('[EXTRACTED_TEXT]')) ...[
+                    if (!widget.message.text
+                        .contains('[EXTRACTED_TEXT]')) ...[
                       // If not an extracted text message, just render normally
                       if (isUser)
                         SelectableText(
                           displayText,
-                          style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.45),
+                          style: const TextStyle(
+                              color: _K.textPrimary,
+                              fontSize: 14,
+                              height: 1.45),
                         )
                       else
                         _MarkdownView(text: displayText),
@@ -910,13 +1122,19 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       const SizedBox(height: 4),
                       const Text(
                         'The extracted data will be analysed by the AI…',
-                        style: TextStyle(color: _K.textSecondary, fontSize: 12, fontStyle: FontStyle.italic),
+                        style: TextStyle(
+                            color: _K.textSecondary,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic),
                       ),
                     ],
                   ] else if (isUser) ...[
                     SelectableText(
                       displayText,
-                      style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.45),
+                      style: const TextStyle(
+                          color: _K.textPrimary,
+                          fontSize: 14,
+                          height: 1.45),
                     ),
                   ] else ...[
                     _MarkdownView(text: displayText),
@@ -928,20 +1146,33 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         spacing: 8,
                         runSpacing: 6,
                         children: [
-                          _QuickReplyChip(label: 'Yes', onTap: () => _sendQuickReply('Yes')),
-                          _QuickReplyChip(label: 'No', onTap: () => _sendQuickReply('No')),
-                          _QuickReplyChip(label: 'Tell me more', onTap: () => _sendQuickReply('Tell me more')),
+                          _QuickReplyChip(
+                              label: 'Yes',
+                              onTap: () => _sendQuickReply('Yes')),
+                          _QuickReplyChip(
+                              label: 'No',
+                              onTap: () => _sendQuickReply('No')),
+                          _QuickReplyChip(
+                              label: 'Tell me more',
+                              onTap: () =>
+                                  _sendQuickReply('Tell me more')),
                         ],
                       ),
                     ),
-                  if ((_hovered || widget.isLast) && !hasExtractedText && !hasExtractedFile)
+                  if ((_hovered || widget.isLast) &&
+                      !hasExtractedText &&
+                      !hasExtractedFile)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Row(
-                        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+                        mainAxisAlignment: isUser
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
                         children: [
                           _MsgAction(
-                            icon: _copied ? Icons.check : Icons.copy_outlined,
+                            icon: _copied
+                                ? Icons.check
+                                : Icons.copy_outlined,
                             tooltip: _copied ? 'Copied' : 'Copy',
                             color: _copied ? _K.online : _K.textMuted,
                             onTap: _copyText,
@@ -979,7 +1210,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     );
   }
 
-  // ── NEW: build extracted file block (PDF/Excel) ───────────────────────
+  // ── build extracted file block (PDF/Excel) ───────────────────────
   Widget _buildExtractedFileBlock(String rawText) {
     // Parse the [EXTRACTED_FILE] block
     final start = rawText.indexOf('[EXTRACTED_FILE]');
@@ -988,7 +1219,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
       return _MarkdownView(text: rawText);
     }
 
-    final inner = rawText.substring(start + '[EXTRACTED_FILE]'.length, end).trim();
+    final inner = rawText
+        .substring(start + '[EXTRACTED_FILE]'.length, end)
+        .trim();
     final lines = inner.split('\n');
 
     String fileType = 'File';
@@ -1017,7 +1250,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: () => setState(() => _extractedExpanded = !_extractedExpanded),
+          onTap: () =>
+              setState(() => _extractedExpanded = !_extractedExpanded),
           child: Row(
             children: [
               Icon(icon, size: 14, color: iconColor),
@@ -1033,7 +1267,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 ),
               ),
               Icon(
-                _extractedExpanded ? Icons.expand_less : Icons.expand_more,
+                _extractedExpanded
+                    ? Icons.expand_less
+                    : Icons.expand_more,
                 size: 16,
                 color: _K.textMuted,
               ),
@@ -1120,7 +1356,8 @@ class _QuickReplyChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: _K.surfaceElevated,
           borderRadius: BorderRadius.circular(12),
@@ -1128,7 +1365,10 @@ class _QuickReplyChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: const TextStyle(color: _K.textPrimary, fontSize: 12, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+              color: _K.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500),
         ),
       ),
     );
@@ -1182,7 +1422,8 @@ class _TypingIndicatorState extends State<_TypingIndicator>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1200))
       ..repeat();
     _animation = Tween(begin: 0.0, end: 1.0).animate(_ctrl);
   }
@@ -1201,8 +1442,13 @@ class _TypingIndicatorState extends State<_TypingIndicator>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
-            final t = ((_animation.value - i * 0.2) % 1.0).clamp(0.0, 1.0);
-            final opacity = (0.2 + 0.8 * (0.5 - (t - 0.5).abs() * 2).clamp(0.0, 1.0)).clamp(0.2, 1.0);
+            final t =
+                ((_animation.value - i * 0.2) % 1.0).clamp(0.0, 1.0);
+            final opacity = (0.2 +
+                        0.8 *
+                            (0.5 - (t - 0.5).abs() * 2)
+                                .clamp(0.0, 1.0))
+                    .clamp(0.2, 1.0);
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 2),
               width: 6,
@@ -1237,14 +1483,18 @@ class _MarkdownView extends StatelessWidget {
 
   List<Widget> _parseBlocks(String raw) {
     final result = <Widget>[];
-    final codeBlockRx = RegExp(r'```(\w*)\n([\s\S]*?)```', multiLine: true);
+    final codeBlockRx =
+        RegExp(r'```(\w*)\n([\s\S]*?)```', multiLine: true);
     int cursor = 0;
 
     for (final match in codeBlockRx.allMatches(raw)) {
       if (match.start > cursor) {
-        result.addAll(_parseInlineBlocks(raw.substring(cursor, match.start)));
+        result.addAll(
+            _parseInlineBlocks(raw.substring(cursor, match.start)));
       }
-      result.add(_CodeBlock(code: (match.group(2) ?? '').trimRight(), language: match.group(1) ?? ''));
+      result.add(_CodeBlock(
+          code: (match.group(2) ?? '').trimRight(),
+          language: match.group(1) ?? ''));
       cursor = match.end;
     }
     if (cursor < raw.length) {
@@ -1265,23 +1515,36 @@ class _MarkdownView extends StatelessWidget {
       } else if (line.startsWith('### ')) {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 2),
-          child: Text(line.substring(4), style: const TextStyle(color: _K.textPrimary, fontSize: 15, fontWeight: FontWeight.w600)),
+          child: Text(line.substring(4),
+              style: const TextStyle(
+                  color: _K.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600)),
         ));
       } else if (line.startsWith('## ')) {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 2),
-          child: Text(line.substring(3), style: const TextStyle(color: _K.textPrimary, fontSize: 16, fontWeight: FontWeight.w600)),
+          child: Text(line.substring(3),
+              style: const TextStyle(
+                  color: _K.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600)),
         ));
       } else if (line.startsWith('# ')) {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 2),
-          child: Text(line.substring(2), style: const TextStyle(color: _K.accent, fontSize: 18, fontWeight: FontWeight.w700)),
+          child: Text(line.substring(2),
+              style: const TextStyle(
+                  color: _K.accent,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
         ));
       } else if (line.startsWith('- ') || line.startsWith('* ')) {
         widgets.add(_buildBullet(line.substring(2)));
       } else if (RegExp(r'^\d+\. ').hasMatch(line)) {
         final prefix = RegExp(r'^\d+\. ').stringMatch(line)!;
-        widgets.add(_buildNumbered(prefix, line.substring(prefix.length)));
+        widgets.add(
+            _buildNumbered(prefix, line.substring(prefix.length)));
       } else {
         widgets.add(_buildRichLine(line));
       }
@@ -1312,7 +1575,11 @@ class _MarkdownView extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$prefix ', style: const TextStyle(color: _K.accent, fontSize: 13, fontWeight: FontWeight.w500)),
+          Text('$prefix ',
+              style: const TextStyle(
+                  color: _K.accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
           Expanded(child: _buildRichLine(text)),
         ],
       ),
@@ -1322,7 +1589,8 @@ class _MarkdownView extends StatelessWidget {
   Widget _buildRichLine(String text) {
     return SelectableText.rich(
       TextSpan(children: _parseInlineSpans(text)),
-      style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.45),
+      style: const TextStyle(
+          color: _K.textPrimary, fontSize: 14, height: 1.45),
     );
   }
 
@@ -1339,13 +1607,17 @@ class _MarkdownView extends StatelessWidget {
     }
 
     while (i < text.length) {
-      if (i + 1 < text.length && text[i] == '*' && text[i + 1] == '*') {
+      if (i + 1 < text.length &&
+          text[i] == '*' &&
+          text[i + 1] == '*') {
         flush();
         final end = text.indexOf('**', i + 2);
         if (end != -1) {
           spans.add(TextSpan(
             text: text.substring(i + 2, end),
-            style: const TextStyle(fontWeight: FontWeight.bold, color: _K.textPrimary),
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: _K.textPrimary),
           ));
           i = end + 2;
           continue;
@@ -1370,14 +1642,18 @@ class _MarkdownView extends StatelessWidget {
           spans.add(WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 4, vertical: 1),
               decoration: BoxDecoration(
                 color: _K.surfaceElevated,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
                 text.substring(i + 1, end),
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: _K.accent),
+                style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    color: _K.accent),
               ),
             ),
           ));
@@ -1422,16 +1698,21 @@ class _CodeBlockState extends State<_CodeBlock> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: const BoxDecoration(
               color: _K.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(7)),
+              borderRadius:
+                  BorderRadius.vertical(top: Radius.circular(7)),
             ),
             child: Row(
               children: [
                 Text(
                   widget.language.isEmpty ? 'code' : widget.language,
-                  style: const TextStyle(color: _K.textSecondary, fontSize: 11, fontFamily: 'monospace'),
+                  style: const TextStyle(
+                      color: _K.textSecondary,
+                      fontSize: 11,
+                      fontFamily: 'monospace'),
                 ),
                 const Spacer(),
                 InkWell(
@@ -1439,9 +1720,16 @@ class _CodeBlockState extends State<_CodeBlock> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(_copied ? Icons.check : Icons.copy_outlined, size: 12, color: _K.textMuted),
+                      Icon(
+                          _copied
+                              ? Icons.check
+                              : Icons.copy_outlined,
+                          size: 12,
+                          color: _K.textMuted),
                       const SizedBox(width: 4),
-                      Text(_copied ? 'Copied' : 'Copy', style: const TextStyle(color: _K.textMuted, fontSize: 11)),
+                      Text(_copied ? 'Copied' : 'Copy',
+                          style: const TextStyle(
+                              color: _K.textMuted, fontSize: 11)),
                     ],
                   ),
                 ),
@@ -1510,7 +1798,8 @@ class _EmptyState extends StatelessWidget {
             const Text(
               'Ask me anything about your employees,\npayroll, vouchers, or audit data.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: _K.textSecondary, fontSize: 14, height: 1.5),
+              style: TextStyle(
+                  color: _K.textSecondary, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 24),
             Wrap(
@@ -1522,7 +1811,8 @@ class _EmptyState extends StatelessWidget {
                   onTap: () => notifier.sendMessage(qa.$1),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: _K.surface,
                       borderRadius: BorderRadius.circular(8),
@@ -1533,7 +1823,10 @@ class _EmptyState extends StatelessWidget {
                       children: [
                         Icon(qa.$2, size: 14, color: _K.accent),
                         const SizedBox(width: 6),
-                        Text(qa.$1, style: const TextStyle(color: _K.textSecondary, fontSize: 13)),
+                        Text(qa.$1,
+                            style: const TextStyle(
+                                color: _K.textSecondary,
+                                fontSize: 13)),
                       ],
                     ),
                   ),
@@ -1557,7 +1850,10 @@ class _EmptyState extends StatelessWidget {
 // =============================================================================
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message, required this.onRetry, required this.onSwitchModel});
+  const _ErrorBanner(
+      {required this.message,
+      required this.onRetry,
+      required this.onSwitchModel});
   final String message;
   final VoidCallback onRetry;
   final VoidCallback onSwitchModel;
@@ -1585,11 +1881,13 @@ class _ErrorBanner extends StatelessWidget {
           ),
           TextButton(
             onPressed: onRetry,
-            child: const Text('Retry', style: TextStyle(color: _K.error, fontSize: 12)),
+            child: const Text('Retry',
+                style: TextStyle(color: _K.error, fontSize: 12)),
           ),
           TextButton(
             onPressed: onSwitchModel,
-            child: const Text('Switch', style: TextStyle(color: _K.textSecondary, fontSize: 12)),
+            child: const Text('Switch',
+                style: TextStyle(color: _K.textSecondary, fontSize: 12)),
           ),
         ],
       ),
@@ -1598,7 +1896,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // =============================================================================
-// INPUT AREA – updated with file picker & preview (PDF/Excel)
+// INPUT AREA (modified hint to reflect batch sync, using correct getter)
 // =============================================================================
 
 class _InputArea extends StatelessWidget {
@@ -1613,16 +1911,16 @@ class _InputArea extends StatelessWidget {
     required this.smartSuggestion,
     this.pendingImageBytes,
     this.pendingImageName,
-    this.pendingFileType,       // ← NEW
-    this.pendingFileName,       // ← NEW
+    this.pendingFileType,
+    this.pendingFileName,
     required this.onSend,
     required this.onCancel,
     required this.onApplySlash,
     required this.onApplySuggestion,
     required this.onPickImage,
     required this.onClearImage,
-    required this.onPickFile,   // ← NEW
-    required this.onClearFile,  // ← NEW
+    required this.onPickFile,
+    required this.onClearFile,
   });
 
   final TextEditingController controller;
@@ -1635,16 +1933,16 @@ class _InputArea extends StatelessWidget {
   final String? smartSuggestion;
   final Uint8List? pendingImageBytes;
   final String? pendingImageName;
-  final String? pendingFileType;      // ← NEW
-  final String? pendingFileName;      // ← NEW
+  final String? pendingFileType;
+  final String? pendingFileName;
   final VoidCallback onSend;
   final VoidCallback? onCancel;
   final void Function(_SlashCommand) onApplySlash;
   final void Function(String) onApplySuggestion;
   final void Function(ImageSource source) onPickImage;
   final VoidCallback onClearImage;
-  final VoidCallback onPickFile;      // ← NEW
-  final VoidCallback onClearFile;     // ← NEW
+  final VoidCallback onPickFile;
+  final VoidCallback onClearFile;
 
   @override
   Widget build(BuildContext context) {
@@ -1666,14 +1964,18 @@ class _InputArea extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showSlashCommands && filtered.isNotEmpty)
-            _SlashCommandsOverlay(commands: filtered, onTap: onApplySlash),
+            _SlashCommandsOverlay(
+                commands: filtered, onTap: onApplySlash),
 
-          if (!showSlashCommands && smartSuggestion != null && !notifier.isLoading)
+          if (!showSlashCommands &&
+              smartSuggestion != null &&
+              !notifier.isLoading)
             GestureDetector(
               onTap: () => onApplySuggestion(smartSuggestion!),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: _K.accent.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -1681,9 +1983,12 @@ class _InputArea extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.tips_and_updates_outlined, size: 14, color: _K.accent),
+                    const Icon(Icons.tips_and_updates_outlined,
+                        size: 14, color: _K.accent),
                     const SizedBox(width: 6),
-                    Text(smartSuggestion!, style: const TextStyle(color: _K.accent, fontSize: 13)),
+                    Text(smartSuggestion!,
+                        style: const TextStyle(
+                            color: _K.accent, fontSize: 13)),
                   ],
                 ),
               ),
@@ -1692,21 +1997,27 @@ class _InputArea extends StatelessWidget {
           if (isEditing)
             Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: _K.accent.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.edit_outlined, size: 14, color: _K.accent),
+                  const Icon(Icons.edit_outlined,
+                      size: 14, color: _K.accent),
                   const SizedBox(width: 6),
-                  const Text('Editing', style: TextStyle(color: _K.accent, fontSize: 12)),
+                  const Text('Editing',
+                      style:
+                          TextStyle(color: _K.accent, fontSize: 12)),
                   const Spacer(),
                   if (onCancel != null)
                     InkWell(
                       onTap: onCancel,
-                      child: const Text('Cancel', style: TextStyle(color: _K.error, fontSize: 12)),
+                      child: const Text('Cancel',
+                          style: TextStyle(
+                              color: _K.error, fontSize: 12)),
                     ),
                 ],
               ),
@@ -1736,12 +2047,14 @@ class _InputArea extends StatelessWidget {
                   Expanded(
                     child: Text(
                       pendingImageName ?? 'Image',
-                      style: const TextStyle(color: _K.textSecondary, fontSize: 12),
+                      style: const TextStyle(
+                          color: _K.textSecondary, fontSize: 12),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 16, color: _K.textMuted),
+                    icon: const Icon(Icons.close,
+                        size: 16, color: _K.textMuted),
                     splashRadius: 14,
                     onPressed: onClearImage,
                   ),
@@ -1749,11 +2062,12 @@ class _InputArea extends StatelessWidget {
               ),
             ),
 
-          // ── File preview (PDF / Excel) — NEW ──────────────────────────
+          // ── File preview (PDF / Excel) ─────────────────────────────────
           if (pendingFileType != null && pendingFileName != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: _K.surfaceElevated,
                 borderRadius: BorderRadius.circular(8),
@@ -1767,8 +2081,8 @@ class _InputArea extends StatelessWidget {
                         : Icons.table_chart_outlined,
                     size: 20,
                     color: pendingFileType == 'pdf'
-                        ? const Color(0xFFEF5350)   // red for PDF
-                        : const Color(0xFF66BB6A),   // green for Excel
+                        ? const Color(0xFFEF5350)
+                        : const Color(0xFF66BB6A),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1786,14 +2100,18 @@ class _InputArea extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          pendingFileType == 'pdf' ? 'PDF Document' : 'Excel Spreadsheet',
-                          style: const TextStyle(color: _K.textMuted, fontSize: 10),
+                          pendingFileType == 'pdf'
+                              ? 'PDF Document'
+                              : 'Excel Spreadsheet',
+                          style: const TextStyle(
+                              color: _K.textMuted, fontSize: 10),
                         ),
                       ],
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 16, color: _K.textMuted),
+                    icon: const Icon(Icons.close,
+                        size: 16, color: _K.textMuted),
                     splashRadius: 14,
                     onPressed: onClearFile,
                   ),
@@ -1802,7 +2120,8 @@ class _InputArea extends StatelessWidget {
             ),
 
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
               color: _K.bg,
               borderRadius: BorderRadius.circular(20),
@@ -1812,7 +2131,8 @@ class _InputArea extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.attach_file, color: _K.textSecondary, size: 20),
+                  icon: const Icon(Icons.attach_file,
+                      color: _K.textSecondary, size: 20),
                   splashRadius: 18,
                   onPressed: () => _showAttachmentSheet(context),
                 ),
@@ -1823,13 +2143,22 @@ class _InputArea extends StatelessWidget {
                     maxLines: 5,
                     minLines: 1,
                     textInputAction: TextInputAction.newline,
-                    enabled: !notifier.isLoading || notifier.isStreaming,
-                    style: const TextStyle(color: _K.textPrimary, fontSize: 14, height: 1.4),
-                    decoration: const InputDecoration(
-                      hintText: 'Message…',
-                      hintStyle: TextStyle(color: _K.textMuted, fontSize: 14),
+                    enabled:
+                        !notifier.isLoading || notifier.isStreaming,
+                    style: const TextStyle(
+                        color: _K.textPrimary,
+                        fontSize: 14,
+                        height: 1.4),
+                    decoration: InputDecoration(
+                      // ✅ FIXED: use `hasBatchSyncActive` instead of undefined `isInBatchSync`
+                      hintText: notifier.hasBatchSyncActive
+                          ? 'Reply Yes / Skip / Stop…'
+                          : 'Message…',
+                      hintStyle: const TextStyle(
+                          color: _K.textMuted, fontSize: 14),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
                     ),
                     onSubmitted: (_) => onSend(),
                   ),
@@ -1839,12 +2168,14 @@ class _InputArea extends StatelessWidget {
                   child: notifier.isLoading
                       ? IconButton(
                           onPressed: onCancel,
-                          icon: const Icon(Icons.stop, color: _K.error, size: 22),
+                          icon: const Icon(Icons.stop,
+                              color: _K.error, size: 22),
                           splashRadius: 18,
                         )
                       : IconButton(
                           onPressed: onSend,
-                          icon: const Icon(Icons.arrow_upward, color: _K.accent, size: 22),
+                          icon: const Icon(Icons.arrow_upward,
+                              color: _K.accent, size: 22),
                           splashRadius: 18,
                         ),
                 ),
@@ -1870,31 +2201,34 @@ class _InputArea extends StatelessWidget {
       builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
-            // ── Existing image options ────────────────────────────────────
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: _K.textPrimary),
-              title: const Text('Gallery', style: TextStyle(color: _K.textPrimary)),
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: _K.textPrimary),
+              title: const Text('Gallery',
+                  style: TextStyle(color: _K.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 onPickImage(ImageSource.gallery);
               },
             ),
             ListTile(
-              leading: const Icon(Icons.camera_alt_outlined, color: _K.textPrimary),
-              title: const Text('Camera', style: TextStyle(color: _K.textPrimary)),
+              leading: const Icon(Icons.camera_alt_outlined,
+                  color: _K.textPrimary),
+              title: const Text('Camera',
+                  style: TextStyle(color: _K.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 onPickImage(ImageSource.camera);
               },
             ),
             const Divider(height: 1, color: Color(0x1AFFFFFF)),
-            // ── NEW: PDF option ───────────────────────────────────────────
             ListTile(
               leading: const Icon(
                 Icons.picture_as_pdf_outlined,
                 color: Color(0xFFEF5350),
               ),
-              title: const Text('PDF Document', style: TextStyle(color: _K.textPrimary)),
+              title: const Text('PDF Document',
+                  style: TextStyle(color: _K.textPrimary)),
               subtitle: const Text(
                 'Salary statements, invoices, reports',
                 style: TextStyle(color: _K.textMuted, fontSize: 11),
@@ -1904,13 +2238,13 @@ class _InputArea extends StatelessWidget {
                 onPickFile();
               },
             ),
-            // ── NEW: Excel option ─────────────────────────────────────────
             ListTile(
               leading: const Icon(
                 Icons.table_chart_outlined,
                 color: Color(0xFF66BB6A),
               ),
-              title: const Text('Excel Spreadsheet', style: TextStyle(color: _K.textPrimary)),
+              title: const Text('Excel Spreadsheet',
+                  style: TextStyle(color: _K.textPrimary)),
               subtitle: const Text(
                 '.xlsx / .xls files',
                 style: TextStyle(color: _K.textMuted, fontSize: 11),
@@ -1932,7 +2266,8 @@ class _InputArea extends StatelessWidget {
 // =============================================================================
 
 class _SlashCommandsOverlay extends StatelessWidget {
-  const _SlashCommandsOverlay({required this.commands, required this.onTap});
+  const _SlashCommandsOverlay(
+      {required this.commands, required this.onTap});
   final List<_SlashCommand> commands;
   final void Function(_SlashCommand) onTap;
 
@@ -1949,21 +2284,29 @@ class _SlashCommandsOverlay extends StatelessWidget {
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(vertical: 4),
         itemCount: commands.length,
-        separatorBuilder: (_, __) => const Divider(height: 1, color: _K.border),
+        separatorBuilder: (_, __) =>
+            const Divider(height: 1, color: _K.border),
         itemBuilder: (context, i) {
           final cmd = commands[i];
           return InkWell(
             onTap: () => onTap(cmd),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: [
                   Icon(cmd.icon, size: 16, color: _K.accent),
                   const SizedBox(width: 10),
-                  Text(cmd.command, style: const TextStyle(color: _K.accent, fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(cmd.command,
+                      style: const TextStyle(
+                          color: _K.accent,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(cmd.description, style: const TextStyle(color: _K.textSecondary, fontSize: 13)),
+                    child: Text(cmd.description,
+                        style: const TextStyle(
+                            color: _K.textSecondary, fontSize: 13)),
                   ),
                 ],
               ),
@@ -2033,7 +2376,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
   }
 
   Future<void> _onServerModeChanged(String mode) async {
-    setState(() { _serverMode = mode; _connStatus = _ConnStatus.idle; });
+    setState(() {
+      _serverMode = mode;
+      _connStatus = _ConnStatus.idle;
+    });
     await OllamaService.instance.saveServerMode(mode);
     await widget.notifier.refreshModels();
   }
@@ -2042,7 +2388,10 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
     final url = _remoteUrlCtrl.text.trim();
     if (url.isEmpty) return;
 
-    setState(() { _testing = true; _connStatus = _ConnStatus.idle; });
+    setState(() {
+      _testing = true;
+      _connStatus = _ConnStatus.idle;
+    });
     final ok = await OllamaService.instance.testConnection(url);
     if (ok) {
       await OllamaService.instance.saveRemoteUrl(url);
@@ -2093,20 +2442,28 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   const Icon(Icons.tune_outlined, size: 18),
                   const SizedBox(width: 8),
                   Text('AI Settings',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600)),
                 ],
               ),
               const SizedBox(height: 16),
 
               // Provider toggle
-              _SectionLabel(label: 'Provider', icon: Icons.smart_toy_outlined),
+              _SectionLabel(
+                  label: 'Provider', icon: Icons.smart_toy_outlined),
               const SizedBox(height: 8),
               SegmentedButton<AiProvider>(
                 segments: AiProvider.values
                     .map((p) => ButtonSegment(
                           value: p,
                           label: Text(p.label),
-                          icon: Icon(p == AiProvider.ollama ? Icons.computer_outlined : Icons.cloud_outlined, size: 16),
+                          icon: Icon(
+                              p == AiProvider.ollama
+                                  ? Icons.computer_outlined
+                                  : Icons.cloud_outlined,
+                              size: 16),
                         ))
                     .toList(),
                 selected: {widget.notifier.selectedProvider},
@@ -2115,7 +2472,8 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   // Reapply hardcoded models when switching to Ollama
                   if (s.first == AiProvider.ollama) {
                     widget.notifier.selectModel('qwen2.3');
-                    widget.notifier.setImageProcessingModel('minicpm-v:8b');
+                    widget.notifier
+                        .setImageProcessingModel('minicpm-v:8b');
                     widget.notifier.setAnalysisModel(null);
                   }
                   // For Gemini, the notifier will load its own models
@@ -2132,7 +2490,8 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   label: 'Chat model',
                   value: 'qwen2.3',
                 )
-              else if (widget.notifier.selectedProvider == AiProvider.gemini)
+              else if (widget.notifier.selectedProvider ==
+                  AiProvider.gemini)
                 _ModelInfoLine(
                   icon: Icons.chat_outlined,
                   label: 'Chat model',
@@ -2142,16 +2501,25 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
               const SizedBox(height: 16),
 
               // Ollama server config
-              if (widget.notifier.selectedProvider == AiProvider.ollama) ...[
-                _SectionLabel(label: 'Ollama Server', icon: Icons.dns_outlined),
+              if (widget.notifier.selectedProvider ==
+                  AiProvider.ollama) ...[
+                _SectionLabel(
+                    label: 'Ollama Server', icon: Icons.dns_outlined),
                 const SizedBox(height: 8),
                 SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: 'local', label: Text('Local'), icon: Icon(Icons.laptop_outlined, size: 16)),
-                    ButtonSegment(value: 'remote', label: Text('Remote'), icon: Icon(Icons.lan_outlined, size: 16)),
+                    ButtonSegment(
+                        value: 'local',
+                        label: Text('Local'),
+                        icon: Icon(Icons.laptop_outlined, size: 16)),
+                    ButtonSegment(
+                        value: 'remote',
+                        label: Text('Remote'),
+                        icon: Icon(Icons.lan_outlined, size: 16)),
                   ],
                   selected: {_serverMode},
-                  onSelectionChanged: (s) => _onServerModeChanged(s.first),
+                  onSelectionChanged: (s) =>
+                      _onServerModeChanged(s.first),
                 ),
                 const SizedBox(height: 10),
                 if (_serverMode == 'remote') ...[
@@ -2161,10 +2529,14 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     decoration: InputDecoration(
                       labelText: 'LAN URL',
                       hintText: 'http://192.168.1.5:11434',
-                      prefixIcon: const Icon(Icons.link, size: 18),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      prefixIcon:
+                          const Icon(Icons.link, size: 18),
+                      border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(8)),
                     ),
-                    onChanged: (_) => setState(() => _connStatus = _ConnStatus.idle),
+                    onChanged: (_) => setState(
+                        () => _connStatus = _ConnStatus.idle),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -2173,9 +2545,16 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                         child: ElevatedButton.icon(
                           onPressed: _testing ? null : _testAndSave,
                           icon: _testing
-                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                              : const Icon(Icons.wifi_find_outlined, size: 16),
-                          label: Text(_testing ? 'Testing…' : 'Connect & Save'),
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(
+                                  Icons.wifi_find_outlined,
+                                  size: 16),
+                          label: Text(
+                              _testing ? 'Testing…' : 'Connect & Save'),
                         ),
                       ),
                     ],
@@ -2183,20 +2562,26 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   if (_connStatus == _ConnStatus.success)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text('Connected!', style: TextStyle(color: Colors.green, fontSize: 12)),
+                      child: Text('Connected!',
+                          style: TextStyle(
+                              color: Colors.green, fontSize: 12)),
                     ),
                   if (_connStatus == _ConnStatus.failure)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
-                      child: Text('Connection failed. Check URL.', style: TextStyle(color: _K.error, fontSize: 12)),
+                      child: Text('Connection failed. Check URL.',
+                          style: TextStyle(
+                              color: _K.error, fontSize: 12)),
                     ),
                 ],
                 const SizedBox(height: 16),
               ],
 
               // Gemini API key
-              if (widget.notifier.selectedProvider == AiProvider.gemini) ...[
-                _SectionLabel(label: 'Gemini API Key', icon: Icons.key_outlined),
+              if (widget.notifier.selectedProvider ==
+                  AiProvider.gemini) ...[
+                _SectionLabel(
+                    label: 'Gemini API Key', icon: Icons.key_outlined),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _geminiKeyCtrl,
@@ -2204,12 +2589,19 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                   decoration: InputDecoration(
                     labelText: 'API Key',
                     hintText: 'AIza…',
-                    prefixIcon: const Icon(Icons.vpn_key_outlined, size: 18),
+                    prefixIcon: const Icon(Icons.vpn_key_outlined,
+                        size: 18),
                     suffixIcon: IconButton(
-                      icon: Icon(_obscureKey ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18),
-                      onPressed: () => setState(() => _obscureKey = !_obscureKey),
+                      icon: Icon(
+                          _obscureKey
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 18),
+                      onPressed: () => setState(
+                          () => _obscureKey = !_obscureKey),
                     ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -2218,8 +2610,14 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: _saveGeminiKey,
-                        icon: Icon(_geminiKeySaved ? Icons.check : Icons.save_outlined, size: 16),
-                        label: Text(_geminiKeySaved ? 'Saved!' : 'Save Key'),
+                        icon: Icon(
+                            _geminiKeySaved
+                                ? Icons.check
+                                : Icons.save_outlined,
+                            size: 16),
+                        label: Text(_geminiKeySaved
+                            ? 'Saved!'
+                            : 'Save Key'),
                       ),
                     ),
                   ],
@@ -2229,17 +2627,23 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
 
               // --- Image Processing Section (simplified, no model pickers) ---
               InkWell(
-                onTap: () => setState(() => _imageSettingsExpanded = !_imageSettingsExpanded),
+                onTap: () => setState(() => _imageSettingsExpanded =
+                    !_imageSettingsExpanded),
                 child: Row(
                   children: [
                     const Icon(Icons.image_outlined, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       'Image Processing',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
-                    Icon(_imageSettingsExpanded ? Icons.expand_less : Icons.expand_more),
+                    Icon(_imageSettingsExpanded
+                        ? Icons.expand_less
+                        : Icons.expand_more),
                   ],
                 ),
               ),
@@ -2247,11 +2651,13 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                 const SizedBox(height: 12),
                 SwitchListTile.adaptive(
                   title: const Text('Enable image analysis'),
-                  subtitle: const Text('Allow images to be processed by a vision model'),
+                  subtitle: const Text(
+                      'Allow images to be processed by a vision model'),
                   value: widget.notifier.imageSettings.enableImageProcessing,
                   onChanged: (val) {
                     widget.notifier.updateImageSettings(
-                      widget.notifier.imageSettings.copyWith(enableImageProcessing: val),
+                      widget.notifier.imageSettings.copyWith(
+                          enableImageProcessing: val),
                     );
                   },
                   contentPadding: EdgeInsets.zero,
@@ -2259,7 +2665,8 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                 const Divider(),
 
                 // Show fixed models when Ollama is selected
-                if (widget.notifier.selectedProvider == AiProvider.ollama) ...[
+                if (widget.notifier.selectedProvider ==
+                    AiProvider.ollama) ...[
                   _ModelInfoLine(
                     icon: Icons.remove_red_eye_outlined,
                     label: 'Vision model',
@@ -2275,7 +2682,8 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
 
                 // Timeout slider
                 ListTile(
-                  title: Text('Extraction timeout ($_extractionTimeout s)'),
+                  title: Text(
+                      'Extraction timeout ($_extractionTimeout s)'),
                   subtitle: Slider(
                     value: _extractionTimeout.toDouble(),
                     min: 5,
@@ -2283,9 +2691,11 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     divisions: 11,
                     label: '$_extractionTimeout s',
                     onChanged: (val) {
-                      setState(() => _extractionTimeout = val.toInt());
+                      setState(
+                          () => _extractionTimeout = val.toInt());
                       widget.notifier.updateImageSettings(
-                        widget.notifier.imageSettings.copyWith(extractionTimeoutSeconds: val.toInt()),
+                        widget.notifier.imageSettings.copyWith(
+                            extractionTimeoutSeconds: val.toInt()),
                       );
                     },
                   ),
@@ -2300,7 +2710,6 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
   }
 }
 
-// A small widget to display a read-only model info line
 class _ModelInfoLine extends StatelessWidget {
   const _ModelInfoLine({
     required this.icon,
@@ -2318,11 +2727,16 @@ class _ModelInfoLine extends StatelessWidget {
       children: [
         Icon(icon, size: 16, color: _K.textSecondary),
         const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: _K.textSecondary, fontSize: 13)),
+        Text('$label: ',
+            style: const TextStyle(
+                color: _K.textSecondary, fontSize: 13)),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(color: _K.textPrimary, fontSize: 13, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+                color: _K.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w500),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -2346,7 +2760,9 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        Icon(icon,
+            size: 14,
+            color: Theme.of(context).colorScheme.onSurfaceVariant),
         const SizedBox(width: 6),
         Text(label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(

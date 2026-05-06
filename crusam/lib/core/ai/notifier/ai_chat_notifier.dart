@@ -1,4 +1,14 @@
-﻿import 'dart:async';
+﻿// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
+//
+// Key additions vs. previous version:
+//  1. _activeFileContext         — persists last uploaded file across follow‑ups
+//  2. _lastTaskDescription      — remembers the most recent task
+//  3. _isContinueIntent()       — detects "continue", "next", "resume" etc.
+//  4. BatchSyncManager          — drives one‑by‑one employee sync
+//  5. _buildValidHistory()      — injects file content into the AI context window
+//  6. AutonomousSyncService     — runs all changes automatically when triggered
+
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crusam/core/ai/models/ai_image_settings.dart';
@@ -6,8 +16,12 @@ import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/models/app_context.dart';
 import 'package:crusam/core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/core/ai/services/ai_service.dart';
-import 'package:crusam/core/ai/services/file_extraction_service.dart'; // NEW â€“ PDF/Excel support
+import 'package:crusam/core/ai/services/autonomous_sync_service.dart';   // NEW
+import 'package:crusam/core/ai/services/batch_sync_manager.dart';
+import 'package:crusam/core/ai/services/file_extraction_service.dart';
 import 'package:crusam/core/ai/services/employee_verification_service.dart';
+import 'package:crusam/core/ai/services/voucher_image_processing_service.dart';   // NEW: voucher image parsing
+import 'package:crusam/core/ai/services/parsers/name_resolver.dart';             // NEW
 import 'package:crusam/core/ai/services/gemini_service.dart';
 import 'package:crusam/core/ai/services/ollama_service.dart';
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
@@ -50,41 +64,51 @@ class AiChatNotifier extends ChangeNotifier {
   AiChatNotifier._();
   static final AiChatNotifier instance = AiChatNotifier._();
 
-  // ---- Chat messages & UI state ------------------------------------------
+  // ── Chat messages & UI state ─────────────────────────────────────────────
   final List<ChatMessage> _messages = [];
   ChatStatus _status = ChatStatus.idle;
   String? _errorMessage;
   bool _panelOpen = false;
   AppContext _context = const AppContext();
 
-  // ---- Providerâ€‘aware state -----------------------------------------------
+  // ── Provider‑aware state ─────────────────────────────────────────────────
   AiProvider _selectedProvider = AiProvider.ollama;
   String _selectedModel = '';
   List<AiModelInfo> _availableModels = [];
   bool _initializing = true;
   bool _loadingModels = false;
 
-  // ---- Streaming state ----------------------------------------------------
+  // ── Streaming state ──────────────────────────────────────────────────────
   String? _pendingStreamText;
   ChatPhase _chatPhase = ChatPhase.idle;
   StreamSubscription<String>? _streamSubscription;
   String _lastUserQuery = '';
 
-  // ---- Extraction guard (step 1 of image pipeline) -----------------------
+  // ── Extraction guard ─────────────────────────────────────────────────────
   bool _isExtracting = false;
 
-  // ---- Image settings (multimodal configuration) --------------------------
+  // ── Image settings ───────────────────────────────────────────────────────
   AiImageSettings _imageSettings = AiImageSettings.defaults;
 
-  // ---- Pending action (interactive confirmation) --------------------------
+  // ── Pending action (interactive confirmation) ────────────────────────────
   Completer<bool>? _pendingActionCompleter;
   String? _pendingActionDescription;
 
-  // ---- Rate limit for image extraction ------------------------------------
+  // ── Rate limit for image extraction ─────────────────────────────────────
   DateTime? _lastExtractionTime;
   static const Duration _extractionCooldown = Duration(seconds: 5);
 
-  // ---- Public getters (chat) ----------------------------------------------
+  // ── File context persistence ─────────────────────────────────────────────
+  FileExtractionResult? _activeFileContext;
+  String? _activeFileName;
+
+  // ── Task memory (for "continue last task") ───────────────────────────────
+  String? _lastTaskDescription;
+
+  // ── Batch sync state ─────────────────────────────────────────────────────
+  bool _batchSyncActive = false;
+
+  // ── Public getters ───────────────────────────────────────────────────────
   List<ChatMessage> get messages => List.unmodifiable(_messages);
   ChatStatus get status => _status;
   String? get errorMessage => _errorMessage;
@@ -92,16 +116,13 @@ class AiChatNotifier extends ChangeNotifier {
   bool get isLoading => _status == ChatStatus.loading;
   bool get hasMessages => _messages.isNotEmpty;
 
-  // ---- Streaming getters --------------------------------------------------
   String? get pendingStreamText => _pendingStreamText;
   bool get isStreaming => _chatPhase == ChatPhase.streaming;
   ChatPhase get chatPhase => _chatPhase;
 
-  // ---- Pending action getters ---------------------------------------------
   bool get hasPendingAction => _pendingActionCompleter != null;
   String? get pendingActionDescription => _pendingActionDescription;
 
-  // ---- Provider / model getters -------------------------------------------
   AiProvider get selectedProvider => _selectedProvider;
   String get selectedModel => _selectedModel;
   List<AiModelInfo> get availableModels => List.unmodifiable(_availableModels);
@@ -109,10 +130,13 @@ class AiChatNotifier extends ChangeNotifier {
   bool get isInitializing => _initializing;
   bool get isLoadingModels => _loadingModels;
 
-  // ---- Image settings getter ----------------------------------------------
   AiImageSettings get imageSettings => _imageSettings;
 
-  // ---- Initialization -----------------------------------------------------
+  bool get hasActiveFileContext => _activeFileContext != null;
+  String? get activeFileName => _activeFileName;
+  bool get hasBatchSyncActive => _batchSyncActive;
+
+  // ── Initialization ───────────────────────────────────────────────────────
   Future<void> initialize() async {
     _initializing = true;
     notifyListeners();
@@ -131,7 +155,6 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
-  /// Load image settings from SharedPreferences
   Future<void> _loadImageSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -147,7 +170,6 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
-  /// Save image settings to SharedPreferences
   Future<void> _saveImageSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -160,32 +182,25 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
-  /// Update image processing model
   Future<void> setImageProcessingModel(String modelName) async {
-    _imageSettings = _imageSettings.copyWith(
-      imageProcessingModel: modelName,
-    );
+    _imageSettings = _imageSettings.copyWith(imageProcessingModel: modelName);
     await _saveImageSettings();
     notifyListeners();
   }
 
-  /// Update analysis model
   Future<void> setAnalysisModel(String? modelName) async {
-    _imageSettings = _imageSettings.copyWith(
-      analysisModel: modelName,
-    );
+    _imageSettings = _imageSettings.copyWith(analysisModel: modelName);
     await _saveImageSettings();
     notifyListeners();
   }
 
-  /// Convenience to update the entire image settings object at once.
   Future<void> updateImageSettings(AiImageSettings newSettings) async {
     _imageSettings = newSettings;
     await _saveImageSettings();
     notifyListeners();
   }
 
-  // ---- Provider & model management ----------------------------------------
+  // ── Provider & model management ──────────────────────────────────────────
   Future<void> selectProvider(AiProvider provider) async {
     if (_selectedProvider == provider && !_initializing) return;
     _selectedProvider = provider;
@@ -210,12 +225,9 @@ class AiChatNotifier extends ChangeNotifier {
         }
       } else {
         _selectedModel = '';
-        if (_selectedProvider == AiProvider.ollama) {
-          _errorMessage =
-              'No Ollama models found. Run: ollama pull llama3.2:3b';
-        } else {
-          _errorMessage = 'No Gemini models available.';
-        }
+        _errorMessage = _selectedProvider == AiProvider.ollama
+            ? 'No Ollama models found. Run: ollama pull llama3.2:3b'
+            : 'No Gemini models available.';
       }
     } catch (e) {
       _availableModels = [];
@@ -233,7 +245,7 @@ class AiChatNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- Panel controls -----------------------------------------------------
+  // ── Panel controls ───────────────────────────────────────────────────────
   void openPanel() {
     _panelOpen = true;
     notifyListeners();
@@ -249,7 +261,7 @@ class AiChatNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- Context injection --------------------------------------------------
+  // ── Context injection ────────────────────────────────────────────────────
   void updateContext(AppContext ctx) {
     _context = ctx;
   }
@@ -265,7 +277,7 @@ class AiChatNotifier extends ChangeNotifier {
     updateContext(ctx);
   }
 
-  // ---- Cancel inâ€‘flight request -------------------------------------------
+  // ── Cancel in‑flight request ─────────────────────────────────────────────
   void cancelGeneration() {
     if (!isLoading) return;
 
@@ -286,14 +298,76 @@ class AiChatNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- Messaging (accepts optional imageBytes / fileBytes) -----------------
+  // ── Clear file context ───────────────────────────────────────────────────
+  void clearFileContext() {
+    _activeFileContext = null;
+    _activeFileName = null;
+    _lastTaskDescription = null;
+    _batchSyncActive = false;
+    BatchSyncManager.instance.clear();
+  }
+
+  // ── Intent detection helpers ─────────────────────────────────────────────
+
+  bool _isContinueIntent(String text) {
+    final lower = text.toLowerCase().trim();
+    if (['continue', 'next', 'proceed', 'go ahead', 'go on',
+         'resume', 'carry on', 'keep going', 'do it', 'do it all',
+         'apply all', 'sync all'].contains(lower)) return true;
+    return lower.startsWith('continue with') ||
+        lower.startsWith('resume the') ||
+        lower.startsWith('continue the') ||
+        lower.startsWith('continue from') ||
+        lower.contains('continue with last') ||
+        lower.contains('resume last');
+  }
+
+  bool _isSkipIntent(String text) {
+    final lower = text.toLowerCase().trim();
+    return ['skip', 'no', 'nope', 'ignore', 'skip this', 'skip it',
+            'leave it', 'not this one'].contains(lower);
+  }
+
+  /// NEW: detects autonomous “sync all” / “apply all” intent
+  bool _isAutonomousSyncQuery(String query) {
+    final lower = query.toLowerCase();
+    return (lower.contains('sync') && (lower.contains('all') || lower.contains('auto'))) ||
+        lower.contains('apply all') ||
+        lower.contains('make changes') ||
+        lower.contains('update all') ||
+        lower.contains('match the') ||
+        (lower.contains('sync') && lower.contains('employee')) ||
+        lower.contains('autonomous') ||
+        lower.contains('bulk update') ||
+        lower.contains('just do it') ||
+        lower.contains('run all');
+  }
+
+  /// NEW: detects voucher creation intent from images
+  bool _isVoucherCreationRequest(String query) {
+    final lower = query.toLowerCase();
+    return (lower.contains('create') ||
+            lower.contains('add') ||
+            lower.contains('make') ||
+            lower.contains('voucher') ||
+            lower.contains('import') ||
+            lower.contains('enter')) &&
+        (lower.contains('voucher') ||
+            lower.contains('image') ||
+            lower.contains('data') ||
+            lower.contains('employee'));
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAIN: sendMessage
+  // ─────────────────────────────────────────────────────────────────────────
+
   Future<void> sendMessage(
     String userText, {
     Uint8List? imageBytes,
-    // â”€â”€ NEW: PDF / Excel attachment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    Uint8List? fileBytes,   // raw bytes from file_picker
-    String? fileType,       // 'pdf' or 'excel'
-    String? fileName,       // display name, e.g. "salary_april.xlsx"
+    Uint8List? fileBytes,
+    String? fileType,
+    String? fileName,
   }) async {
     final trimmed = userText.trim();
     if (trimmed.isEmpty && imageBytes == null && fileBytes == null) return;
@@ -301,53 +375,91 @@ class AiChatNotifier extends ChangeNotifier {
 
     await _refreshContext();
 
-    // â”€â”€ Image path: guard rails (only if imageBytes provided) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Guard: image processing checks ─────────────────────────────────────
     if (imageBytes != null) {
       if (!_imageSettings.enableImageProcessing) {
-        _handleError('Image processing is disabled in settings. Enable it in the AI settings panel.');
+        _handleError('Image processing is disabled in settings.');
         return;
       }
-
       final now = DateTime.now();
       if (_lastExtractionTime != null &&
           now.difference(_lastExtractionTime!) < _extractionCooldown) {
         _handleError('Please wait a few seconds before sending another image.');
         return;
       }
-
-      final modelOk = await OllamaService.instance.isVisionModel(
-        _imageSettings.imageProcessingModel,
-      );
+      final modelOk = await OllamaService.instance
+          .isVisionModel(_imageSettings.imageProcessingModel);
       if (!modelOk) {
         _handleError(
-          'The selected vision model "${_imageSettings.imageProcessingModel}" '
-          'is not available or not a vision model.\n'
-          'Check your Image Processing settings and ensure the model is pulled.',
+          'Vision model "${_imageSettings.imageProcessingModel}" not available. '
+          'Check Image Processing settings.',
         );
         return;
       }
-
       if (_selectedModel.isEmpty) {
-        _handleError('No main model selected. Please select a model first.');
+        _handleError('No main model selected.');
         return;
       }
-
       _lastExtractionTime = now;
     }
 
-    // â”€â”€ Add user message to the chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Handle batch sync navigation commands ──────────────────────────────
+    if (_batchSyncActive && BatchSyncManager.instance.hasActiveQueue) {
+      if (_isSkipIntent(trimmed) || trimmed.toLowerCase() == 'no') {
+        _addMessage(ChatMessage(
+          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
+        ));
+        BatchSyncManager.instance.skip();
+        _presentNextBatchItem();
+        return;
+      }
+      if (['yes', 'apply', 'confirm', 'ok', 'okay', 'do it', 'sure']
+          .contains(trimmed.toLowerCase())) {
+        _addMessage(ChatMessage(
+          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
+        ));
+        await _executeCurrentBatchItem();
+        return;
+      }
+    }
+
+    // ── “Continue last task” intent ────────────────────────────────────────
+    if (_isContinueIntent(trimmed)) {
+      if (BatchSyncManager.instance.hasActiveQueue) {
+        _addMessage(ChatMessage(
+          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
+        ));
+        _batchSyncActive = true;
+        _presentNextBatchItem();
+        return;
+      }
+      if (_activeFileContext != null && _lastTaskDescription != null) {
+        _addMessage(ChatMessage(
+          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
+        ));
+        _addMessage(ChatMessage(
+          role: ChatRole.assistant,
+          text: '📋 Last task: **$_lastTaskDescription**\n\n'
+              'The file **$_activeFileName** is still loaded. '
+              'What would you like to do with it?',
+          timestamp: DateTime.now(),
+        ));
+        notifyListeners();
+        return;
+      }
+    }
+
+    // ── Build user message text ─────────────────────────────────────────────
     final userMessageText = imageBytes != null
-        ? (trimmed.isEmpty ? 'ðŸ“Ž Image uploaded' : trimmed)
+        ? (trimmed.isEmpty ? '📎 Image uploaded' : trimmed)
         : fileBytes != null
             ? (trimmed.isEmpty
-                ? 'ðŸ“Ž ${fileName ?? fileType ?? 'File'} uploaded'
+                ? '📎 ${fileName ?? fileType ?? 'File'} uploaded'
                 : trimmed)
             : trimmed;
 
     final userMsg = ChatMessage(
-      role: ChatRole.user,
-      text: userMessageText,
-      timestamp: DateTime.now(),
+      role: ChatRole.user, text: userMessageText, timestamp: DateTime.now(),
     );
     _addMessage(userMsg);
 
@@ -360,39 +472,42 @@ class AiChatNotifier extends ChangeNotifier {
     try {
       final history = _buildValidHistory();
 
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // FILE PROCESSING BRANCH â€” PDF / Excel
-      // No vision model needed: pure-Dart text extraction â†’ qwen2.3
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ─────────────────────────────────────────────────────────────────
+      // FILE PROCESSING BRANCH
+      // ─────────────────────────────────────────────────────────────────
       if (fileBytes != null && fileType != null) {
-        _pendingStreamText = 'ðŸ“‚ Reading ${fileName ?? fileType} â€¦';
+        _pendingStreamText = '📂 Reading ${fileName ?? fileType}…';
         _chatPhase = ChatPhase.thinking;
         notifyListeners();
 
         FileExtractionResult extraction;
         try {
-          // Extraction is now async with progress callbacks
           extraction = await FileExtractionService.extract(
             bytes: fileBytes,
-            fileName: fileName ?? (fileType == 'pdf' ? 'document.pdf' : 'spreadsheet.xlsx'),
+            fileName: fileName ??
+                (fileType == 'pdf' ? 'document.pdf' : 'spreadsheet.xlsx'),
             onProgress: (progress) {
-              _pendingStreamText = 'ðŸ“‚ $progress';
+              _pendingStreamText = '📂 $progress';
               notifyListeners();
             },
           );
         } on FileExtractionException catch (e) {
           _pendingStreamText = null;
           _chatPhase = ChatPhase.idle;
-          _handleError('âŒ ${e.message}');
+          _handleError('❌ ${e.message}');
           return;
         } catch (e) {
           _pendingStreamText = null;
           _chatPhase = ChatPhase.idle;
-          _handleError('âŒ Could not read file: $e');
+          _handleError('❌ Could not read file: $e');
           return;
         }
 
-        // Show extracted-text preview message (collapsible in UI, same as image)
+        // Persist file context
+        _activeFileContext = extraction;
+        _activeFileName = fileName ?? fileType;
+
+        // Add collapsible bubble
         _addMessage(ChatMessage(
           role: ChatRole.assistant,
           text: '[EXTRACTED_FILE]\n'
@@ -407,32 +522,108 @@ class AiChatNotifier extends ChangeNotifier {
             ? 'Please summarise the key data in this ${extraction.fileType.label} file.'
             : trimmed;
 
-        // Check if this is an employee data verification request
+        _lastTaskDescription = userQuestion;
+
         final isEmployeeVerification = _isEmployeeVerificationQuery(userQuestion);
 
-        String analysisPrompt = '[${extraction.fileType.label.toUpperCase()} DATA â€” '
-            'extracted from "${fileName ?? 'uploaded file'}"]\n'
-            '${extraction.summaryLine}\n\n'
-            '${extraction.toPromptString()}\n'
-            '[END ${extraction.fileType.label.toUpperCase()} DATA]\n\n';
-
         if (isEmployeeVerification) {
-          // Include app's employee master data for comparison
           final appEmployees = EmployeeNotifier.instance.employees;
           if (appEmployees.isNotEmpty) {
-            final verification = EmployeeVerificationService.compare(extraction, appEmployees);
-            analysisPrompt += verification.toPromptString();
-            analysisPrompt += '\n\n';
-          } else {
-            analysisPrompt += '[APP EMPLOYEE MASTER DATA]\n'
-                'No employees are currently loaded in the app context; compare using extracted file data only.\n'
-                '[END APP EMPLOYEE MASTER DATA]\n\n';
+            final verification = EmployeeVerificationService.compare(
+              extraction, appEmployees,
+            );
+
+            // *** NEW: autonomous sync detection ***
+            final wantsAutoSync = _isAutonomousSyncQuery(userQuestion);
+            if (wantsAutoSync) {
+              final adds = verification.additions.length;
+              final updates = verification.updates.length;
+              final deletes = verification.deletions.length;
+
+              _addMessage(ChatMessage(
+                role: ChatRole.assistant,
+                text: '🔄 **Found $adds additions, $updates updates, $deletes deletions.**\n\n'
+                    'Starting autonomous sync… I will apply all changes now.\n'
+                    '_Deletions are skipped by default for safety._',
+                timestamp: DateTime.now(),
+              ));
+              notifyListeners();
+
+              final syncService = AutonomousSyncService.instance;
+              final summary = await syncService.runSync(
+                result: verification,
+                fileName: fileName ?? 'uploaded file',
+                skipDeletes: true,
+                onProgress: (progress) {
+                  _pendingStreamText = '${progress.statusLine}…';
+                  notifyListeners();
+                },
+              );
+
+              _pendingStreamText = null;
+              _chatPhase = ChatPhase.idle;
+              _status = ChatStatus.idle;
+
+              _addMessage(ChatMessage(
+                role: ChatRole.assistant,
+                text: summary.chatMessage,
+                timestamp: DateTime.now(),
+              ));
+              notifyListeners();
+              return;
+            }
+
+            // Normal interactive walk‑through
+            BatchSyncManager.instance.buildFromVerification(
+              verification,
+              fileName ?? 'uploaded file',
+            );
+
+            _pendingStreamText = null;
+            _chatPhase = ChatPhase.idle;
+            _status = ChatStatus.idle;
+
+            if (!BatchSyncManager.instance.hasActiveQueue) {
+              _addMessage(ChatMessage(
+                role: ChatRole.assistant,
+                text: '✅ No differences found between the file and app employee records.',
+                timestamp: DateTime.now(),
+              ));
+              notifyListeners();
+              return;
+            }
+
+            final adds = verification.additions.length;
+            final updates = verification.updates.length;
+            final deletes = verification.deletions.length;
+            final prog = BatchSyncManager.instance.progress;
+
+            _addMessage(ChatMessage(
+              role: ChatRole.assistant,
+              text: '📊 **Employee Sync Summary** — *${fileName ?? 'file'}*\n'
+                  '- ➕ Additions: $adds\n'
+                  '- ✏️ Updates: $updates\n'
+                  '- 🗑️ Deletions: $deletes\n\n'
+                  'I will walk you through each change one by one.\n'
+                  'Reply **Yes** to apply, **Skip** to skip, or **Stop** to cancel.\n\n'
+                  '---\n\n'
+                  '${BatchSyncManager.instance.currentChangeCard()}',
+              timestamp: DateTime.now(),
+            ));
+
+            _batchSyncActive = true;
+            _lastTaskDescription =
+                'Employee sync from ${fileName ?? 'file'} (${prog.total} changes)';
+            notifyListeners();
+            return;
           }
         }
 
-        analysisPrompt += 'Using the data above, please answer: $userQuestion';
+        // Regular file Q&A (non‑sync)
+        String analysisPrompt = _buildFileContextBlock(extraction, fileName) +
+            'Using the data above, please answer: $userQuestion';
 
-        _pendingStreamText = 'ðŸ’¬ Analysing with $_selectedModelâ€¦';
+        _pendingStreamText = '💬 Analysing with $_selectedModel…';
         _chatPhase = ChatPhase.connecting;
         notifyListeners();
 
@@ -441,27 +632,24 @@ class AiChatNotifier extends ChangeNotifier {
             {'role': 'user', 'content': analysisPrompt}
           ],
           model: _selectedModel,
-          skipVerification: true,               // file data â‰  app DB, no point verifying
-          systemPromptOverride: isEmployeeVerification
-              ? _buildEmployeeDiffPrompt()
-              : _buildFileAnalysisPrompt(extraction.fileType),
+          skipVerification: true,
+          systemPromptOverride: _buildFileAnalysisPrompt(extraction.fileType),
         );
-        return; // â† important: don't fall through to image/text branches
+        return;
       }
 
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // IMAGE PROCESSING BRANCH (step-by-step)
-      // --------------------------------------------------------------------
+      // ─────────────────────────────────────────────────────────────────
+      // IMAGE PROCESSING BRANCH
+      // ─────────────────────────────────────────────────────────────────
       if (imageBytes != null) {
         _isExtracting = true;
-
-        _pendingStreamText = 'ðŸ” Reading image with ${_imageSettings.imageProcessingModel}â€¦';
+        _pendingStreamText =
+            '🔍 Reading image with ${_imageSettings.imageProcessingModel}…';
         _chatPhase = ChatPhase.thinking;
         notifyListeners();
 
-        // STEP 1: Real-time streaming extraction â€” NO system prompt,
-        // NO context. minicpm-v only sees the image + extraction instruction.
-        final extractionStream = OllamaService.instance.sendMultimodalExtractionStream(
+        final extractionStream =
+            OllamaService.instance.sendMultimodalExtractionStream(
           model: _imageSettings.imageProcessingModel,
           prompt:
               'Extract all readable text and data from this image. '
@@ -470,7 +658,8 @@ class AiChatNotifier extends ChangeNotifier {
               'its own line. Include all numbers, names, codes, and headers '
               'exactly as they appear. Do not summarise or add commentary.',
           imageBytes: imageBytes,
-          timeout: Duration(seconds: _imageSettings.extractionTimeoutSeconds),
+          timeout:
+              Duration(seconds: _imageSettings.extractionTimeoutSeconds),
         );
 
         final extractedBuffer = StringBuffer();
@@ -500,10 +689,10 @@ class AiChatNotifier extends ChangeNotifier {
           _isExtracting = false;
           _pendingStreamText = null;
           _chatPhase = ChatPhase.idle;
-          final errorMsg =
-              'âŒ Image processing failed: ${e.message}\n\n'
-              'Configured model: ${_imageSettings.imageProcessingModel}';
-          _handleError(errorMsg);
+          _handleError(
+            '❌ Image processing failed: ${e.message}\n\n'
+            'Configured model: ${_imageSettings.imageProcessingModel}',
+          );
           return;
         } finally {
           extractionSub?.cancel();
@@ -513,29 +702,148 @@ class AiChatNotifier extends ChangeNotifier {
         final rawText = extractedBuffer.toString().trim();
 
         if (rawText.isEmpty) {
-          _handleError('The vision model did not extract any text from the image.');
+          _handleError(
+              'The vision model did not extract any text from the image.');
           return;
         }
 
-        // Show the extracted text preview in chat (collapsible in UI)
         _addMessage(ChatMessage(
           role: ChatRole.assistant,
           text: '[EXTRACTED_TEXT]\n$rawText\n[/EXTRACTED_TEXT]',
           timestamp: DateTime.now(),
         ));
 
-        // STEP 2: Pass extracted text to the analysis model.
+        // ── Check if user wants to create voucher from image ──────────────
+        final wantsVoucher = _isVoucherCreationRequest(trimmed);
+
+        if (wantsVoucher) {
+          // ── VOUCHER CREATION PATH ────────────────────────────────────────
+          _pendingStreamText = '🔨 Structuring data for voucher creation…';
+          _chatPhase = ChatPhase.thinking;
+          notifyListeners();
+
+          // Step 1: Ask LLM to convert raw text → JSON
+          final structuringPrompt =
+              VoucherImageProcessingService.buildStructuringPrompt(rawText);
+
+          final jsonBuffer = StringBuffer();
+          try {
+            await AiService.instance
+                .sendMessagesStream(
+                  provider: _selectedProvider,
+                  messages: [{'role': 'user', 'content': structuringPrompt}],
+                  model: _imageSettings.analysisModel ?? _selectedModel,
+                  systemPrompt:
+                      'You are a JSON extractor. Return ONLY valid JSON.',
+                )
+                .forEach((token) => jsonBuffer.write(token));
+          } catch (e) {
+            _pendingStreamText = null;
+            _chatPhase = ChatPhase.idle;
+            _handleError(
+              'Failed to structure voucher data: ${_friendlyError(e)}',
+            );
+            return;
+          }
+
+          // Step 2: Process with Dart (no more AI — deterministic)
+          final now = DateTime.now();
+          final parseResult = VoucherImageProcessingService.process(
+            llmJsonResponse: jsonBuffer.toString(),
+            employees: EmployeeNotifier.instance.employees,
+            inferYear: now.year,
+            inferMonth: now.month,
+          );
+
+          // Step 3: Apply PO number if found
+          if (parseResult.extractedPoNo != null) {
+            VoucherNotifier.instance.update(
+              (v) => v.copyWith(poNo: parseResult.extractedPoNo),
+            );
+          }
+
+          // Step 4: Create actions for resolved rows
+          final actionJsons = parseResult.resolvedRows.map((row) {
+            return jsonEncode({
+              'action': 'add_voucher_row',
+              'employeeName': row.resolvedEmployee?.name ?? row.rawName,
+              'employeeId': row.resolvedEmployee?.id,
+              'amount': row.amount,
+              'fromDate': row.fromDate,
+              'toDate': row.toDate,
+              // Auto-fill bank details from resolved employee
+              'ifscCode': row.resolvedEmployee?.ifscCode ?? '',
+              'accountNumber': row.resolvedEmployee?.accountNumber ?? '',
+              'bankDetails': row.resolvedEmployee?.bankDetails ?? '',
+              'branch': row.resolvedEmployee?.branch ?? '',
+              'sbCode': row.resolvedEmployee?.sbCode ?? '',
+            });
+          }).toList();
+
+          // Step 5: Build response message
+          final sb = StringBuffer();
+          sb.writeln(
+              '✅ **${parseResult.resolvedRows.length} rows ready to add** '
+              'to the current voucher.\n');
+
+          if (parseResult.extractedPoNo != null) {
+            sb.writeln(
+                '📄 PO Number detected: **${parseResult.extractedPoNo}** '
+                '(applied to voucher)\n');
+          }
+
+          // List what will be created
+          for (final row in parseResult.resolvedRows) {
+            final empName =
+                row.resolvedEmployee?.name ?? row.rawName;
+            final warning = row.issues.isNotEmpty ? ' ⚠️' : '';
+            sb.writeln(
+                '- **$empName** — ₹${row.amount?.toStringAsFixed(0)} '
+                '(${row.fromDate} → ${row.toDate})$warning');
+          }
+
+          if (parseResult.hasIssues) {
+            sb.writeln('\n${parseResult.buildIssueReport()}');
+          }
+
+          if (actionJsons.isNotEmpty) {
+            sb.writeln(
+                '\n**Shall I add these ${actionJsons.length} rows to the voucher?**');
+          }
+
+          _pendingStreamText = null;
+          _chatPhase = ChatPhase.idle;
+          _status = ChatStatus.idle;
+
+          _addMessage(ChatMessage(
+            role: ChatRole.assistant,
+            text: sb.toString(),
+            timestamp: DateTime.now(),
+          ));
+
+          // Trigger confirmation dialog for the batch
+          if (actionJsons.isNotEmpty) {
+            await _executeToolFromAssistantResponse(
+              actionJsons.map((j) => '[ACTION]$j[/ACTION]').join('\n'),
+            );
+          }
+          notifyListeners();
+          return;
+        }
+        // else fall through to normal image analysis path
+
         final userQuestion = trimmed.isEmpty
             ? 'Please summarise the key data shown in this image.'
             : trimmed;
-        final analysisModel = _imageSettings.analysisModel ?? _selectedModel;
+        final analysisModel =
+            _imageSettings.analysisModel ?? _selectedModel;
 
-        _pendingStreamText = 'ðŸ’¬ Analysing with $analysisModelâ€¦';
+        _pendingStreamText = '💬 Analysing with $analysisModel…';
         _chatPhase = ChatPhase.connecting;
         notifyListeners();
 
         final analysisPrompt =
-            '[IMAGE DATA â€” text extracted from the uploaded image]\n'
+            '[IMAGE DATA — text extracted from the uploaded image]\n'
             '$rawText\n'
             '[END IMAGE DATA]\n\n'
             'Using the image data above, please answer: $userQuestion';
@@ -545,16 +853,18 @@ class AiChatNotifier extends ChangeNotifier {
             {'role': 'user', 'content': analysisPrompt}
           ],
           model: analysisModel,
-          // skip verification for image-derived data
           skipVerification: true,
-          // use a lightweight system prompt (no employee roster / tools)
           systemPromptOverride: _buildImageAnalysisPrompt(),
         );
-
       } else {
-        // Normal text-only stream â€” full context + verification as before
+        // ── Normal text‑only path ────────────────────────────────────────
+        List<Map<String, String>> effectiveHistory = history;
+        if (_activeFileContext != null) {
+          effectiveHistory = _injectFileContextIntoHistory(
+              history, _activeFileContext!, _activeFileName);
+        }
         await _startStreamingAnswer(
-          messages: history,
+          messages: effectiveHistory,
           model: _selectedModel,
         );
       }
@@ -573,12 +883,103 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
-  // ---- Helper to start the final streaming response ------------------------
+  // ── Batch sync helpers ───────────────────────────────────────────────────
+  Future<void> _executeCurrentBatchItem() async {
+    final item = BatchSyncManager.instance.current;
+    if (item == null) {
+      _batchSyncActive = false;
+      return;
+    }
+
+    _status = ChatStatus.loading;
+    notifyListeners();
+
+    final result = await AiToolExecutor.instance.executeBatch(
+      [item.actionJson],
+      employeeNotifier: EmployeeNotifier.instance,
+      voucherNotifier: VoucherNotifier.instance,
+    );
+
+    BatchSyncManager.instance.markProcessed();
+
+    if (result is AiToolSuccess) {
+      _addMessage(ChatMessage(
+        role: ChatRole.assistant,
+        text: result.confirmation,
+        timestamp: DateTime.now(),
+      ));
+    } else if (result is AiToolFailure) {
+      _addMessage(ChatMessage(
+        role: ChatRole.assistant,
+        text: '⚠️ Failed: ${(result as AiToolFailure).reason}',
+        timestamp: DateTime.now(),
+        isError: true,
+      ));
+    }
+
+    _status = ChatStatus.idle;
+    _presentNextBatchItem();
+  }
+
+  void _presentNextBatchItem() {
+    final mgr = BatchSyncManager.instance;
+    if (!mgr.hasActiveQueue) {
+      _batchSyncActive = false;
+      _addMessage(ChatMessage(
+        role: ChatRole.assistant,
+        text: mgr.completionSummary(),
+        timestamp: DateTime.now(),
+      ));
+      notifyListeners();
+      return;
+    }
+
+    _addMessage(ChatMessage(
+      role: ChatRole.assistant,
+      text: mgr.currentChangeCard(),
+      timestamp: DateTime.now(),
+    ));
+    notifyListeners();
+  }
+
+  // ── File context injection for history ───────────────────────────────────
+  List<Map<String, String>> _injectFileContextIntoHistory(
+    List<Map<String, String>> history,
+    FileExtractionResult extraction,
+    String? fileName,
+  ) {
+    final contextBlock = _buildFileContextBlock(extraction, fileName);
+    return [
+      {
+        'role': 'user',
+        'content': '[ACTIVE FILE CONTEXT — injected automatically]\n$contextBlock\n'
+            '[END ACTIVE FILE CONTEXT]\n\n'
+            'I may ask follow-up questions about this file. '
+            'Use the data above to answer them.',
+      },
+      {
+        'role': 'assistant',
+        'content': 'Understood. I have the file **$fileName** loaded and can answer questions about it.',
+      },
+      ...history,
+    ];
+  }
+
+  String _buildFileContextBlock(
+      FileExtractionResult extraction, String? fileName) {
+    return '[${extraction.fileType.label.toUpperCase()} DATA — '
+        'extracted from "${fileName ?? 'uploaded file'}"]\n'
+        '${extraction.summaryLine}\n\n'
+        '${extraction.toPromptString()}\n'
+        '[END ${extraction.fileType.label.toUpperCase()} DATA]\n\n';
+  }
+
+  // ── Helper to start the final streaming response ─────────────────────────
   Future<void> _startStreamingAnswer({
     required List<Map<String, String>> messages,
     required String model,
-    bool skipVerification = false,          // skip _verifyResponse for file/image answers
-    String? systemPromptOverride,           // use a lightweight prompt for file/image analysis
+    bool skipVerification = false,
+    String? systemPromptOverride,
   }) async {
     _streamSubscription?.cancel();
 
@@ -594,8 +995,6 @@ class AiChatNotifier extends ChangeNotifier {
 
     _streamSubscription = stream.listen(
       (token) {
-        // Clear any status/progress message that was shown before streaming began
-        // (e.g. "💬 Analysing with model…") so it doesn't leak into the response.
         if (_chatPhase != ChatPhase.streaming) {
           _pendingStreamText = '';
           _chatPhase = ChatPhase.streaming;
@@ -640,7 +1039,6 @@ class AiChatNotifier extends ChangeNotifier {
         ));
 
         await _executeToolFromAssistantResponse(rawStreamText);
-
         notifyListeners();
       },
       onError: (Object e) {
@@ -659,7 +1057,7 @@ class AiChatNotifier extends ChangeNotifier {
     );
   }
 
-  // ---- Tool execution from assistant response (now handles batch actions) ---
+  // ── Tool execution from assistant response ────────────────────────────────
   Future<void> _executeToolFromAssistantResponse(String assistantText) async {
     final actionJsons = AiToolExecutor.extractAllActionJsons(assistantText);
     if (actionJsons.isEmpty) return;
@@ -691,7 +1089,7 @@ class AiChatNotifier extends ChangeNotifier {
         } else if (result is AiToolFailure) {
           _addMessage(ChatMessage(
             role: ChatRole.assistant,
-            text: 'âš ï¸ Actions failed: ${result.reason}',
+            text: '⚠️ Actions failed: ${(result as AiToolFailure).reason}',
             timestamp: DateTime.now(),
             isError: true,
           ));
@@ -751,26 +1149,22 @@ class AiChatNotifier extends ChangeNotifier {
       case 'set_voucher_field':
         return 'Change voucher field "${actionJson['field']}"?';
       case 'add_voucher_row':
-        return 'Add voucher row for ${actionJson['employeeName'] ?? 'employee'} (â‚¹${actionJson['amount'] ?? '?'})?';
+        return 'Add voucher row for ${actionJson['employeeName'] ?? 'employee'} (₹${actionJson['amount'] ?? '?'})?';
       default:
         return 'Perform action: $action';
     }
   }
 
-  // ---- Regenerate / Edit / Delete -----------------------------------------
+  // ── Regenerate / Edit / Delete ───────────────────────────────────────────
   Future<void> regenerateLastResponse() async {
     if (isLoading) return;
-
     while (_messages.isNotEmpty && _messages.last.role == ChatRole.assistant) {
       _messages.removeLast();
     }
-
     if (_messages.isEmpty || _messages.last.role != ChatRole.user) return;
-
     final lastUserText = _messages.last.text;
     _messages.removeLast();
     notifyListeners();
-
     await sendMessage(lastUserText);
   }
 
@@ -778,10 +1172,8 @@ class AiChatNotifier extends ChangeNotifier {
     if (isLoading) return;
     if (messageIndex < 0 || messageIndex >= _messages.length) return;
     if (_messages[messageIndex].role != ChatRole.user) return;
-
     _messages.removeRange(messageIndex, _messages.length);
     notifyListeners();
-
     await sendMessage(newText);
   }
 
@@ -796,10 +1188,11 @@ class AiChatNotifier extends ChangeNotifier {
     _messages.clear();
     _status = ChatStatus.idle;
     _errorMessage = null;
+    clearFileContext();
     notifyListeners();
   }
 
-  // ---- Private helpers ----------------------------------------------------
+  // ── Private helpers ──────────────────────────────────────────────────────
   void _addMessage(ChatMessage msg) => _messages.add(msg);
 
   void _handleError(String message) {
@@ -807,7 +1200,7 @@ class AiChatNotifier extends ChangeNotifier {
     _status = ChatStatus.error;
     _addMessage(ChatMessage(
       role: ChatRole.assistant,
-      text: 'âš ï¸ $message',
+      text: '⚠️ $message',
       timestamp: DateTime.now(),
       isError: true,
     ));
@@ -815,15 +1208,19 @@ class AiChatNotifier extends ChangeNotifier {
 
   String _sanitizeAssistantOutput(String text) {
     return text
-        // Strip [ACTION] blocks
-        .replaceAll(RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false), '')
-        // Strip fenced code blocks that sneak through
+        .replaceAll(
+            RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false), '')
         .replaceAll(RegExp(r'```[\s\S]*?```'), '')
         .replaceAll(RegExp(r'`{1,3}[^`]*$', multiLine: false), '')
-        // Strip status/progress prefixes like "💬 Analysing with model…", "📂 Reading…"
-        .replaceAll(RegExp(r'^[📂💬🔍📊⏳✅]\s*[^\n]{0,80}[…\.]{1,3}\s*', multiLine: false), '')
-        // Strip leading status lines that end with "…" or "..." before the real answer
-        .replaceAll(RegExp(r'^(?:(?:Analysing|Reading|Extracting|Processing|Thinking)[^\n]*\n)+', caseSensitive: false), '')
+        .replaceAll(
+            RegExp(r'^[📂💬🔍📊⏳✅]\s*[^\n]{0,80}[…\.]{1,3}\s*',
+                multiLine: false),
+            '')
+        .replaceAll(
+            RegExp(
+                r'^(?:(?:Analysing|Reading|Extracting|Processing|Thinking)[^\n]*\n)+',
+                caseSensitive: false),
+            '')
         .trim();
   }
 
@@ -842,19 +1239,16 @@ class AiChatNotifier extends ChangeNotifier {
 
     try {
       final verificationPrompt =
-          'You are a strict factâ€‘checker for a business application.\n\n'
+          'You are a strict fact-checker for a business application.\n\n'
           'User question:\n$userQuery\n\n'
           'AI response:\n$modelResponse\n\n'
           'Reference data:\n${_context.toPromptSection()}\n\n'
           'Instructions:\n'
           '1. Check whether the response is factually consistent with the reference data.\n'
-          '2. Check whether the correct entity (employee, voucher, etc.) was referenced.\n'
-          '3. If the response is correct â†’ reply with exactly: OK\n'
-          '4. If the response contains wrong data or wrong entity â†’ reply with the corrected response ONLY. '
-          'No explanation. No preamble. Just the fixed response.';
+          '2. If the response is correct → reply with exactly: OK\n'
+          '3. If the response contains wrong data → reply with the corrected response ONLY.';
 
       final buffer = StringBuffer();
-
       await AiService.instance
           .sendMessagesStream(
             provider: _selectedProvider,
@@ -876,6 +1270,7 @@ class AiChatNotifier extends ChangeNotifier {
     }
   }
 
+  // ── History building ─────────────────────────────────────────────────────
   List<Map<String, String>> _buildValidHistory() {
     if (_messages.isEmpty) return [];
 
@@ -885,9 +1280,20 @@ class AiChatNotifier extends ChangeNotifier {
 
     while (i < history.length) {
       final msg = history[i];
+
+      if (msg.role == ChatRole.assistant &&
+          (msg.text.contains('[EXTRACTED_FILE]') ||
+              msg.text.contains('[EXTRACTED_TEXT]') ||
+              msg.text.contains('[ACTIVE FILE CONTEXT'))) {
+        i++;
+        continue;
+      }
+
       if (msg.role == ChatRole.user && i + 1 < history.length) {
         final next = history[i + 1];
-        if (next.role == ChatRole.assistant && !next.isError) {
+        if (next.role == ChatRole.assistant && !next.isError &&
+            !next.text.contains('[EXTRACTED_FILE]') &&
+            !next.text.contains('[EXTRACTED_TEXT]')) {
           valid.add(msg);
           valid.add(next);
           i += 2;
@@ -907,108 +1313,38 @@ class AiChatNotifier extends ChangeNotifier {
         .toList();
   }
 
-  /// Minimal system prompt for image analysis responses.
-  /// Excludes the full employee roster and tool definitions to keep
-  /// time-to-first-token fast.
+  // ── System prompts ───────────────────────────────────────────────────────
+
   String _buildImageAnalysisPrompt() => '''
 You are a professional data analyst embedded in Crusam, a business management app.
 The user has uploaded an image. Raw text has been extracted and provided as [IMAGE DATA].
 
-════════════════════════════════════════
-RESPONSE STYLE RULES (NON-NEGOTIABLE)
-════════════════════════════════════════
-
-OPENING
-▸ Begin your answer DIRECTLY — no greetings, no preamble, no "Let me analyse..." phrases.
-▸ NEVER start with a status message, thinking note, or progress description.
-▸ The very first word must be part of the actual answer.
-
-FORMATTING FOR SIMPLE FACTUAL QUERIES (name, number, single field)
-▸ State the answer on the first line, with the key entity in **bold**.
-▸ Follow with a short bullet list of closely related details (only if directly relevant).
-▸ End with one brief, natural follow-up question (like "Would you like more details?").
-
-Example — query: "what is the name of the third employee?"
-**Ashish Kumar Pal** is the third employee listed.
-
-- PF Number: MH/212395/0117
-- UAN Number: 100809466
-
-Would you like to see more details for Ashish Kumar Pal?
-
-FORMATTING FOR MULTI-FIELD QUERIES
-▸ Use a **bold** heading for each entity or section.
-▸ List each field on its own line using a dash bullet: `- Field: Value`
-▸ Group related fields under their entity heading; separate entities with a blank line.
-
-FORMATTING FOR TABULAR DATA
-▸ Use a clean markdown table ONLY when the user explicitly asks for a table or comparison.
-▸ Otherwise, use bullet lists — do NOT dump raw extracted table text.
-▸ Show only columns/rows directly relevant to the query.
-
-GENERAL RULES
-▸ Use **bold** for: employee names, IDs, PF numbers, UAN numbers, amounts, key identifiers.
-▸ Use ₹ for all Indian Rupee amounts.
-▸ Do NOT include fields not asked for (e.g. bank account, IFSC) unless specifically requested.
-▸ Do NOT mention "image data", "extracted text", "the image shows" — just answer directly.
-▸ Do NOT repeat the user’s question back to them.
-▸ If data is unclear or ambiguous, say so in one short sentence.
-▸ Keep responses concise — answer + relevant details + one follow-up question.
-▸ Never fabricate or estimate values not present in the data.
+RESPONSE RULES (NON‑NEGOTIABLE)
+▸ Begin DIRECTLY — no greetings, no “Let me analyse…” phrases.
+▸ State the answer on the first line with the key entity in **bold**.
+▸ Use bullet points for details; markdown tables only when explicitly requested.
+▸ Use ₹ for Indian Rupee amounts.
+▸ Do NOT mention “image data”, “extracted text”, or internal operations.
+▸ If data is unclear, say so in one sentence.
+▸ Keep responses concise — answer + relevant details + one follow‑up question.
+▸ Never fabricate values not present in the data.
 ''';
 
-  /// Minimal system prompt for PDF / Excel file analysis.
-  /// Tailored slightly per file type.
   String _buildFileAnalysisPrompt(AttachedFileType type) {
     final typeName = type.label;
     return '''
 You are a professional data analyst embedded in Crusam, a business management app.
 The user has uploaded a $typeName file. The full extracted text is provided as [${typeName.toUpperCase()} DATA].
 
-════════════════════════════════════════
-RESPONSE STYLE RULES (NON-NEGOTIABLE)
-════════════════════════════════════════
-
-OPENING
-▸ Begin your answer DIRECTLY — no greetings, no preamble, no "Let me analyse..." phrases.
-▸ NEVER start with a status message, thinking note, or progress description.
-▸ The very first word must be part of the actual answer.
-
-FORMATTING FOR SIMPLE FACTUAL QUERIES (name, number, single field)
-▸ State the answer on the first line, with the key entity in **bold**.
-▸ Follow with a short bullet list of closely related details (only if directly relevant).
-▸ End with one brief, natural follow-up question (like "Would you like more details about this employee?").
-
-Example — query: "what is the name of the third employee?"
-**Ashish Kumar Pal** is the third employee listed in the file.
-
-- PF Number: MH/212395/0117
-- UAN Number: 100809466
-
-Would you like to see more details for Ashish Kumar Pal?
-
-FORMATTING FOR MULTI-FIELD QUERIES
-▸ Use a **bold** heading for each entity or section.
-▸ List each field on its own line using a dash bullet: `- Field: Value`
-▸ Group related fields together under their entity heading.
-▸ Separate multiple entities with a blank line.
-
-FORMATTING FOR TABULAR / COMPARATIVE DATA
-▸ Use a clean markdown table ONLY when the user explicitly asks for a table or comparison.
-▸ Otherwise, use bullet lists — do NOT dump raw extracted table text.
-▸ Show only the columns/rows directly relevant to the query.
-
-GENERAL RULES
-▸ Use **bold** for: employee names, IDs, PF numbers, UAN numbers, key identifiers.
-▸ Use ₹ for all Indian Rupee amounts.
-▸ Do NOT include fields that were not asked for (e.g. bank account, IFSC) unless specifically requested.
-▸ Do NOT mention "extracted text", "the file says", "according to the data" — just answer directly.
-▸ Do NOT repeat the user's question back to them.
-▸ If data is unclear or missing, say so in one short sentence.
-▸ If the file was truncated, note it briefly at the end.
-▸ Keep the total response concise — answer + relevant details + one follow-up question.
-▸ Never fabricate or estimate values not present in the data.
-▸ Use ₹ for currency amounts; format numbers clearly (no raw decimal junk).
+RESPONSE RULES (NON‑NEGOTIABLE)
+▸ Begin DIRECTLY — no greetings, no preamble.
+▸ State the answer on the first line with the key entity in **bold**.
+▸ Use bullet points for details; markdown tables only when explicitly requested.
+▸ Use ₹ for Indian Rupee amounts.
+▸ Do NOT mention “extracted text”, “the file says”, internal operations.
+▸ If data is missing or unclear, say so in one sentence.
+▸ Keep responses concise — answer + relevant details + one follow‑up question.
+▸ Never fabricate values not present in the data.
 ''';
   }
 
@@ -1028,148 +1364,81 @@ The [ACTION] block will be stripped from the chat, but a confirmation dialog wil
 [/ACTION]
 
 **Actions**
-1. update_employee   â€“ Required: employeeId (int). Optional: name, zone, code,
+1. update_employee   – Required: employeeId (int). Optional: name, zone, code,
                        designation, bankDetails, branch, pfNo, uanNo,
                        dateOfJoining, basicCharges (num), otherCharges (num).
-2. delete_employee   â€“ Required: employeeId (int).
-3. add_employee      â€“ Required: name, zone, code, designation, bankDetails,
+2. delete_employee   – Required: employeeId (int).
+3. add_employee      – Required: name, zone, code, designation, bankDetails,
                        branch, pfNo, uanNo, dateOfJoining,
                        basicCharges (num), otherCharges (num).
-4. set_company_filter â€“ Required: code (string, e.g. "BR039").
-5. set_month_year    â€“ Required: month (int 1â€“12 or name "March"), year (int).
-6. set_days_present  â€“ Required: employeeId (int), days (int â‰¥ 0).
-7. set_salary_meta   â€“ Required: field (billNo | poNo | clientName |
+4. set_company_filter – Required: code (string, e.g. "BR039").
+5. set_month_year    – Required: month (int 1‑12 or name “March”), year (int).
+6. set_days_present  – Required: employeeId (int), days (int ≥ 0).
+7. set_salary_meta   – Required: field (billNo | poNo | clientName |
                        clientAddr | clientGstin | deptCode), value (string).
-8. set_voucher_field â€“ Required: field (title | deptCode | date | billNo |
+8. set_voucher_field – Required: field (title | deptCode | date | billNo |
                        poNo | itemDescription | clientName | clientAddress |
                        clientGstin), value (string).
-9. add_voucher_row   â€“ Required: amount (num), fromDate (YYYY-MM-DD),
-                       toDate (YYYY-MM-DD). Optional: employeeId (int),
+9. add_voucher_row   – Required: amount (num), fromDate (YYYY‑MM‑DD),
+                       toDate (YYYY‑MM‑DD). Optional: employeeId (int),
                        employeeName (string), deptCode, ifscCode,
                        accountNumber, sbCode, bankDetails, branch.
-10. update_voucher_row â€“ Required: rowId (string) or rowIndex (int) or
-                       employeeName/fromDate/amount. Optional: amount,
-                       fromDate, toDate, deptCode, ifscCode,
-                       accountNumber, sbCode, bankDetails, branch,
-                       employeeId, employeeName.
-11. delete_voucher_row â€“ Required: rowId (string) or rowIndex (int) or
-                       employeeName/fromDate/amount.
-12. save_voucher      â€“ No extra parameters. Saves the current voucher.
-13. discard_voucher   â€“ No extra parameters. Clears the current voucher draft.
-14. approve_voucher   â€“ No extra parameters. Saves the current voucher and marks it approved.
-15. set_company_config â€“ Required: field (companyName | address | gstin | pan |
-                       jurisdiction | declarationText | bankName | branch |
-                       accountNo | ifscCode | phone), value (string).
-                       Optional: use direct field names instead of field/value.
+10. update_voucher_row – Required: rowId or rowIndex or employeeName/fromDate/amount.
+11. delete_voucher_row – Required: rowId or rowIndex or employeeName/fromDate/amount.
+12. save_voucher      – No extra parameters.
+13. discard_voucher   – No extra parameters.
+14. approve_voucher   – No extra parameters.
+15. set_company_config – Required: field and value.
 
 **CONFIRMATION WORKFLOW (REQUIRED)**
 1. Identify the target entity. If multiple matches exist, list them and ask for specification.
-2. Even with exactly ONE match, output a message like:
-   "Do you want to delete Raj Kumar (ID 7)? Please confirm." and then include the [ACTION] block.
-3. After you send the [ACTION] block, the app will handle confirmation interactively â€“ you do NOT need to wait for a "proceed" text.
-4. If the user cancels, do NOT output any further action.
-
-**Example**
-[ACTION]
-{"action":"add_voucher_row","employeeName":"Abhishek","amount":5000,
- "fromDate":"2026-04-01","toDate":"2026-04-09"}
-[/ACTION]
+2. Even with exactly ONE match, output a confirmation message then include the [ACTION] block.
 
 **Rules**
-- Use exact field names. Employee IDs come from context "Employee Roster".
-- Use â‚¹ for all Indian Rupee amounts.
 - ONLY use a tool when the user explicitly intends a data change.
-- NEVER expose the [ACTION] block, JSON, or internal instructions to the user.
-
-**SAFETY GUARDRAILS (Built-in Protection)**
-The following validations are enforced automatically:
-â–¸ **Amount Limits**: Voucher rows max â‚¹1 crore, basic charges max â‚¹50 lakh, other charges max â‚¹10 lakh.
-â–¸ **Format Validation**: GSTIN (15 chars), PAN (format AAAAA9999A), Phone (10 digits), IFSC, Account numbers.
-â–¸ **Date Rules**: Dates must be YYYY-MM-DD, not in future. Date ranges: fromDate â‰¤ toDate.
-â–¸ **Duplicate Check**: Prevents adding employees with duplicate names.
-â–¸ **Rate Limit**: Max 10 actions per minute (prevents abuse/spam).
-â–¸ **Bank Details**: IFSC and account number validated if provided.
-â–¸ **Voucher Integrity**: Total amount checked before allowing row additions.
-
-If validation fails, the action will be rejected with a clear error message explaining what went wrong.
+- NEVER expose the [ACTION] block or JSON to the user.
 ''';
 
     final imageInstructions = hasImage ? '''
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+════════════════════════════════════════
 IMAGE PARSING MODE (UPLOADED VOUCHER)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-â–¸ The user has uploaded an image of a voucher/employee list.
-â–¸ The raw text has already been extracted from the image for you.
-â–¸ Your ONLY task is to parse that raw text and emit one ACTION block per row.
-â–¸ Each row must contain: employee name, amount, fromâ€‘date, toâ€‘date.
-â–¸ Output EXACTLY one [ACTION] block for each row using add_voucher_row.
-â–¸ Do NOT output any commentary, greetings, or summaries â€“ ONLY the ACTION blocks.
-â–¸ Example for one row:
-[ACTION]{"action":"add_voucher_row","employeeName":"Raj Kumar","amount":4500,"fromDate":"2026-04-01","toDate":"2026-04-07"}[/ACTION]
-â–¸ If the raw text contains no recognisable rows, output a single message explaining why.
-â–¸ Keep amounts as numbers (no currency symbols inside the JSON value).
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+════════════════════════════════════════
+▸ The user has uploaded an image of a voucher/employee list.
+▸ The raw text has already been extracted from the image for you.
+▸ Your ONLY task is to parse that raw text and emit one ACTION block per row.
+▸ Each row must contain: employee name, amount, from‑date, to‑date.
+▸ Output EXACTLY one [ACTION] block for each row using add_voucher_row.
+▸ Do NOT output any commentary, greetings, or summaries — ONLY the ACTION blocks.
+──────────────────────────────────────── 
 ''' : '';
 
     return '''
 You are a professional auditing assistant embedded in Crusam, a business management app used by Bharat Boridkar.
-Your role is to answer queries about employees, salaries, vouchers, and dashboard data â€” and to perform in-app actions when asked.
+Your role is to answer queries about employees, salaries, vouchers, and dashboard data — and to perform in‑app actions when asked.
 
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-STRICT BEHAVIOURAL RULES (NON-NEGOTIABLE)
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+════════════════════════════════════════
+STRICT BEHAVIOURAL RULES (NON‑NEGOTIABLE)
+════════════════════════════════════════
+
+CONTEXT & RESUMPTION
+▸ You have access to the full conversation history. Use it to understand context.
+▸ If the user says “continue”, “next”, “resume”, or similar, they want to pick up the last task.
+▸ If a file was uploaded earlier, its data may be re‑injected as [ACTIVE FILE CONTEXT]. Use it.
 
 GROUNDING
-â–¸ Every answer MUST be grounded in the provided app data below.
-â–¸ NEVER fabricate, invent, or estimate data that is not in context.
-â–¸ If data is absent from context, say: "That information is not available in the current data."
+▸ Every answer MUST be grounded in the provided app data below.
+▸ NEVER fabricate, invent, or estimate data that is not in context.
+▸ If data is absent, say: “That information is not available in the current data.”
 
 ENTITY MATCHING
-â–¸ Match employee names and IDs EXACTLY (case-insensitive string match).
-â–¸ Do NOT approximate, assume, or substitute similar-sounding names.
-â–¸ If "trial" is the employee in context, return data for "trial" only â€” never another employee.
-â–¸ If a name matches multiple entries, ASK for clarification before proceeding.
-
-AMBIGUITY HANDLING
-â–¸ If the query is vague (e.g. "show salary" with no employee specified), ask:
-  "Which employee and for which month/year?"
-â–¸ If you cannot unambiguously resolve an entity, always ask â€” never guess.
-
-CONFIDENCE
-â–¸ If you are less than fully certain about something, say:
-  "Based on the current data, I believe â€¦ but please verify."
-â–¸ Never pretend certainty you don't have.
-
-TOOL USAGE
-â–¸ Use tools ONLY for deliberate data modification.
-â–¸ NEVER show the [ACTION] block or JSON to the user.
-â–¸ After a tool action, confirm naturally, e.g. "Done â€” Ravi's designation has been updated."
-â–¸ Do NOT explain what a tool does or describe internal operations.
+▸ Match employee names and IDs EXACTLY (case‑insensitive string match).
+▸ If a name matches multiple entries, ASK for clarification before proceeding.
 
 RESPONSE STYLE
-â–¸ Be concise, professional, and direct.
-â–¸ Use proper business report formatting for summaries and data presentations.
-â–¸ Adopt a clean, structured layout with clear headings and consistent punctuation.
-â–¸ Always use â‚¹ for currency amounts.
-â–¸ Never use all-lowercase labels like "title: sam" - write as "Title: sam" or incorporate into a sentence.
-â–¸ For bullet lists, use a professional dash or a simple bullet, but never informal markdown like "â€¢".
-â–¸ Avoid emojis, filler phrases, self-references, and conversational language.
-â–¸ Do NOT explain your reasoning process unless explicitly asked.
-â–¸ Do NOT mention databases, SQL, APIs, or internal architecture.
-
-FORMATTING GUIDELINES FOR SUMMARIES
-When the user asks for a summary, audit overview, or similar data snapshot:
-â–¸ Open with a clear title, e.g. "May 2026 Audit Summary".
-â–¸ Use subsections with bold headings: **Payroll Overview**, **Current Voucher**, **Invoice Summary**, etc.
-â–¸ Present each data point on its own line with consistent indentation.
-â–¸ Align numbers and labels neatly.
-â–¸ For vouchers, list details in a compact but professional layout, e.g.:
-   Title: "sam"  Â·  Bill No.: avsvsv  Â·  Date: 28-Apr-2026
-   Client: M/s Diversey India Hygiene Private Ltd.
-   Department: I&L  Â·  Status: Saved
-â–¸ Conclude with a brief note that the data is based on the current app context, if appropriate.
-
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+▸ Be concise, professional, and direct.
+▸ Use ₹ for currency amounts.
+▸ Avoid emojis, filler phrases, and conversational language.
+▸ Do NOT explain your reasoning process unless explicitly asked.
 
 $imageInstructions
 
@@ -1179,48 +1448,19 @@ ${_context.toPromptSection()}
 ''';
   }
 
-  /// Check if the user query is about employee data verification/diff.
   bool _isEmployeeVerificationQuery(String query) {
     final lower = query.toLowerCase();
     return lower.contains('employee') ||
-           lower.contains('verify') ||
-           lower.contains('master') ||
-           lower.contains('compare') ||
-           lower.contains('diff') ||
-           lower.contains('missing') ||
-           lower.contains('addition') ||
-           lower.contains('deletion') ||
-           lower.contains('update');
-  }
-
-  /// Specialized prompt for employee data comparison/verification.
-  String _buildEmployeeDiffPrompt() {
-    return '''
-You are a professional data analyst embedded in Crusam, a business management app.
-The user has uploaded a file containing employee data to compare with the app's master employee list.
-
-**FORMAT YOUR RESPONSE CLEARLY:**
-- Use **bold** for employee names and key identifiers
-- Use bullet points (dash lines) for differences and recommendations
-- Keep answers concise and well-structured
-- Focus ONLY on relevant differences
-- Do NOT include irrelevant bank/account fields unless specifically asked
-
-Example format:
-**Ashish Kumar Pal**
-- PF Number: MH/212395/0117
-- UAN Number: UBIN0809466
-- Status: Exists in file
-
-Analysis steps:
-1. Analyze the extracted file data — look for employee records, names, IDs, PF numbers, etc.
-2. Compare with the [APP EMPLOYEE MASTER DATA] provided
-3. Identify additions, deletions, and updates
-4. Match employees by name, PF number, or unique identifiers
-5. Suggest specific actions: add_employee, update_employee, delete_employee
-6. Be precise about what fields differ
-7. Format suggestions as clear, actionable recommendations
-8. Use ₹ for currency amounts
-''';
+        lower.contains('verify') ||
+        lower.contains('master') ||
+        lower.contains('compare') ||
+        lower.contains('diff') ||
+        lower.contains('missing') ||
+        lower.contains('addition') ||
+        lower.contains('deletion') ||
+        lower.contains('update') ||
+        lower.contains('sync') ||
+        lower.contains('match') ||
+        lower.contains('changes');
   }
 }
