@@ -52,6 +52,7 @@ dependencies:
   intl: any
   collection: ^1.19.1
   package_info_plus: ^9.0.1
+  syncfusion_flutter_pdf: ^29.2.11
 dev_dependencies:
   flutter_test:
     sdk: flutter

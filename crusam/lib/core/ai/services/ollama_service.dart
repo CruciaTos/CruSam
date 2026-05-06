@@ -435,6 +435,8 @@ class OllamaService {
       'images': [base64Image],
     });
 
+    final effectiveTimeout = timeout ?? const Duration(seconds: 60);
+
     try {
       final request = http.Request('POST', uri)
         ..headers['Content-Type'] = 'application/json'
@@ -444,7 +446,23 @@ class OllamaService {
           'messages': payload,
         });
 
-      final streamedResponse = await client.send(request);
+      // ── FIX: apply timeout to client.send() ──────────────────────────
+      // Without this, if Ollama is loading minicpm-v into VRAM (cold start)
+      // the app hangs on this line indefinitely.
+      final streamedResponse = await client
+          .send(request)
+          .timeout(
+            effectiveTimeout,
+            onTimeout: () {
+              client.close();
+              throw OllamaException(
+                'Image extraction timed out after ${effectiveTimeout.inSeconds}s. '
+                'Ollama may still be loading the vision model into memory. '
+                'Try again in a few seconds.',
+              );
+            },
+          );
+      // ─────────────────────────────────────────────────────────────────
 
       if (streamedResponse.statusCode != 200) {
         final errorBody = await streamedResponse.stream.bytesToString();

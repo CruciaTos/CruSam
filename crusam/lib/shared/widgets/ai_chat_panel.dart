@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart'; // ADDED – file picker for PDF/Excel
+import 'package:crusam/core/ai/services/file_extraction_service.dart'; // ADDED – for type references
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
@@ -105,6 +107,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   Uint8List? _pendingImageBytes;
   String? _pendingImagePath;
+
+  // ── Pending file (PDF / Excel) ─────────────────────────────────────────
+  Uint8List? _pendingFileBytes;
+  String? _pendingFileType;   // 'pdf' | 'excel'
+  String? _pendingFileName;
 
   bool _showingPendingDialog = false;
 
@@ -223,16 +230,66 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
+  // ── NEW: file picker for PDF / Excel ──────────────────────────────────
+  Future<void> _pickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'xlsx', 'xls'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+
+      final name = file.name;
+      final ext = name.split('.').last.toLowerCase();
+      final type = ext == 'pdf' ? 'pdf' : 'excel';
+
+      // Clear any pending image when a file is picked
+      setState(() {
+        _pendingImageBytes = null;
+        _pendingImagePath = null;
+        _pendingFileBytes = bytes;
+        _pendingFileType = type;
+        _pendingFileName = name;
+      });
+      _inputFocus.requestFocus();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick file: $e')),
+        );
+      }
+    }
+  }
+
+  void _clearPendingFile() {
+    setState(() {
+      _pendingFileBytes = null;
+      _pendingFileType = null;
+      _pendingFileName = null;
+    });
+  }
+
+  // ── Updated sendMessage to include file attachments ────────────────────
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
     final imageBytes = _pendingImageBytes;
-    if (text.isEmpty && imageBytes == null) return;
+    final fileBytes = _pendingFileBytes;
+    final fileType = _pendingFileType;
+    final fileName = _pendingFileName;
+
+    if (text.isEmpty && imageBytes == null && fileBytes == null) return;
 
     final notifier = AiChatNotifier.instance;
     if (notifier.isLoading) return;
 
     _inputController.clear();
     _clearPendingImage();
+    _clearPendingFile();
     setState(() {
       _showSlashCommands = false;
       _smartSuggestion = null;
@@ -240,7 +297,13 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
     _scrollToBottom();
 
-    await notifier.sendMessage(text, imageBytes: imageBytes);
+    await notifier.sendMessage(
+      text,
+      imageBytes: imageBytes,
+      fileBytes: fileBytes,
+      fileType: fileType,
+      fileName: fileName,
+    );
     _scrollToBottom();
   }
 
@@ -275,27 +338,44 @@ class _AiChatScreenState extends State<AiChatScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: _K.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: const Text('Confirm Action', style: TextStyle(color: _K.textPrimary)),
         content: Text(
           notifier.pendingActionDescription ?? 'Perform this action?',
-          style: const TextStyle(color: _K.textSecondary),
+          style: const TextStyle(color: _K.textSecondary, height: 1.4),
         ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              notifier.resolvePendingAction(false);
-              _showingPendingDialog = false;
-            },
-            child: const Text('Cancel'),
+          Expanded(
+            child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _K.textPrimary,
+                side: const BorderSide(color: _K.border),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                notifier.resolvePendingAction(false);
+                _showingPendingDialog = false;
+              },
+              child: const Text('No'),
+            ),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              notifier.resolvePendingAction(true);
-              _showingPendingDialog = false;
-            },
-            child: const Text('Proceed'),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _K.accent,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                notifier.resolvePendingAction(true);
+                _showingPendingDialog = false;
+              },
+              child: const Text('Yes'),
+            ),
           ),
         ],
       ),
@@ -369,6 +449,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   smartSuggestion: _smartSuggestion,
                   pendingImageBytes: _pendingImageBytes,
                   pendingImageName: _pendingImagePath,
+                  pendingFileType: _pendingFileType,
+                  pendingFileName: _pendingFileName,
                   onSend: _sendMessage,
                   onCancel: notifier.isLoading
                       ? notifier.cancelGeneration
@@ -385,6 +467,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   },
                   onPickImage: _pickImage,
                   onClearImage: _clearPendingImage,
+                  onPickFile: _pickFile,
+                  onClearFile: _clearPendingFile,
                 ),
               ],
             ),
@@ -442,7 +526,7 @@ class _ChatHeader extends StatelessWidget {
     }
 
     return Container(
-      height: 48,
+      height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: _K.surface,
@@ -450,15 +534,26 @@ class _ChatHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Text(
-            'CruSam AI',
-            style: TextStyle(
-              color: _K.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'CruSam AI',
+                style: TextStyle(
+                  color: _K.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+              if (notifier.messages.isNotEmpty)
+                Text(
+                  '${notifier.messages.length} messages',
+                  style: const TextStyle(color: _K.textMuted, fontSize: 10),
+                ),
+            ],
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
@@ -656,7 +751,7 @@ class _MessageList extends StatelessWidget {
 }
 
 // =============================================================================
-// MESSAGE BUBBLE – updated to handle EXTRACTED_TEXT blocks
+// MESSAGE BUBBLE – updated to handle EXTRACTED_TEXT and EXTRACTED_FILE blocks
 // =============================================================================
 
 class _MessageBubble extends StatefulWidget {
@@ -694,9 +789,12 @@ class _MessageBubbleState extends State<_MessageBubble> {
             ? _K.userBubble
             : _K.aiBubble;
 
-    // Check if this assistant message contains extracted text
+    // Check if this assistant message contains extracted text (image or file)
     final hasExtractedText = !isUser && widget.message.text.contains('[EXTRACTED_TEXT]');
+    final hasExtractedFile = !isUser && widget.message.text.contains('[EXTRACTED_FILE]');
+    final hasExtractedBlock = hasExtractedText || hasExtractedFile;
     String displayText = widget.message.text;
+    final hasFollowUpChips = !isUser && !hasExtractedBlock && _isFollowupQuestion(displayText);
     String? extractedContent;
     if (hasExtractedText) {
       final start = displayText.indexOf('[EXTRACTED_TEXT]');
@@ -742,8 +840,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (hasExtractedText && extractedContent != null) ...[
-                    // Collapsible extracted text section
+                  // Show extracted file block if present
+                  if (hasExtractedFile) ...[
+                    _buildExtractedFileBlock(widget.message.text),
+                  ] else if (hasExtractedText && extractedContent != null) ...[
+                    // Collapsible extracted text section (image)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -820,7 +921,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                   ] else ...[
                     _MarkdownView(text: displayText),
                   ],
-                  if ((_hovered || widget.isLast) && !hasExtractedText)
+                  if (hasFollowUpChips)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          _QuickReplyChip(label: 'Yes', onTap: () => _sendQuickReply('Yes')),
+                          _QuickReplyChip(label: 'No', onTap: () => _sendQuickReply('No')),
+                          _QuickReplyChip(label: 'Tell me more', onTap: () => _sendQuickReply('Tell me more')),
+                        ],
+                      ),
+                    ),
+                  if ((_hovered || widget.isLast) && !hasExtractedText && !hasExtractedFile)
                     Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Row(
@@ -865,6 +979,103 @@ class _MessageBubbleState extends State<_MessageBubble> {
     );
   }
 
+  // ── NEW: build extracted file block (PDF/Excel) ───────────────────────
+  Widget _buildExtractedFileBlock(String rawText) {
+    // Parse the [EXTRACTED_FILE] block
+    final start = rawText.indexOf('[EXTRACTED_FILE]');
+    final end = rawText.indexOf('[/EXTRACTED_FILE]');
+    if (start == -1 || end == -1) {
+      return _MarkdownView(text: rawText);
+    }
+
+    final inner = rawText.substring(start + '[EXTRACTED_FILE]'.length, end).trim();
+    final lines = inner.split('\n');
+
+    String fileType = 'File';
+    String summary = '';
+    final contentLines = <String>[];
+
+    for (final line in lines) {
+      if (line.startsWith('type:')) {
+        fileType = line.substring(5).trim();
+      } else if (line.startsWith('summary:')) {
+        summary = line.substring(8).trim();
+      } else {
+        contentLines.add(line);
+      }
+    }
+
+    final content = contentLines.join('\n').trim();
+    final icon = fileType.toLowerCase() == 'pdf'
+        ? Icons.picture_as_pdf_outlined
+        : Icons.table_chart_outlined;
+    final iconColor = fileType.toLowerCase() == 'pdf'
+        ? const Color(0xFFEF5350)
+        : const Color(0xFF66BB6A);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _extractedExpanded = !_extractedExpanded),
+          child: Row(
+            children: [
+              Icon(icon, size: 14, color: iconColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  summary.isNotEmpty ? summary : '$fileType extracted',
+                  style: TextStyle(
+                    color: iconColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Icon(
+                _extractedExpanded ? Icons.expand_less : Icons.expand_more,
+                size: 16,
+                color: _K.textMuted,
+              ),
+            ],
+          ),
+        ),
+        if (_extractedExpanded && content.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: _K.bg,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: _K.border),
+            ),
+            constraints: const BoxConstraints(maxHeight: 250),
+            child: SingleChildScrollView(
+              child: SelectableText(
+                content,
+                style: const TextStyle(
+                  color: _K.textPrimary,
+                  fontSize: 11,
+                  height: 1.4,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 4),
+        const Text(
+          'Data has been passed to the AI for analysis…',
+          style: TextStyle(
+            color: _K.textSecondary,
+            fontSize: 12,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      ],
+    );
+  }
+
   void _copyText() {
     Clipboard.setData(ClipboardData(text: widget.message.text));
     setState(() => _copied = true);
@@ -873,8 +1084,55 @@ class _MessageBubbleState extends State<_MessageBubble> {
     });
   }
 
+  bool _isFollowupQuestion(String text) {
+    final lower = text.toLowerCase();
+    final triggers = [
+      'would you like',
+      'do you want',
+      'should i',
+      'would you',
+      'can i',
+      'shall i',
+      'ready to',
+      'want to',
+    ];
+    return triggers.any(lower.contains) || text.trim().endsWith('?');
+  }
+
+  void _sendQuickReply(String reply) {
+    final notifier = AiChatNotifier.instance;
+    if (notifier.isLoading) return;
+    notifier.sendMessage(reply);
+  }
+
   String _formatTime(DateTime dt) =>
       '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+}
+
+class _QuickReplyChip extends StatelessWidget {
+  const _QuickReplyChip({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _K.surfaceElevated,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _K.border),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(color: _K.textPrimary, fontSize: 12, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
 }
 
 class _MsgAction extends StatelessWidget {
@@ -904,8 +1162,6 @@ class _MsgAction extends StatelessWidget {
     );
   }
 }
-
-// (rest of the file – typing indicator, markdown, code block, empty state, etc. – remains unchanged)
 
 // =============================================================================
 // TYPING INDICATOR – unchanged
@@ -1342,7 +1598,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // =============================================================================
-// INPUT AREA – updated with image picker & preview
+// INPUT AREA – updated with file picker & preview (PDF/Excel)
 // =============================================================================
 
 class _InputArea extends StatelessWidget {
@@ -1357,12 +1613,16 @@ class _InputArea extends StatelessWidget {
     required this.smartSuggestion,
     this.pendingImageBytes,
     this.pendingImageName,
+    this.pendingFileType,       // ← NEW
+    this.pendingFileName,       // ← NEW
     required this.onSend,
     required this.onCancel,
     required this.onApplySlash,
     required this.onApplySuggestion,
     required this.onPickImage,
     required this.onClearImage,
+    required this.onPickFile,   // ← NEW
+    required this.onClearFile,  // ← NEW
   });
 
   final TextEditingController controller;
@@ -1375,12 +1635,16 @@ class _InputArea extends StatelessWidget {
   final String? smartSuggestion;
   final Uint8List? pendingImageBytes;
   final String? pendingImageName;
+  final String? pendingFileType;      // ← NEW
+  final String? pendingFileName;      // ← NEW
   final VoidCallback onSend;
   final VoidCallback? onCancel;
   final void Function(_SlashCommand) onApplySlash;
   final void Function(String) onApplySuggestion;
   final void Function(ImageSource source) onPickImage;
   final VoidCallback onClearImage;
+  final VoidCallback onPickFile;      // ← NEW
+  final VoidCallback onClearFile;     // ← NEW
 
   @override
   Widget build(BuildContext context) {
@@ -1448,6 +1712,7 @@ class _InputArea extends StatelessWidget {
               ),
             ),
 
+          // ── Image preview ──────────────────────────────────────────────
           if (pendingImageBytes != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -1479,6 +1744,58 @@ class _InputArea extends StatelessWidget {
                     icon: const Icon(Icons.close, size: 16, color: _K.textMuted),
                     splashRadius: 14,
                     onPressed: onClearImage,
+                  ),
+                ],
+              ),
+            ),
+
+          // ── File preview (PDF / Excel) — NEW ──────────────────────────
+          if (pendingFileType != null && pendingFileName != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: _K.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _K.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    pendingFileType == 'pdf'
+                        ? Icons.picture_as_pdf_outlined
+                        : Icons.table_chart_outlined,
+                    size: 20,
+                    color: pendingFileType == 'pdf'
+                        ? const Color(0xFFEF5350)   // red for PDF
+                        : const Color(0xFF66BB6A),   // green for Excel
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          pendingFileName!,
+                          style: const TextStyle(
+                            color: _K.textPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          pendingFileType == 'pdf' ? 'PDF Document' : 'Excel Spreadsheet',
+                          style: const TextStyle(color: _K.textMuted, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 16, color: _K.textMuted),
+                    splashRadius: 14,
+                    onPressed: onClearFile,
                   ),
                 ],
               ),
@@ -1553,6 +1870,7 @@ class _InputArea extends StatelessWidget {
       builder: (ctx) => SafeArea(
         child: Wrap(
           children: [
+            // ── Existing image options ────────────────────────────────────
             ListTile(
               leading: const Icon(Icons.photo_library_outlined, color: _K.textPrimary),
               title: const Text('Gallery', style: TextStyle(color: _K.textPrimary)),
@@ -1567,6 +1885,39 @@ class _InputArea extends StatelessWidget {
               onTap: () {
                 Navigator.pop(ctx);
                 onPickImage(ImageSource.camera);
+              },
+            ),
+            const Divider(height: 1, color: Color(0x1AFFFFFF)),
+            // ── NEW: PDF option ───────────────────────────────────────────
+            ListTile(
+              leading: const Icon(
+                Icons.picture_as_pdf_outlined,
+                color: Color(0xFFEF5350),
+              ),
+              title: const Text('PDF Document', style: TextStyle(color: _K.textPrimary)),
+              subtitle: const Text(
+                'Salary statements, invoices, reports',
+                style: TextStyle(color: _K.textMuted, fontSize: 11),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                onPickFile();
+              },
+            ),
+            // ── NEW: Excel option ─────────────────────────────────────────
+            ListTile(
+              leading: const Icon(
+                Icons.table_chart_outlined,
+                color: Color(0xFF66BB6A),
+              ),
+              title: const Text('Excel Spreadsheet', style: TextStyle(color: _K.textPrimary)),
+              subtitle: const Text(
+                '.xlsx / .xls files',
+                style: TextStyle(color: _K.textMuted, fontSize: 11),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                onPickFile();
               },
             ),
           ],
