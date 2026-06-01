@@ -1194,6 +1194,7 @@ class _RowsTableState extends State<_RowsTable> {
   final _amountFocusNodes    = <String, FocusNode>{};
   final _fromDateFocusNodes  = <String, FocusNode>{};
   final _toDateFocusNodes    = <String, FocusNode>{};
+  final _rowKeys             = <String, GlobalKey>{};
 
   VoucherNotifier get notifier => widget.notifier;
 
@@ -1238,6 +1239,10 @@ class _RowsTableState extends State<_RowsTable> {
     map.clear();
   }
 
+  void _disposeKeyMap(Map<String, GlobalKey> map) {
+    map.clear();
+  }
+
   void _syncFocusNodes() {
     final ids = notifier.current.rows.map((r) => r.id).toSet();
 
@@ -1253,6 +1258,28 @@ class _RowsTableState extends State<_RowsTable> {
     syncMap(_amountFocusNodes);
     syncMap(_fromDateFocusNodes);
     syncMap(_toDateFocusNodes);
+    _syncRowKeys();
+  }
+
+  void _syncRowKeys() {
+    final ids = notifier.current.rows.map((r) => r.id).toSet();
+    final removed = _rowKeys.keys.where((id) => !ids.contains(id)).toList(growable: false);
+    for (final id in removed) _rowKeys.remove(id);
+    for (final id in ids) {
+      _rowKeys.putIfAbsent(id, () => GlobalKey());
+    }
+  }
+
+  Future<void> _scrollRowIntoView(String rowId) async {
+    final key = _rowKeys[rowId];
+    final context = key?.currentContext;
+    if (context == null) return;
+    await Scrollable.ensureVisible(
+      context,
+      alignment: 0.5,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -1349,8 +1376,24 @@ class _RowsTableState extends State<_RowsTable> {
             notifier.updateRow(row.id, (r) => r.copyWith(fromDate: d)),
         onFromDateSubmitted   : () => _toDateFocusNodes[row.id]?.requestFocus(),
         onFromDateMovePrevious: () => _amountFocusNodes[row.id]?.requestFocus(),
+        onFromDateCopyPrevious: i > 0
+            ? () {
+                final prevDate = notifier.current.rows[i - 1].fromDate;
+                if (prevDate.isNotEmpty) {
+                  notifier.updateRow(row.id, (r) => r.copyWith(fromDate: prevDate));
+                }
+              }
+            : null,
         onToDateChanged  : (d) =>
             notifier.updateRow(row.id, (r) => r.copyWith(toDate: d)),
+        onToDateCopyPrevious: i > 0
+            ? () {
+                final prevDate = notifier.current.rows[i - 1].toDate;
+                if (prevDate.isNotEmpty) {
+                  notifier.updateRow(row.id, (r) => r.copyWith(toDate: prevDate));
+                }
+              }
+            : null,
         // Enter on To Date:
         //   next row exists → jump to its employee dropdown
         //   no next row    → jump to Add Employee button
@@ -1366,6 +1409,7 @@ class _RowsTableState extends State<_RowsTable> {
         onToDateMovePrevious: () => _fromDateFocusNodes[row.id]?.requestFocus(),
         onRemove            : () => notifier.removeRow(row.id),
         highlight           : dup,
+        rowKey              : _rowKeys[row.id],
       );
     }, growable: false);
   }
@@ -1461,7 +1505,9 @@ class _RowsTableState extends State<_RowsTable> {
                   focusNode: widget.addEmployeeButtonFocus,
                   onPressed: () {
                     final rowId = notifier.addRow();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) async {
+                      if (!mounted) return;
+                      await _scrollRowIntoView(rowId);
                       if (!mounted) return;
                       _employeeFocusNodes[rowId]?.requestFocus();
                     });

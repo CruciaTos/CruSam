@@ -18,6 +18,7 @@ TableRow buildVoucherRow({
   required void Function(String) onFromDateChanged,
   required void Function(String) onToDateChanged,
   required VoidCallback onRemove,
+  Key? rowKey,
   FocusNode? employeeFocusNode,
   FocusNode? amountFocusNode,
   FocusNode? fromDateFocusNode,
@@ -32,6 +33,9 @@ TableRow buildVoucherRow({
   VoidCallback? onAmountMovePrevious,
   VoidCallback? onFromDateMovePrevious,
   VoidCallback? onToDateMovePrevious,
+  // ▶️ NEW – copy from previous row callbacks
+  VoidCallback? onFromDateCopyPrevious,
+  VoidCallback? onToDateCopyPrevious,
 }) {
   final isEven = index.isEven;
   final bg = highlight
@@ -47,9 +51,13 @@ TableRow buildVoucherRow({
           bottom: BorderSide(color: AppColors.slate200, width: 0.6)),
     ),
     children: [
-      _cell(Text('${index + 1}',
-          style: AppTextStyles.small.copyWith(color: AppColors.slate500),
-          textAlign: TextAlign.center)),
+      _cell(Container(
+        key: rowKey,
+        alignment: Alignment.center,
+        child: Text('${index + 1}',
+            style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+            textAlign: TextAlign.center),
+      )),
       _cell(_EmpDropdown(
         employees: employees,
         selectedId: row.employeeId,
@@ -73,6 +81,7 @@ TableRow buildVoucherRow({
         focusNode: fromDateFocusNode,
         onSubmitted: onFromDateSubmitted,
         onMovePrevious: onFromDateMovePrevious, // ← new
+        onCopyPrevious: onFromDateCopyPrevious,
       )),
       _cell(_DateField(
         value: row.toDate,
@@ -80,6 +89,7 @@ TableRow buildVoucherRow({
         focusNode: toDateFocusNode,
         onSubmitted: onToDateSubmitted,
         onMovePrevious: onToDateMovePrevious,   // ← new
+        onCopyPrevious: onToDateCopyPrevious,
       )),
       _cell(_AutoFilledInfo(row: row)),
       _cell(
@@ -478,6 +488,7 @@ class _DateField extends StatefulWidget {
   final FocusNode? focusNode;
   final VoidCallback? onSubmitted;
   final VoidCallback? onMovePrevious;   // ← new
+  final VoidCallback? onCopyPrevious;   // ← new
 
   const _DateField({
     required this.value,
@@ -485,6 +496,7 @@ class _DateField extends StatefulWidget {
     this.focusNode,
     this.onSubmitted,
     this.onMovePrevious,
+    this.onCopyPrevious,
   });
 
   @override
@@ -636,12 +648,19 @@ class _DateFieldState extends State<_DateField> {
   }
 
   /// Shift+Enter → move backward
+  /// Shift+ArrowDown → copy previous row's same date into current row.
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.enter &&
-        HardwareKeyboard.instance.isShiftPressed) {
-      widget.onMovePrevious?.call();
-      return KeyEventResult.handled;
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.enter &&
+          HardwareKeyboard.instance.isShiftPressed) {
+        widget.onMovePrevious?.call();
+        return KeyEventResult.handled;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+          HardwareKeyboard.instance.isShiftPressed) {
+        widget.onCopyPrevious?.call();
+        return KeyEventResult.handled;
+      }
     }
     return KeyEventResult.ignored;
   }

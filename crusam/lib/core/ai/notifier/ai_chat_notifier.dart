@@ -7,6 +7,8 @@
 //  4. BatchSyncManager          — drives one‑by‑one employee sync
 //  5. _buildValidHistory()      — injects file content into the AI context window
 //  6. AutonomousSyncService     — runs all changes automatically when triggered
+//  7. [NEW] StructuredVoucherCreationService — creates vouchers directly from
+//     markdown tables without involving the AI model (deterministic, fast).
 
 import 'dart:async';
 import 'dart:convert';
@@ -24,6 +26,7 @@ import 'package:crusam/core/ai/services/voucher_image_processing_service.dart'; 
 import 'package:crusam/core/ai/services/parsers/name_resolver.dart';             // NEW
 import 'package:crusam/core/ai/services/gemini_service.dart';
 import 'package:crusam/core/ai/services/ollama_service.dart';
+import 'package:crusam/core/ai/services/structured_voucher_creation_service.dart'; // NEW: markdown table → voucher
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
@@ -328,7 +331,7 @@ class AiChatNotifier extends ChangeNotifier {
             'leave it', 'not this one'].contains(lower);
   }
 
-  /// NEW: detects autonomous “sync all” / “apply all” intent
+  /// NEW: detects autonomous "sync all" / "apply all" intent
   bool _isAutonomousSyncQuery(String query) {
     final lower = query.toLowerCase();
     return (lower.contains('sync') && (lower.contains('all') || lower.contains('auto'))) ||
@@ -356,6 +359,251 @@ class AiChatNotifier extends ChangeNotifier {
             lower.contains('image') ||
             lower.contains('data') ||
             lower.contains('employee'));
+  }
+
+  // ── NEW: Structured voucher creation from markdown table ─────────────────
+  //
+  // Detects when the user pastes a markdown payment/schedule table alongside
+  // a voucher-creation prompt. When detected, the table is parsed in pure Dart
+  // (no AI model involved) and the voucher is built deterministically:
+  //   • dept code  — looked up from the first employee in the table
+  //   • date       — today's date
+  //   • title / bill no / PO no — extracted from the surrounding prompt text
+  //   • rows       — one per data row in the table
+  // The voucher is then saved as a draft automatically.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Returns true when [text] contains a markdown table with name+amount
+  /// columns AND some voucher-creation intent keyword.
+  bool _isStructuredVoucherCreation(String text) {
+    // Require at least 2 pipe-lines (header + 1 data row minimum)
+    final pipeLines = text.split('\n').where((l) => l.contains('|')).toList();
+    if (pipeLines.length < 2) return false;
+
+    // At least one pipe-line must have both a name-like header AND amount header
+    final hasNameAndAmount = pipeLines.any((line) {
+      final l = line.toLowerCase();
+      return (l.contains('name') ||
+              l.contains('employee') ||
+              l.contains('technician')) &&
+          (l.contains('amount') || l.contains('salary'));
+    });
+    if (!hasNameAndAmount) return false;
+
+    // Must have voucher / invoice / creation intent (or payment/schedule list)
+    final lower = text.toLowerCase();
+    return lower.contains('voucher') ||
+        lower.contains('invoice') ||
+        lower.contains('create') ||
+        lower.contains('make') ||
+        lower.contains('generate') ||
+        lower.contains('add') ||
+        lower.contains('build') ||
+        lower.contains('payment list') ||
+        lower.contains('schedule list');
+  }
+
+  /// Returns "APR-2026" style label for the current month — used as fallback
+  /// voucher title when the user doesn't specify one.
+  String _currentMonthYearLabel() {
+    final now = DateTime.now();
+    const months = [
+      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    ];
+    return '${months[now.month - 1]}-${now.year}';
+  }
+
+  /// Formats an ISO date string (YYYY-MM-DD) as DD/MM/YYYY for display in
+  /// chat messages.
+  String _formatDisplayDate(String iso) {
+    if (iso.isEmpty) return '-';
+    try {
+      final parts = iso.split('-');
+      if (parts.length == 3) return '${parts[2]}/${parts[1]}/${parts[0]}';
+    } catch (_) {}
+    return iso;
+  }
+
+  /// Directly creates a voucher from [meta] (pre-parsed structured data)
+  /// without sending anything to the AI model.
+  ///
+  /// Flow:
+  ///   1. Resolve dept code from first employee name via the employee master
+  ///   2. Apply metadata to VoucherNotifier (title, deptCode, date, billNo, poNo)
+  ///   3. Add each row via AiToolExecutor (auto-fills bank details from master)
+  ///   4. Save as draft
+  ///   5. Post a success summary to the chat
+  Future<void> _handleStructuredVoucherCreation(
+      StructuredVoucherMeta meta) async {
+    final employees = EmployeeNotifier.instance.employees;
+    final voucherNotifier = VoucherNotifier.instance;
+
+    _pendingStreamText = '📋 Parsing structured data…';
+    _chatPhase = ChatPhase.thinking;
+    notifyListeners();
+
+    // 1. Resolve department code from the first employee in the list
+    String deptCode = voucherNotifier.current.deptCode;
+    if (meta.rows.isNotEmpty) {
+      final found = StructuredVoucherCreationService.lookupDeptCode(
+        meta.rows.first.rawName,
+        employees,
+      );
+      if (found != null && found.isNotEmpty) deptCode = found;
+    }
+
+    // 2. Today's date as ISO YYYY-MM-DD
+    final today = DateTime.now().toIso8601String().split('T').first;
+
+    // 3. Resolve title — fall back to auto-generated "Exp. MMM-YYYY"
+    final title = (meta.title?.isNotEmpty == true)
+        ? meta.title!
+        : 'Exp. ${_currentMonthYearLabel()}';
+
+    // 4. Apply voucher metadata.
+    //    copyWith(x: null) keeps the current value, so we use ?? to decide.
+    voucherNotifier.update((current) => current.copyWith(
+          title: title,
+          deptCode: deptCode,
+          date: today,
+          billNo: meta.billNo ?? current.billNo,
+          poNo: meta.poNo ?? current.poNo,
+        ));
+
+    // 5. Add each row via AiToolExecutor so bank details are auto-filled
+    //    from the employee master data.
+    int addedCount = 0;
+    final errors = <String>[];
+
+    for (int i = 0; i < meta.rows.length; i++) {
+      final row = meta.rows[i];
+
+      _pendingStreamText =
+          '➕ Adding row ${i + 1}/${meta.rows.length}: ${row.rawName}…';
+      notifyListeners();
+
+      // Yield to the event loop every 3 rows to keep UI responsive
+      if (i % 3 == 0) await Future.delayed(Duration.zero);
+
+      if (row.fromDate.isEmpty || row.toDate.isEmpty || row.amount <= 0) {
+        errors.add('Skipped "${row.rawName}": missing date or invalid amount');
+        continue;
+      }
+
+      // Resolve the employee upfront using our multi-strategy + fuzzy matcher
+      // so the tool executor receives an exact employeeId and bank details
+      // rather than having to re-match a potentially misspelled raw name.
+      final resolvedEmp = StructuredVoucherCreationService.findBestEmployee(
+        row.rawName,
+        employees,
+      );
+
+      final actionJson = jsonEncode({
+        'action': 'add_voucher_row',
+        'employeeName': resolvedEmp?.name ?? row.rawName,
+        if (resolvedEmp?.id != null) 'employeeId': resolvedEmp!.id,
+        'amount': row.amount,
+        'fromDate': row.fromDate,
+        'toDate': row.toDate,
+        if ((resolvedEmp?.ifscCode ?? '').isNotEmpty)
+          'ifscCode': resolvedEmp!.ifscCode,
+        if ((resolvedEmp?.accountNumber ?? '').isNotEmpty)
+          'accountNumber': resolvedEmp!.accountNumber,
+        if ((resolvedEmp?.bankDetails ?? '').isNotEmpty)
+          'bankDetails': resolvedEmp!.bankDetails,
+        if ((resolvedEmp?.branch ?? '').isNotEmpty)
+          'branch': resolvedEmp!.branch,
+        if ((resolvedEmp?.sbCode ?? '').isNotEmpty)
+          'sbCode': resolvedEmp!.sbCode,
+      });
+
+      final result = await AiToolExecutor.instance.executeBatch(
+        [actionJson],
+        employeeNotifier: EmployeeNotifier.instance,
+        voucherNotifier: voucherNotifier,
+      );
+
+      if (result is AiToolSuccess) {
+        addedCount++;
+      } else if (result is AiToolFailure) {
+        errors.add('"${row.rawName}": ${(result as AiToolFailure).reason}');
+      }
+    }
+
+    // 6. Save as draft — always attempt regardless of whether some rows
+    //    had warnings, so the voucher always lands in the Invoices screen.
+    _pendingStreamText = '💾 Saving voucher as draft…';
+    notifyListeners();
+
+    bool saved = false;
+    try {
+      saved = await voucherNotifier.saveVoucher();
+    } catch (e) {
+      debugPrint('VoucherNotifier.saveVoucher() threw: $e');
+    }
+
+    // 7. Reset loading state
+    _pendingStreamText = null;
+    _chatPhase = ChatPhase.idle;
+    _status = ChatStatus.idle;
+
+    // 8. Build summary message for the chat
+    final sb = StringBuffer();
+
+    if (saved && addedCount > 0 && errors.isEmpty) {
+      sb.writeln('✅ **Voucher created and saved as draft successfully!**\n');
+    } else if (saved && addedCount > 0) {
+      sb.writeln('✅ **Voucher saved as draft** (with some warnings — see below).\n');
+    } else if (saved && addedCount == 0) {
+      sb.writeln(
+          '⚠️ **Voucher saved as draft** but no rows were added successfully.\n'
+          'Check the warnings below and verify employee names against master data.\n');
+    } else {
+      sb.writeln(
+          '⚠️ **Rows added to builder** but draft save failed.\n'
+          'Please click **Save as Draft** in the Voucher Builder to persist.\n');
+    }
+
+    sb.writeln('**📄 Voucher Details**');
+    sb.writeln('- **Title:** $title');
+    sb.writeln('- **Dept Code:** $deptCode');
+    sb.writeln('- **Date:** ${_formatDisplayDate(today)}');
+    if ((meta.billNo ?? '').isNotEmpty) {
+      sb.writeln('- **Bill No:** ${meta.billNo}');
+    }
+    if ((meta.poNo ?? '').isNotEmpty) {
+      sb.writeln('- **PO No:** ${meta.poNo}');
+    }
+
+    sb.writeln(
+        '\n**👥 Labour Disbursement Rows ($addedCount/${meta.rows.length} added)**');
+    for (final row in meta.rows) {
+      final dr =
+          '${_formatDisplayDate(row.fromDate)} → ${_formatDisplayDate(row.toDate)}';
+      final resolvedEmp = StructuredVoucherCreationService.findBestEmployee(
+        row.rawName,
+        EmployeeNotifier.instance.employees,
+      );
+      final displayName = resolvedEmp != null && resolvedEmp.name != row.rawName
+          ? '${row.rawName} → _matched as_ **${resolvedEmp.name}**'
+          : '**${row.rawName}**';
+      sb.writeln('- $displayName — ₹${row.amount.toStringAsFixed(0)}  _($dr)_');
+    }
+
+    if (errors.isNotEmpty) {
+      sb.writeln('\n**⚠️ Issues:**');
+      for (final err in errors) sb.writeln('- $err');
+    }
+
+    sb.writeln('\n_Open the Voucher Builder to review, adjust, or export._');
+
+    _addMessage(ChatMessage(
+      role: ChatRole.assistant,
+      text: sb.toString(),
+      timestamp: DateTime.now(),
+    ));
+    notifyListeners();
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -423,7 +671,7 @@ class AiChatNotifier extends ChangeNotifier {
       }
     }
 
-    // ── “Continue last task” intent ────────────────────────────────────────
+    // ── "Continue last task" intent ────────────────────────────────────────
     if (_isContinueIntent(trimmed)) {
       if (BatchSyncManager.instance.hasActiveQueue) {
         _addMessage(ChatMessage(
@@ -857,6 +1105,18 @@ class AiChatNotifier extends ChangeNotifier {
           systemPromptOverride: _buildImageAnalysisPrompt(),
         );
       } else {
+        // ── NEW: Structured voucher creation from markdown table ────────────
+        // Checked BEFORE the normal AI path. If the message contains a valid
+        // payment/schedule table with voucher-creation intent, we handle it
+        // deterministically without sending anything to the LLM.
+        if (_isStructuredVoucherCreation(trimmed)) {
+          final meta = StructuredVoucherCreationService.parse(trimmed);
+          if (meta != null && meta.hasRows) {
+            await _handleStructuredVoucherCreation(meta);
+            return;
+          }
+        }
+
         // ── Normal text‑only path ────────────────────────────────────────
         List<Map<String, String>> effectiveHistory = history;
         if (_activeFileContext != null) {
@@ -1320,11 +1580,11 @@ You are a professional data analyst embedded in Crusam, a business management ap
 The user has uploaded an image. Raw text has been extracted and provided as [IMAGE DATA].
 
 RESPONSE RULES (NON‑NEGOTIABLE)
-▸ Begin DIRECTLY — no greetings, no “Let me analyse…” phrases.
+▸ Begin DIRECTLY — no greetings, no "Let me analyse…" phrases.
 ▸ State the answer on the first line with the key entity in **bold**.
 ▸ Use bullet points for details; markdown tables only when explicitly requested.
 ▸ Use ₹ for Indian Rupee amounts.
-▸ Do NOT mention “image data”, “extracted text”, or internal operations.
+▸ Do NOT mention "image data", "extracted text", or internal operations.
 ▸ If data is unclear, say so in one sentence.
 ▸ Keep responses concise — answer + relevant details + one follow‑up question.
 ▸ Never fabricate values not present in the data.
@@ -1341,7 +1601,7 @@ RESPONSE RULES (NON‑NEGOTIABLE)
 ▸ State the answer on the first line with the key entity in **bold**.
 ▸ Use bullet points for details; markdown tables only when explicitly requested.
 ▸ Use ₹ for Indian Rupee amounts.
-▸ Do NOT mention “extracted text”, “the file says”, internal operations.
+▸ Do NOT mention "extracted text", "the file says", internal operations.
 ▸ If data is missing or unclear, say so in one sentence.
 ▸ Keep responses concise — answer + relevant details + one follow‑up question.
 ▸ Never fabricate values not present in the data.
@@ -1372,7 +1632,7 @@ The [ACTION] block will be stripped from the chat, but a confirmation dialog wil
                        branch, pfNo, uanNo, dateOfJoining,
                        basicCharges (num), otherCharges (num).
 4. set_company_filter – Required: code (string, e.g. "BR039").
-5. set_month_year    – Required: month (int 1‑12 or name “March”), year (int).
+5. set_month_year    – Required: month (int 1‑12 or name "March"), year (int).
 6. set_days_present  – Required: employeeId (int), days (int ≥ 0).
 7. set_salary_meta   – Required: field (billNo | poNo | clientName |
                        clientAddr | clientGstin | deptCode), value (string).
@@ -1422,17 +1682,28 @@ STRICT BEHAVIOURAL RULES (NON‑NEGOTIABLE)
 
 CONTEXT & RESUMPTION
 ▸ You have access to the full conversation history. Use it to understand context.
-▸ If the user says “continue”, “next”, “resume”, or similar, they want to pick up the last task.
+▸ If the user says "continue", "next", "resume", or similar, they want to pick up the last task.
 ▸ If a file was uploaded earlier, its data may be re‑injected as [ACTIVE FILE CONTEXT]. Use it.
 
 GROUNDING
 ▸ Every answer MUST be grounded in the provided app data below.
 ▸ NEVER fabricate, invent, or estimate data that is not in context.
-▸ If data is absent, say: “That information is not available in the current data.”
+▸ If data is absent, say: "That information is not available in the current data."
 
 ENTITY MATCHING
 ▸ Match employee names and IDs EXACTLY (case‑insensitive string match).
 ▸ If a name matches multiple entries, ASK for clarification before proceeding.
+▸ For structured voucher creation from markdown tables, name matching uses
+  multi-strategy fuzzy logic: exact → all-words → spaceless comparison →
+  word-prefix/infix (e.g. "Karthickkumar" matches "Karthick Kumar") →
+  token-set overlap. Only report a name as unmatched if ALL strategies fail.
+
+AUTO-DRAFT SAVE BEHAVIOUR
+▸ When a structured markdown table is processed for voucher creation, the
+  voucher is ALWAYS saved as a draft automatically — no manual save needed.
+▸ The user will see the voucher in the Invoices screen immediately after.
+▸ If save fails for any reason, clearly tell the user to click "Save as Draft"
+  in the Voucher Builder.
 
 RESPONSE STYLE
 ▸ Be concise, professional, and direct.
