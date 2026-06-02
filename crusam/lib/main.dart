@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
+import 'core/sync/drive_service.dart';
 import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/updater/update_dialog.dart';
@@ -24,6 +27,7 @@ Future<void> main() async {
   }
 
   UpdateNotifier.instance.checkForUpdate();
+  unawaited(SyncManager.instance.syncOnStartup());
 
   runApp(const AartiApp());
 }

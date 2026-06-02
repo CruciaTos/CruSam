@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
+import '../../../core/sync/drive_service.dart';
+import '../../../core/sync/sync_models.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -144,6 +148,10 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final cloudId = widget.employee?['cloud_id'] as String? ?? const Uuid().v4();
+      final createdAt = widget.employee?['created_at'] as String? ?? now;
+
       final emp = EmployeeModel(
         srNo: int.tryParse(_ctrl['srNo']!.text.trim()) ?? 0,
         name: _ctrl['name']!.text.trim(),
@@ -163,12 +171,45 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         otherCharges: double.tryParse(_ctrl['otherCharges']!.text.trim()) ?? 0,
         gender: _gender,
       );
+
+      final employeeData = {
+        ...emp.toMap(),
+        'cloud_id': cloudId,
+        'created_at': createdAt,
+        'updated_at': now,
+        'is_deleted': 0,
+        'deleted_at': null,
+      };
+
       if (widget.employee?['id'] != null) {
-        await DatabaseHelper.instance
-            .updateEmployee(widget.employee!['id'] as int, emp.toMap());
+        await DatabaseHelper.instance.updateEmployee(
+          widget.employee!['id'] as int,
+          employeeData,
+        );
+        await DatabaseHelper.instance.addPendingSync(
+          SyncPendingEntry(
+            entityType: 'employee',
+            cloudId: cloudId,
+            operation: 'update',
+            payload: employeeData,
+            localUpdatedAt: now,
+          ),
+        );
       } else {
-        await DatabaseHelper.instance.insertEmployee(emp.toMap());
+        await DatabaseHelper.instance.insertEmployee(employeeData);
+        await DatabaseHelper.instance.addPendingSync(
+          SyncPendingEntry(
+            entityType: 'employee',
+            cloudId: cloudId,
+            operation: 'create',
+            payload: employeeData,
+            localUpdatedAt: now,
+          ),
+        );
       }
+
+      unawaited(SyncManager.instance.processPendingUploads());
+
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -187,7 +228,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
       context: context,
       builder: (dc) => AlertDialog(
         title: const Text('Delete Employee'),
-        content: Text('Delete "${_ctrl['name']!.text.trim()}"? Cannot be undone.'),
+        content: Text('Delete "${_ctrl['name']!.text.trim()}"? This will be a soft delete.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(dc, false),
@@ -203,7 +244,35 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     if (ok != true) return;
     setState(() => _deleting = true);
     try {
-      await DatabaseHelper.instance.deleteEmployee(id);
+      final now = DateTime.now().toUtc().toIso8601String();
+      final cloudId = widget.employee?['cloud_id'] as String? ?? const Uuid().v4();
+      final deletePayload = {
+        ...?widget.employee,
+        'cloud_id': cloudId,
+        'is_deleted': 1,
+        'deleted_at': now,
+        'updated_at': now,
+      };
+
+      await DatabaseHelper.instance.updateEmployee(id, {
+        'cloud_id': cloudId,
+        'is_deleted': 1,
+        'deleted_at': now,
+        'updated_at': now,
+      });
+
+      await DatabaseHelper.instance.addPendingSync(
+        SyncPendingEntry(
+          entityType: 'employee',
+          cloudId: cloudId,
+          operation: 'delete',
+          payload: deletePayload,
+          localUpdatedAt: now,
+        ),
+      );
+
+      unawaited(SyncManager.instance.processPendingUploads());
+
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {

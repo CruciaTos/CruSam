@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
+import '../../core/sync/sync_models.dart';
 import '../models/employee_model.dart';
 import '../models/margin_settings_model.dart';
 import '../models/voucher_column_widths_model.dart';
@@ -16,7 +18,7 @@ class DatabaseHelper {
     final path = '${await getDatabasesPath()}/aarti.db';
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await _createTables(db);
@@ -46,6 +48,11 @@ class DatabaseHelper {
     await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'gross_salary', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'gender', "TEXT DEFAULT 'M'");
+    await _ensureColumn(db, 'employees', 'cloud_id', 'TEXT');
+    await _ensureUniqueIndex(db, 'idx_employees_cloud_id', 'employees', 'cloud_id');
+    await _ensureColumn(db, 'employees', 'is_deleted', 'INTEGER DEFAULT 0');
+    await _ensureColumn(db, 'employees', 'deleted_at', 'TEXT');
+    await _ensureColumn(db, 'employees', 'synced_at', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
 
@@ -155,6 +162,17 @@ class DatabaseHelper {
     }
   }
 
+  DateTime _parseUtcDateTime(String? value) {
+    if (value == null || value.isEmpty) {
+      return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    }
+    try {
+      return DateTime.parse(value).toUtc();
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    }
+  }
+
   Future<void> _ensureColumn(
     Database db,
     String table,
@@ -168,6 +186,17 @@ class DatabaseHelper {
     }
   }
 
+  Future<void> _ensureUniqueIndex(
+    Database db,
+    String indexName,
+    String table,
+    String column,
+  ) async {
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS $indexName ON $table($column)',
+    );
+  }
+
   Future<void> _createTables(Database db) async {
     await db.execute('''CREATE TABLE IF NOT EXISTS employees(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +207,10 @@ class DatabaseHelper {
       other_charges REAL DEFAULT 0,
       gross_salary REAL DEFAULT 0,
       gender TEXT DEFAULT 'M',
+      cloud_id TEXT UNIQUE,
+      is_deleted INTEGER DEFAULT 0,
+      deleted_at TEXT,
+      synced_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''');
 
@@ -264,6 +297,16 @@ class DatabaseHelper {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       user_id INTEGER,
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+    )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS sync_pending(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL,
+      cloud_id TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      local_updated_at TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''');
   }
 
@@ -590,5 +633,79 @@ class DatabaseHelper {
       'id': 1,
       'user_id': userId,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // --- Sync Methods ---
+  Future<int> addPendingSync(SyncPendingEntry entry) async {
+    return (await database).insert('sync_pending', {
+      'entity_type': entry.entityType,
+      'cloud_id': entry.cloudId,
+      'operation': entry.operation,
+      'payload': jsonEncode(entry.payload),
+      'local_updated_at': entry.localUpdatedAt,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingSyncs() async {
+    return (await database).query(
+      'sync_pending',
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  Future<int> removePendingSync(int id) async {
+    return (await database).delete(
+      'sync_pending',
+      where: 'id=?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<Map<String, dynamic>?> getEmployeeByCloudId(String cloudId) async {
+    final rows = await (await database).query(
+      'employees',
+      where: 'cloud_id=?',
+      whereArgs: [cloudId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<int> upsertEmployeeFromCloud(Map<String, dynamic> data) async {
+    final db = await database;
+    final cloudId = data['cloud_id'] as String?;
+    if (cloudId == null || cloudId.isEmpty) {
+      return 0;
+    }
+
+    final existing = await getEmployeeByCloudId(cloudId);
+    final cloudUpdatedAt = _parseUtcDateTime(data['updated_at'] as String?);
+    final insertData = Map<String, dynamic>.from(data);
+    insertData['created_at'] = (insertData['created_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+    insertData['updated_at'] = (insertData['updated_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+
+    if (existing == null) {
+      return await db.insert('employees', insertData);
+    }
+
+    final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
+    if (cloudUpdatedAt.isAfter(localUpdatedAt)) {
+      final normalized = _normalizeEmployeeData(insertData);
+      normalized['updated_at'] = cloudUpdatedAt.toIso8601String();
+      normalized['created_at'] =
+          (normalized['created_at'] as String?) ??
+              (existing['created_at'] as String?) ??
+              DateTime.now().toUtc().toIso8601String();
+      return await db.update(
+        'employees',
+        normalized,
+        where: 'cloud_id=?',
+        whereArgs: [cloudId],
+      );
+    }
+
+    return 0;
   }
 }

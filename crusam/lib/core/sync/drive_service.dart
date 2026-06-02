@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
+import '../../data/db/database_helper.dart';
+import 'sync_models.dart';
 import 'google_auth_service.dart';
 
 class DriveService {
@@ -162,6 +164,167 @@ class DriveService {
       return null;
     } finally {
       client.close();
+    }
+  }
+
+  Future<String?> ensureCrusamFolder() async {
+    return getOrCreateAppFolder();
+  }
+
+  Future<String?> ensureEmployeesFolder() async {
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) return null;
+
+    final client = await GoogleAuthService.instance.getAuthenticatedClient();
+    if (client == null) return null;
+
+    try {
+      final driveApi = drive.DriveApi(client);
+      final result = await driveApi.files.list(
+        q: "name='employees' and "
+           "mimeType='application/vnd.google-apps.folder' and "
+           "'$appFolderId' in parents and "
+           "trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id, name)',
+      );
+
+      if (result.files != null && result.files!.isNotEmpty) {
+        return result.files!.first.id;
+      }
+
+      final folder = drive.File()
+        ..name = 'employees'
+        ..mimeType = 'application/vnd.google-apps.folder'
+        ..parents = [appFolderId];
+
+      final created = await driveApi.files.create(folder, $fields: 'id');
+      return created.id;
+    } catch (e) {
+      debugPrint('DriveService.ensureEmployeesFolder error: $e');
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<SyncIndex> readEmployeesIndex() async {
+    final folderId = await ensureEmployeesFolder();
+    if (folderId == null) {
+      return SyncIndex(
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+        entries: [],
+      );
+    }
+
+    final indexFileId = await findFileId('index.json', folderId);
+    if (indexFileId == null) {
+      return SyncIndex(
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+        entries: [],
+      );
+    }
+
+    final json = await downloadJson(indexFileId);
+    if (json == null) {
+      return SyncIndex(
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+        entries: [],
+      );
+    }
+
+    return SyncIndex.fromJson(json);
+  }
+
+  Future<void> writeEmployeesIndex(SyncIndex index) async {
+    final folderId = await ensureEmployeesFolder();
+    if (folderId == null) return;
+
+    final existingFileId = await findFileId('index.json', folderId);
+    await uploadJson(
+      fileName: 'index.json',
+      data: index.toJson(),
+      parentFolderId: folderId,
+      existingFileId: existingFileId,
+    );
+  }
+
+  Future<String?> uploadEmployee(SyncEmployee employee) async {
+    final folderId = await ensureEmployeesFolder();
+    if (folderId == null) return null;
+
+    final fileName = '${employee.cloudId}.json';
+    final existingFileId = await findFileId(fileName, folderId);
+    return uploadJson(
+      fileName: fileName,
+      data: employee.toJson(),
+      parentFolderId: folderId,
+      existingFileId: existingFileId,
+    );
+  }
+
+  Future<SyncEmployee?> downloadEmployee(String cloudId) async {
+    final folderId = await ensureEmployeesFolder();
+    if (folderId == null) return null;
+
+    final fileId = await findFileId('$cloudId.json', folderId);
+    if (fileId == null) return null;
+
+    final json = await downloadJson(fileId);
+    if (json == null) return null;
+    return SyncEmployee.fromJson(json);
+  }
+}
+
+class SyncManager {
+  SyncManager._();
+  static final SyncManager instance = SyncManager._();
+
+  final _db = DatabaseHelper.instance;
+  final _drive = DriveService.instance;
+
+  Future<void> syncOnStartup() async {
+    final folderId = await _drive.ensureEmployeesFolder();
+    if (folderId == null) return;
+
+    final index = await _drive.readEmployeesIndex();
+    for (final entry in index.entries) {
+      final cloudEmployee = await _drive.downloadEmployee(entry.cloudId);
+      if (cloudEmployee == null) continue;
+      await _db.upsertEmployeeFromCloud(cloudEmployee.toJson());
+    }
+  }
+
+  Future<void> processPendingUploads() async {
+    final pendingRows = await _db.getPendingSyncs();
+    for (final row in pendingRows) {
+      final entry = SyncPendingEntry.fromDbMap(row);
+      if (entry.entityType != 'employee') continue;
+
+      final syncEmployee = SyncEmployee.fromJson(entry.payload);
+      final uploadedFileId = await _drive.uploadEmployee(syncEmployee);
+      if (uploadedFileId == null) continue;
+
+      final index = await _drive.readEmployeesIndex();
+      final updatedEntries = [
+        ...index.entries.where((e) => e.cloudId != syncEmployee.cloudId),
+        SyncIndexEntry(
+          cloudId: syncEmployee.cloudId,
+          updatedAt: syncEmployee.updatedAt,
+          isDeleted: syncEmployee.isDeleted,
+        ),
+      ];
+
+      await _drive.writeEmployeesIndex(
+        SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          entries: updatedEntries,
+        ),
+      );
+
+      if (entry.id != null) {
+        await _db.removePendingSync(entry.id!);
+      }
     }
   }
 }
