@@ -21,6 +21,7 @@ import '../../features/landing/presentation/landing_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/profile/presentation/google_drive_debug_screen.dart';
 import '../../shared/widgets/coming_soon_screen.dart';
 
 class AppRouter {
@@ -108,6 +109,11 @@ class AppRouter {
             path: '/profile',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const ProfileScreen()),
+          ),
+          GoRoute(
+            path: '/google-drive-debug',
+            pageBuilder: (context, state) => _buildPageTransition(
+                state, const GoogleDriveDebugScreen()),
           ),
           GoRoute(
             path: '/salary-employees',

@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_selector/file_selector.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
+import '../../../core/sync/google_auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -119,6 +120,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _auth  = AuthNotifier.instance;
+  final _googleAuth = GoogleAuthService.instance;
   bool _editing = false;
   bool _saving  = false;
   bool _showPassSection = false;
@@ -219,6 +221,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _connectGoogleDrive() async {
+    final ok = await _googleAuth.signIn();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? 'Google Drive connected' : 'Failed to connect Google Drive'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -239,6 +249,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _ProfileHeader(user: user, onLogout: _logout),
+                  const SizedBox(height: 24),
+                  ListenableBuilder(
+                    listenable: _googleAuth,
+                    builder: (ctx, _) {
+                      final connected = _googleAuth.isSignedIn;
+                      return Card(
+                        elevation: 1,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Google Drive connection', style: AppTextStyles.h4),
+                              const SizedBox(height: 8),
+                              Text(
+                                connected
+                                    ? 'Connected as ${_googleAuth.userEmail ?? 'unknown'}'
+                                    : 'Not connected to Google Drive.',
+                                style: AppTextStyles.bodyMedium,
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 12,
+                                runSpacing: 10,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: _googleAuth.isLoading ? null : _connectGoogleDrive,
+                                    child: Text(connected ? 'Reconnect Google Drive' : 'Connect Google Drive'),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: () => context.go('/google-drive-debug'),
+                                    child: const Text('Debug Google Drive'),
+                                  ),
+                                ],
+                              ),
+                              if (_googleAuth.driveSmokeTestMessage != null) ...[
+                                const SizedBox(height: 12),
+                                Text(
+                                  _googleAuth.driveSmokeTestMessage!,
+                                  style: AppTextStyles.small.copyWith(color: Colors.green[800]),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 24),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,

@@ -5,6 +5,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
+import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/updater/update_dialog.dart';
 import 'core/updater/update_notifier.dart';
@@ -15,6 +16,7 @@ Future<void> main() async {
 
   await AuthNotifier.instance.checkSession();
   await ExportPreferencesNotifier.instance.load();
+  await GoogleAuthService.instance.restoreSession();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
