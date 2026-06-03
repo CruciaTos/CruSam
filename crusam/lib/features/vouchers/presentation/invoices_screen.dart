@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../shared/widgets/app_card.dart';
 import '../../../shared/utils/format_utils.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
@@ -26,6 +24,25 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _loading = true;
   bool _exporting = false;
+  String? _selectedCreator;
+
+  List<String> get _creators {
+    final values = _vouchers
+        .map((v) => v.createdBy.trim().toLowerCase())
+        .where((email) => email.isNotEmpty && email != 'unknown')
+        .toSet()
+        .toList()
+      ..sort();
+    return values;
+  }
+
+  List<VoucherModel> get _visibleVouchers {
+    final selected = _selectedCreator;
+    if (selected == null || selected.isEmpty) return _vouchers;
+    return _vouchers
+        .where((v) => v.createdBy.trim().toLowerCase() == selected)
+        .toList(growable: false);
+  }
 
   @override
   void initState() {
@@ -71,7 +88,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     }
   }
 
-  void _editVoucher(BuildContext context, VoucherModel v) {
+  Future<void> _editVoucher(BuildContext context, VoucherModel v) async {
     final hasUnsavedWork = VoucherNotifier.instance.current.rows.isNotEmpty ||
         VoucherNotifier.instance.current.title.isNotEmpty;
 
@@ -80,7 +97,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       return;
     }
 
-    showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Overwrite Current Draft?'),
@@ -100,9 +117,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
           ),
         ],
       ),
-    ).then((confirmed) {
-      if (confirmed == true && mounted) _loadIntoBuilder(context, v);
-    });
+    );
+    if (!context.mounted || confirmed != true) return;
+    _loadIntoBuilder(context, v);
   }
 
   void _loadIntoBuilder(BuildContext context, VoucherModel v) {
@@ -112,8 +129,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   // ── Export invoice list as CSV ─────────────────────────────────────────────
   Future<void> _exportList() async {
-    if (_exporting || _vouchers.isEmpty) {
-      if (_vouchers.isEmpty && mounted) {
+    final exportRows = _visibleVouchers;
+    if (_exporting || exportRows.isEmpty) {
+      if (exportRows.isEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No invoices to export.')),
         );
@@ -123,19 +141,16 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     setState(() => _exporting = true);
 
     try {
-      // Build CSV content
       final buf = StringBuffer();
-
-      // Header row
-      buf.writeln('Bill No,Date,Voucher Ref,Dept,Base Amount,CGST,SGST,Total Amount,Status');
-
-      // Data rows — escape fields that may contain commas or quotes
-      for (final v in _vouchers) {
+      buf.writeln('Bill No,Date,Voucher Ref,Dept,Created By,Updated By,Base Amount,CGST,SGST,Total Amount,Status');
+      for (final v in exportRows) {
         buf.writeln([
           _csvField(v.billNo.isEmpty ? '—' : v.billNo),
           _csvField(v.date),
           _csvField(v.title.isEmpty ? '(Untitled)' : v.title),
           _csvField(v.deptCode),
+          _csvField(v.createdBy.isEmpty ? '—' : v.createdBy),
+          _csvField(v.updatedBy.isEmpty ? '—' : v.updatedBy),
           v.baseTotal.toStringAsFixed(2),
           v.cgst.toStringAsFixed(2),
           v.sgst.toStringAsFixed(2),
@@ -144,17 +159,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         ].join(','));
       }
 
-      // Resolve output directory (mirrors WidgetPdfExportService._outputDir)
       final dir = await _outputDir();
       final stamp = DateTime.now();
       final filename =
           'invoice_list_${stamp.year}${_pad(stamp.month)}${_pad(stamp.day)}'
           '_${_pad(stamp.hour)}${_pad(stamp.minute)}.csv';
       final path = '${dir.path}${Platform.pathSeparator}$filename';
-
       await File(path).writeAsString(buf.toString(), flush: true);
-
-      // Open the file with the OS default app
       _openFile(path);
 
       if (mounted) {
@@ -182,10 +193,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     }
   }
 
-  // ── CSV helpers ────────────────────────────────────────────────────────────
-
-  /// Wraps a field in double-quotes if it contains commas, quotes, or newlines,
-  /// and escapes any internal double-quotes per RFC 4180.
   static String _csvField(String value) {
     if (value.contains(',') || value.contains('"') || value.contains('\n')) {
       return '"${value.replaceAll('"', '""')}"';
@@ -194,8 +201,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   static String _pad(int n) => n.toString().padLeft(2, '0');
-
-  // ── OS helpers ─────────────────────────────────────────────────────────────
 
   static Future<Directory> _outputDir() async {
     final saved = ExportPreferencesNotifier.instance.pdfPath;
@@ -215,8 +220,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     try {
       if (Platform.isWindows) {
         Process.run('cmd',    ['/c', 'start', '', path]);
-      } else if (Platform.isMacOS) Process.run('open',   [path]);
-      else if (Platform.isLinux) Process.run('xdg-open', [path]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [path]);
+      } else if (Platform.isLinux) {
+        Process.run('xdg-open', [path]);
+      }
     } catch (_) {}
   }
 
@@ -224,142 +232,357 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     try {
       if (Platform.isWindows) {
         Process.run('explorer', [folder]);
-      } else if (Platform.isMacOS) Process.run('open',     [folder]);
-      else if (Platform.isLinux) Process.run('xdg-open', [folder]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [folder]);
+      } else if (Platform.isLinux) {
+        Process.run('xdg-open', [folder]);
+      }
     } catch (_) {}
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.all(AppSpacing.pagePadding),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Text('Generated Invoices', style: AppTextStyles.h3),
-            const Spacer(),
-            OutlinedButton.icon(
-              onPressed: (_loading || _exporting) ? null : _exportList,
-              icon: _exporting
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.download_outlined, size: 16),
-              label: Text(_exporting ? 'Exporting…' : 'Export List'),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.lg),
-        if (_loading)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else
-          Expanded(
-            child: Card(
-              margin: EdgeInsets.zero,
-              elevation: 2,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.shade300),
-              ),
-              child: _vouchers.isEmpty
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(48),
-                        child: Text(
-                          'No invoices generated yet.\nFinalise a voucher to create one.',
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                  : SingleChildScrollView(
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('Bill No')),
-                          DataColumn(label: Text('Date')),
-                          DataColumn(label: Text('Voucher Ref')),
-                          DataColumn(label: Text('Dept')),
-                          DataColumn(label: Text('Amount'), numeric: true),
-                          DataColumn(label: Text('Status')),
-                          DataColumn(label: Text('Actions')),
-                        ],
-                        rows: _vouchers.map((v) => DataRow(cells: [
-                          DataCell(Text(
-                            v.billNo.isNotEmpty ? v.billNo : '—',
-                            style: AppTextStyles.bodySemi.copyWith(
-                                color: AppColors.indigo600, fontSize: 13),
-                          )),
-                          DataCell(Text(v.date)),
-                          DataCell(Text(v.title.isEmpty ? '(Untitled)' : v.title)),
-                          DataCell(Text(v.deptCode)),
-                          DataCell(Text(
-                            formatCurrency(v.finalTotal),
-                            style: AppTextStyles.bodySemi.copyWith(fontSize: 13),
-                          )),
-                          DataCell(_StatusBadge(status: v.status)),
-                          DataCell(Row(children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined,
-                                  size: 17, color: AppColors.indigo600),
-                              onPressed: () => _editVoucher(context, v),
-                              tooltip: 'Edit',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.description_outlined,
-                                  size: 17, color: AppColors.indigo600),
-                              onPressed: () {
-                                final previewNotifier = VoucherNotifier()
-                                  ..current = v;
-                                InvoicePreviewDialog.show(
-                                  context,
-                                  previewNotifier,
-                                  _config,
-                                  PreviewType.invoice,
-                                );
-                              },
-                              tooltip: 'View',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline,
-                                  size: 17, color: Colors.red),
-                              onPressed: () => _deleteVoucher(v),
-                              tooltip: 'Delete',
-                            ),
-                          ])),
-                        ])).toList(),
-                      ),
-                    ),
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
-class _StatusBadge extends StatelessWidget {
-  final VoucherStatus status;
-  const _StatusBadge({required this.status});
+  // ── New UI Build ───────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final saved = status == VoucherStatus.saved;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: saved ? AppColors.emerald100 : AppColors.amber100,
-        borderRadius: BorderRadius.circular(99),
+    final visible = _visibleVouchers;
+
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ──────────────────────────────────────────────
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Invoices',
+                      style: AppTextStyles.h3.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  if (!_loading && _vouchers.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12.0),
+                      child: OutlinedButton.icon(
+                        onPressed: _exporting ? null : _exportList,
+                        icon: _exporting
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.download_outlined, size: 18),
+                        label: Text(_exporting ? 'Exporting…' : 'Export'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.indigo600,
+                          side: const BorderSide(color: AppColors.indigo600),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // ── Creator filter chips ────────────────────────────────
+              if (!_loading && _vouchers.isNotEmpty) ...[
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: const Text('All'),
+                        selected: _selectedCreator == null,
+                        onSelected: (_) => setState(() => _selectedCreator = null),
+                        backgroundColor: Colors.white,
+                        selectedColor: AppColors.indigo50,
+                        checkmarkColor: AppColors.indigo600,
+                        side: BorderSide(
+                          color: AppColors.indigo600.withValues(alpha: 0.3),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        showCheckmark: false,
+                      ),
+                      const SizedBox(width: 8),
+                      ..._creators.map(
+                        (email) => Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: FilterChip(
+                            label: Text(email),
+                            selected: _selectedCreator == email,
+                            onSelected: (selected) {
+                              setState(() => _selectedCreator = selected ? email : null);
+                            },
+                            backgroundColor: Colors.white,
+                            selectedColor: AppColors.indigo50,
+                            checkmarkColor: AppColors.indigo600,
+                            side: BorderSide(
+                              color: AppColors.indigo600.withValues(alpha: 0.3),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            showCheckmark: false,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // ── Invoice list ────────────────────────────────────────
+              if (_loading)
+                const Expanded(
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (visible.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.receipt_long_outlined,
+                            size: 64, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No invoices yet',
+                          style: TextStyle(
+                            fontSize: 18,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Finalise a voucher to create one.',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: visible.length,
+                    itemBuilder: (context, index) {
+                      final v = visible[index];
+                      return _InvoiceCard(
+                        voucher: v,
+                        onEdit: () => _editVoucher(context, v),
+                        onPreview: () {
+                          final previewNotifier = VoucherNotifier()..current = v;
+                          InvoicePreviewDialog.show(
+                            context,
+                            previewNotifier,
+                            _config,
+                            PreviewType.invoice,
+                          );
+                        },
+                        onDelete: () => _deleteVoucher(v),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
-      child: Text(
-        status.name.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: saved ? AppColors.emerald700 : AppColors.amber700,
+    );
+  }
+}
+
+// ── Invoice Card Widget ──────────────────────────────────────────────────────
+class _InvoiceCard extends StatelessWidget {
+  final VoucherModel voucher;
+  final VoidCallback onEdit;
+  final VoidCallback onPreview;
+  final VoidCallback onDelete;
+
+  const _InvoiceCard({
+    required this.voucher,
+    required this.onEdit,
+    required this.onPreview,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final status = voucher.status;
+    final saved = status == VoucherStatus.saved;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top row: Bill No, Date, Status Badge
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        voucher.billNo.isNotEmpty ? voucher.billNo : '—',
+                        style: AppTextStyles.bodySemi.copyWith(
+                          color: AppColors.indigo600,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        voucher.date,
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: saved ? AppColors.emerald100 : AppColors.amber100,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    status.name.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: saved ? AppColors.emerald700 : AppColors.amber700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Voucher reference and department
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        voucher.title.isEmpty ? '(Untitled)' : voucher.title,
+                        style: AppTextStyles.bodySemi.copyWith(fontSize: 14),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Dept: ${voucher.deptCode}',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      formatCurrency(voucher.finalTotal),
+                      style: AppTextStyles.bodySemi.copyWith(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.indigo600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Created by: ${voucher.createdBy.isNotEmpty ? voucher.createdBy : '—'}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // Action buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _ActionButton(
+                  icon: Icons.edit_outlined,
+                  label: 'Edit',
+                  color: AppColors.indigo600,
+                  onPressed: onEdit,
+                ),
+                const SizedBox(width: 8),
+                _ActionButton(
+                  icon: Icons.visibility_outlined,
+                  label: 'View',
+                  color: AppColors.indigo600,
+                  onPressed: onPreview,
+                ),
+                const SizedBox(width: 8),
+                _ActionButton(
+                  icon: Icons.delete_outline,
+                  label: 'Delete',
+                  color: Colors.red,
+                  onPressed: onDelete,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Reusable action button inside invoice cards ──────────────────────────────
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       ),
     );

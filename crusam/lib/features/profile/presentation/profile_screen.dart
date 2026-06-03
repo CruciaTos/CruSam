@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_selector/file_selector.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
+import '../../../core/sync/drive_service.dart';
 import '../../../core/sync/google_auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -224,6 +225,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _connectGoogleDrive() async {
     final ok = await _googleAuth.signIn();
     if (!mounted) return;
+
+    if (ok) {
+      await SyncManager.instance.syncNow();
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok ? 'Google Drive connected' : 'Failed to connect Google Drive'),
     ));

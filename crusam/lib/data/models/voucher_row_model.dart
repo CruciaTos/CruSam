@@ -72,6 +72,41 @@ class VoucherRowModel {
   'debit_account_name': debitAccountName,
 };
 
+  Map<String, dynamic> toJson() => {
+    'employee_id': employeeId,
+    'employee_name': employeeName,
+    'amount': amount,
+    'from_date': fromDate,
+    'to_date': toDate,
+    'ifsc_code': ifscCode,
+    'credit_account': accountNumber,
+    'sb_code': sbCode,
+    'bank_detail': bankDetails,
+    'place': branch,
+    'dept_code': deptCode,
+    'debit_account': debitAccountNumber,
+    'debit_account_name': debitAccountName,
+  };
+
+  factory VoucherRowModel.fromJson(Map<String, dynamic> m) => VoucherRowModel(
+    id:                  (m['id']?.toString().isNotEmpty ?? false)
+        ? m['id'].toString()
+        : DateTime.now().microsecondsSinceEpoch.toString(),
+    employeeId:          (m['employee_id']        as String?) ?? '',
+    employeeName:        (m['employee_name']      as String?) ?? '',
+    amount:              (m['amount']             as num?)?.toDouble() ?? 0,
+    fromDate:            (m['from_date']          as String?) ?? '',
+    toDate:              (m['to_date']            as String?) ?? '',
+    ifscCode:            (m['ifsc_code']          as String?) ?? '',
+    accountNumber:       (m['credit_account']     as String?) ?? '',
+    sbCode:              (m['sb_code']            as String?) ?? '10',
+    bankDetails:         (m['bank_detail']        as String?) ?? '',
+    branch:              (m['place']              as String?) ?? '',
+    deptCode:            (m['dept_code']          as String?) ?? '',
+    debitAccountNumber:  (m['debit_account']      as String?) ?? '',
+    debitAccountName:    (m['debit_account_name'] as String?) ?? '',
+  );
+
 factory VoucherRowModel.fromDbMap(Map<String, dynamic> m) => VoucherRowModel(
   id:                  (m['id'] as int).toString(),
   dbId:                m['id'] as int?,

@@ -1,5 +1,8 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
+import '../../../core/sync/drive_service.dart';
+import '../../../core/sync/google_auth_service.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/db/database_helper.dart';
@@ -184,12 +187,36 @@ class VoucherNotifier extends ChangeNotifier {
   Future<bool> _persistCurrentVoucher() async {
     if (current.title.trim().isEmpty) return false;
 
-    final voucherToSave = enriched.copyWith(status: VoucherStatus.saved);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final email = GoogleAuthService.instance.userEmail?.trim().toLowerCase() ??
+        'unknown';
+    final cloudId = current.cloudId.trim().isNotEmpty
+        ? current.cloudId
+        : const Uuid().v4();
+    final createdAt = current.createdAt.trim().isNotEmpty
+        ? current.createdAt
+        : now;
+    final createdBy = current.createdBy.trim().isNotEmpty
+        ? current.createdBy
+        : email;
+
+    final voucherToSave = enriched.copyWith(
+      status: VoucherStatus.saved,
+      cloudId: cloudId,
+      createdBy: createdBy,
+      updatedBy: email,
+      createdAt: createdAt,
+      updatedAt: now,
+      isDeleted: false,
+      deletedAt: null,
+    );
 
     try {
       late final int voucherId;
+      late final String operation;
 
       if (current.id == null) {
+        operation = 'create';
         voucherId = await DatabaseHelper.instance.insertVoucher(
           voucherToSave.toDbMap(),
         );
@@ -197,6 +224,7 @@ class VoucherNotifier extends ChangeNotifier {
           await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(voucherId));
         }
       } else {
+        operation = 'update';
         voucherId = current.id!;
         await DatabaseHelper.instance.updateVoucherWithRows(
           voucherId,
@@ -211,6 +239,15 @@ class VoucherNotifier extends ChangeNotifier {
         id: voucherId,
         status: VoucherStatus.saved,
       );
+
+      final savedRow = await DatabaseHelper.instance.getVoucherById(voucherId);
+      if (savedRow != null && cloudId.isNotEmpty) {
+        await SyncManager.instance.pushInvoiceChange(
+          cloudId: cloudId,
+          operation: operation,
+          invoiceDbRow: savedRow,
+        );
+      }
 
       current = savedVoucher;
       _upsertSavedVoucher(savedVoucher);

@@ -1,16 +1,20 @@
 import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import '../../core/sync/sync_models.dart';
+import '../../core/sync/google_auth_service.dart';
 import '../models/employee_model.dart';
 import '../models/margin_settings_model.dart';
 import '../models/voucher_column_widths_model.dart';
 import '../models/bank_column_widths_model.dart';
 import '../seeds/employee_seed_data.dart';
+import "package:crusam/core/sync/drive_service.dart";
 
 class DatabaseHelper {
   DatabaseHelper._();
   static final instance = DatabaseHelper._();
   static Database? _db;
+  static const _employeeSeedMasterReplacementMigrationKey =
+      'employee_seed_master_replacement_v1';
 
   Future<Database> get database async => _db ??= await _init();
 
@@ -18,7 +22,7 @@ class DatabaseHelper {
     final path = '${await getDatabasesPath()}/aarti.db';
     return openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await _createTables(db);
@@ -43,6 +47,13 @@ class DatabaseHelper {
     await _ensureColumn(db, 'vouchers', 'client_name', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'cloud_id', 'TEXT');
+    await _ensureUniqueIndex(db, 'idx_vouchers_cloud_id', 'vouchers', 'cloud_id');
+    await _ensureColumn(db, 'vouchers', 'created_by', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'updated_by', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'is_deleted', 'INTEGER DEFAULT 0');
+    await _ensureColumn(db, 'vouchers', 'deleted_at', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'synced_at', 'TEXT');
     await _ensureColumn(db, 'voucher_rows', 'employee_id', 'TEXT');
     await _ensureColumn(db, 'employees', 'basic_charges', 'REAL DEFAULT 0');
     await _ensureColumn(db, 'employees', 'other_charges', 'REAL DEFAULT 0');
@@ -58,8 +69,15 @@ class DatabaseHelper {
 
     await _normalizeEmployeeCodes(db);
 
-    // Backfill charges for existing employees that have 0 values
-    await _backfillEmployeeCharges(db);
+    // Keep legacy seed backfills only until the one-time master replacement has
+    // run. After that, user/Drive employee edits must remain the source of truth.
+    final seedMasterReplacementComplete = await _isMigrationComplete(
+      db,
+      _employeeSeedMasterReplacementMigrationKey,
+    );
+    if (!seedMasterReplacementComplete) {
+      await _backfillEmployeeCharges(db);
+    }
   }
 
   String _normalizeEmployeeCodeValue(dynamic value) {
@@ -75,6 +93,25 @@ class DatabaseHelper {
       normalized['code'] = _normalizeEmployeeCodeValue(normalized['code']);
     }
     return normalized;
+  }
+
+  Map<String, dynamic> _seedEmployeePayload(
+    Map<String, dynamic> seed,
+    String now,
+  ) {
+    final basic = (seed['basic_charges'] as num?)?.toDouble() ?? 0;
+    final other = (seed['other_charges'] as num?)?.toDouble() ?? 0;
+    return _normalizeEmployeeData({
+      ...seed,
+      'basic_charges': basic,
+      'other_charges': other,
+      'gross_salary': basic + other,
+      'gender': (seed['gender'] as String?) ?? 'M',
+      'is_deleted': 0,
+      'deleted_at': null,
+      'updated_at': now,
+      'synced_at': null,
+    });
   }
 
   Future<void> _normalizeEmployeeCodes(Database db) async {
@@ -127,6 +164,117 @@ class DatabaseHelper {
     if (hasInserts) {
       await batch.commit(noResult: true);
     }
+  }
+
+  Future<bool> _isMigrationComplete(DatabaseExecutor db, String key) async {
+    final rows = await db.query(
+      'app_migrations',
+      columns: ['key'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<void> _markMigrationComplete(
+    DatabaseExecutor db,
+    String key,
+    String now,
+  ) async {
+    await db.insert(
+      'app_migrations',
+      {'key': key, 'completed_at': now},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// One-time migration that makes [kEmployeeSeedData] the employee master list.
+  ///
+  /// This intentionally runs only once per local database. It refreshes seed
+  /// employees, soft-deletes non-seed employees, and marks changed rows as
+  /// needing sync. After the migration marker is written, future launches will
+  /// not overwrite user/Drive edits with seed data again.
+  Future<bool> applyOneTimeEmployeeSeedMasterReplacement() async {
+    final db = await database;
+    if (await _isMigrationComplete(
+      db,
+      _employeeSeedMasterReplacementMigrationKey,
+    )) {
+      return false;
+    }
+
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    await db.transaction((txn) async {
+      final existingEmployees = await txn.query('employees');
+      final existingByKey = <String, Map<String, dynamic>>{};
+      final seedMatchedExistingIds = <int>{};
+
+      for (final employee in existingEmployees) {
+        existingByKey.putIfAbsent(_employeeSeedKey(employee), () => employee);
+      }
+
+      final seedKeys = <String>{};
+
+      for (final seed in kEmployeeSeedData) {
+        final key = _employeeSeedKey(seed);
+        seedKeys.add(key);
+
+        final existing = existingByKey[key];
+        final payload = _seedEmployeePayload(seed, now);
+
+        if (existing == null) {
+          await txn.insert(
+            'employees',
+            {
+              ...payload,
+              'created_at': now,
+            },
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+          continue;
+        }
+
+        final existingId = existing['id'] as int?;
+        if (existingId != null) seedMatchedExistingIds.add(existingId);
+
+        await txn.update(
+          'employees',
+          payload,
+          where: 'id = ?',
+          whereArgs: [existingId],
+        );
+      }
+
+      for (final employee in existingEmployees) {
+        final id = employee['id'] as int?;
+        final isDeleted = ((employee['is_deleted'] as num?)?.toInt() ?? 0) == 1;
+        if (isDeleted || (id != null && seedMatchedExistingIds.contains(id))) {
+          continue;
+        }
+
+        await txn.update(
+          'employees',
+          {
+            'is_deleted': 1,
+            'deleted_at': now,
+            'updated_at': now,
+            'synced_at': null,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+
+      await _markMigrationComplete(
+        txn,
+        _employeeSeedMasterReplacementMigrationKey,
+        now,
+      );
+    });
+
+    return true;
   }
 
   /// Updates basic_charges and other_charges for existing employees that have
@@ -230,6 +378,12 @@ class DatabaseHelper {
       base_total REAL, cgst REAL, sgst REAL, total_tax REAL,
       raw_total REAL, round_off REAL, final_total REAL, total_in_words TEXT,
       status TEXT DEFAULT 'draft',
+      cloud_id TEXT UNIQUE,
+      created_by TEXT,
+      updated_by TEXT,
+      is_deleted INTEGER DEFAULT 0,
+      deleted_at TEXT,
+      synced_at TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP)''');
 
@@ -308,6 +462,11 @@ class DatabaseHelper {
       local_updated_at TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''');
+
+    await db.execute('''CREATE TABLE IF NOT EXISTS app_migrations(
+      key TEXT PRIMARY KEY,
+      completed_at TEXT NOT NULL
+    )''');
   }
 
   Future<void> _seedCompanyConfig(Database db) async {
@@ -347,12 +506,90 @@ class DatabaseHelper {
       }
     }
 
-    await _ensureSeedEmployees(db);
+    // Keep the old safety seed only until the one-time master replacement has
+    // run. After that migration, user/Drive edits must not be overwritten or
+    // reinserted from the seed on future launches.
+    final seedMasterReplacementComplete = await _isMigrationComplete(
+      db,
+      _employeeSeedMasterReplacementMigrationKey,
+    );
+    if (!seedMasterReplacementComplete) {
+      await _ensureSeedEmployees(db);
+    }
   }
 
-  // --- Employees ---
-  Future<int> insertEmployee(Map<String, dynamic> data) async =>
-      (await database).insert('employees', _normalizeEmployeeData(data));
+  // ── New sync helpers ──────────────────────────────────────────────────────
+
+  /// Called by SyncManager bootstrap to stamp a cloud_id onto a local employee
+  /// that was created before sync was set up.
+  Future<void> assignCloudId(int localId, String cloudId, String now) async {
+    await (await database).update(
+      'employees',
+      {
+        'cloud_id': cloudId,
+        'updated_at': now,
+        'created_at': now, // safe: only runs when created_at may be null
+        'synced_at': now,
+      },
+      where: 'id = ? AND (cloud_id IS NULL OR cloud_id = "")',
+      whereArgs: [localId],
+    );
+  }
+
+  /// Called by SyncManager pull: marks a local employee deleted when the Drive
+  /// index says it has been soft-deleted on another device.
+  Future<void> softDeleteByCloudId(String cloudId) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (await database).update(
+      'employees',
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+        'updated_at': now,
+      },
+      where: 'cloud_id = ? AND is_deleted = 0',
+      whereArgs: [cloudId],
+    );
+  }
+
+  Future<Map<String, dynamic>?> getEmployeeById(int id) async {
+    final rows = await (await database).query(
+      'employees',
+      where: 'id=?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  // ── Employees ─────────────────────────────────────────────────────────────
+
+  Future<int> insertEmployee(Map<String, dynamic> data) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    final normalized = _normalizeEmployeeData(data);
+    normalized['created_at'] ??= now;
+    normalized['updated_at'] = now;
+
+    final id = await db.insert('employees', normalized);
+
+    // Enqueue sync if the row already has a cloud_id (e.g. restored from Drive)
+    final cloudId = normalized['cloud_id'] as String?;
+    if (cloudId != null && cloudId.isNotEmpty) {
+      final inserted = await getEmployeeById(id);
+      if (inserted != null) {
+        await SyncManager.instance.pushEmployeeChange(
+          cloudId: cloudId,
+          operation: 'create',
+          employeeDbRow: inserted,
+        );
+      }
+    }
+    // If cloud_id is absent the bootstrap will assign one on next startup sync.
+
+    return id;
+  }
 
   Future<void> insertEmployeesBulk(List<EmployeeModel> employees) async {
     final db = await database;
@@ -368,7 +605,29 @@ class DatabaseHelper {
   }
 
   Future<List<Map<String, dynamic>>> getAllEmployees() async =>
-      (await database).query('employees', orderBy: 'sr_no ASC');
+      (await database).query(
+        'employees',
+        where: 'is_deleted = 0 OR is_deleted IS NULL',
+        orderBy: 'sr_no ASC',
+      );
+
+  /// Returns all active employees that already have a cloud_id.
+  /// Used by [SyncManager._enqueueAllEmployeesForPush] to re-push every
+  /// record to Drive on every app launch.
+  Future<List<Map<String, dynamic>>> getAllSyncedEmployees() async =>
+      (await database).query(
+        'employees',
+        where:
+            '(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ""',
+        orderBy: 'sr_no ASC',
+      );
+
+  Future<List<Map<String, dynamic>>> getDeletedSyncedEmployees() async =>
+      (await database).query(
+        'employees',
+        where: 'is_deleted = 1 AND cloud_id IS NOT NULL AND cloud_id != ""',
+        orderBy: 'updated_at ASC',
+      );
 
   Future<List<Map<String, dynamic>>> searchEmployees(String q) async =>
       (await database).query(
@@ -378,22 +637,84 @@ class DatabaseHelper {
       );
 
   Future<int> updateEmployee(int id, Map<String, dynamic> data) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+
     final normalized = _normalizeEmployeeData(data);
-    normalized['updated_at'] = DateTime.now().toIso8601String();
-    return (await database).update(
+    normalized['updated_at'] = now;
+
+    final affected =
+        await db.update('employees', normalized, where: 'id=?', whereArgs: [id]);
+
+    // Fetch the updated row to get cloud_id (may have been set by a prior sync)
+    final updated = await getEmployeeById(id);
+    final cloudId = updated?['cloud_id'] as String?;
+    if (cloudId != null && cloudId.isNotEmpty && updated != null) {
+      await SyncManager.instance.pushEmployeeChange(
+        cloudId: cloudId,
+        operation: 'update',
+        employeeDbRow: updated,
+      );
+    }
+
+    return affected;
+  }
+
+  Future<int> deleteEmployee(int id) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+
+    final row = await getEmployeeById(id);
+    if (row == null) return 0;
+
+    final affected = await db.update(
       'employees',
-      normalized,
+      {'is_deleted': 1, 'deleted_at': now, 'updated_at': now},
       where: 'id=?',
       whereArgs: [id],
     );
+
+    final cloudId = row['cloud_id'] as String?;
+    if (cloudId != null && cloudId.isNotEmpty) {
+      // Re-fetch to get the tombstone values
+      final tombstone = await getEmployeeById(id);
+      if (tombstone != null) {
+        await SyncManager.instance.pushEmployeeChange(
+          cloudId: cloudId,
+          operation: 'delete',
+          employeeDbRow: tombstone,
+        );
+      }
+    }
+
+    return affected;
   }
 
-  Future<int> deleteEmployee(int id) async =>
-      (await database).delete('employees', where: 'id=?', whereArgs: [id]);
-
   // --- Vouchers ---
-  Future<int> insertVoucher(Map<String, dynamic> data) async =>
-      (await database).insert('vouchers', data);
+  String get _currentGoogleEmail =>
+      GoogleAuthService.instance.userEmail?.trim().toLowerCase() ?? 'unknown';
+
+  Future<int> insertVoucher(Map<String, dynamic> data) async {
+    final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final payload = Map<String, dynamic>.from(data);
+    payload['created_at'] ??= now;
+    payload['updated_at'] = payload['updated_at'] ?? now;
+    payload['created_by'] ??= _currentGoogleEmail;
+    payload['updated_by'] ??= _currentGoogleEmail;
+    payload['is_deleted'] ??= 0;
+    return db.insert('vouchers', payload);
+  }
+
+  Future<Map<String, dynamic>?> getVoucherById(int id) async {
+    final rows = await (await database).query(
+      'vouchers',
+      where: 'id=?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
 
   Future<void> updateVoucherWithRows(
     int voucherId,
@@ -401,9 +722,11 @@ class DatabaseHelper {
     List<Map<String, dynamic>> rows,
   ) async {
     final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
     final payload = Map<String, dynamic>.from(voucherData)
       ..remove('id')
-      ..['updated_at'] = DateTime.now().toIso8601String();
+      ..['updated_at'] = now
+      ..['updated_by'] = _currentGoogleEmail;
 
     await db.transaction((txn) async {
       final updated = await txn.update(
@@ -429,7 +752,19 @@ class DatabaseHelper {
   }
 
   Future<List<Map<String, dynamic>>> getAllVouchers() async =>
-      (await database).query('vouchers', orderBy: 'id DESC');
+      (await database).query(
+        'vouchers',
+        where: 'is_deleted = 0 OR is_deleted IS NULL',
+        orderBy: 'id DESC',
+      );
+
+  Future<List<Map<String, dynamic>>> getAllSyncedVouchers() async =>
+      (await database).query(
+        'vouchers',
+        where:
+            '(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ""',
+        orderBy: 'id DESC',
+      );
 
   Future<int> insertVoucherRow(Map<String, dynamic> data) async =>
       (await database).insert('voucher_rows', data);
@@ -446,8 +781,74 @@ class DatabaseHelper {
 
   Future<void> deleteVoucher(int id) async {
     final db = await database;
-    await db.delete('voucher_rows', where: 'voucher_id=?', whereArgs: [id]);
-    await db.delete('vouchers', where: 'id=?', whereArgs: [id]);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final row = await getVoucherById(id);
+    if (row == null) return;
+    await db.update(
+      'vouchers',
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+        'updated_at': now,
+        'updated_by': _currentGoogleEmail,
+      },
+      where: 'id=?',
+      whereArgs: [id],
+    );
+
+    final cloudId = row['cloud_id'] as String?;
+    if (cloudId != null && cloudId.isNotEmpty) {
+      final tombstone = await getVoucherById(id);
+      if (tombstone != null) {
+        await SyncManager.instance.pushInvoiceChange(
+          cloudId: cloudId,
+          operation: 'delete',
+          invoiceDbRow: tombstone,
+        );
+      }
+    }
+  }
+
+  Future<void> assignVoucherCloudId(
+    int localId,
+    String cloudId,
+    String now,
+    String createdBy,
+    String updatedBy,
+  ) async {
+    await (await database).rawUpdate('''
+      UPDATE vouchers
+      SET cloud_id = ?,
+          created_by = CASE
+            WHEN created_by IS NULL OR TRIM(created_by) = '' THEN ?
+            ELSE created_by
+          END,
+          updated_by = CASE
+            WHEN updated_by IS NULL OR TRIM(updated_by) = '' THEN ?
+            ELSE updated_by
+          END,
+          created_at = CASE
+            WHEN created_at IS NULL OR TRIM(created_at) = '' THEN ?
+            ELSE created_at
+          END,
+          updated_at = ?,
+          synced_at = ?
+      WHERE id = ? AND (cloud_id IS NULL OR cloud_id = '')
+    ''', [cloudId, createdBy, updatedBy, now, now, now, localId]);
+  }
+
+  Future<void> softDeleteVoucherByCloudId(String cloudId) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (await database).update(
+      'vouchers',
+      {
+        'is_deleted': 1,
+        'deleted_at': now,
+        'updated_at': now,
+      },
+      where: 'cloud_id = ? AND is_deleted = 0',
+      whereArgs: [cloudId],
+    );
   }
 
   Future<void> saveDraft(
@@ -671,6 +1072,16 @@ class DatabaseHelper {
     return rows.isEmpty ? null : rows.first;
   }
 
+  Future<Map<String, dynamic>?> getVoucherByCloudId(String cloudId) async {
+    final rows = await (await database).query(
+      'vouchers',
+      where: 'cloud_id=?',
+      whereArgs: [cloudId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
   Future<int> upsertEmployeeFromCloud(Map<String, dynamic> data) async {
     final db = await database;
     final cloudId = data['cloud_id'] as String?;
@@ -708,4 +1119,75 @@ class DatabaseHelper {
 
     return 0;
   }
+
+  Future<int> upsertVoucherFromCloud(Map<String, dynamic> data) async {
+    final db = await database;
+    final cloudId = data['cloud_id'] as String?;
+    if (cloudId == null || cloudId.isEmpty) return 0;
+
+    final rows = ((data['rows'] as List<dynamic>?) ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final header = Map<String, dynamic>.from(data)..remove('rows');
+    header['is_deleted'] = _boolToInt(header['is_deleted']);
+    header['created_at'] = (header['created_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+    header['updated_at'] = (header['updated_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+
+    final existing = await getVoucherByCloudId(cloudId);
+    final cloudUpdatedAt = _parseUtcDateTime(header['updated_at'] as String?);
+
+    if (existing == null) {
+      return await db.transaction((txn) async {
+        final id = await txn.insert('vouchers', header);
+        for (final row in rows) {
+          await txn.insert('voucher_rows', _invoiceRowToDb(row, id));
+        }
+        return id;
+      });
+    }
+
+    final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
+    if (!cloudUpdatedAt.isAfter(localUpdatedAt)) return 0;
+
+    final localId = existing['id'] as int;
+    return await db.transaction((txn) async {
+      await txn.update(
+        'vouchers',
+        header..remove('id'),
+        where: 'cloud_id=?',
+        whereArgs: [cloudId],
+      );
+      await txn.delete('voucher_rows', where: 'voucher_id=?', whereArgs: [localId]);
+      for (final row in rows) {
+        await txn.insert('voucher_rows', _invoiceRowToDb(row, localId));
+      }
+      return localId;
+    });
+  }
+
+  int _boolToInt(dynamic value) {
+    if (value is bool) return value ? 1 : 0;
+    if (value is num) return value.toInt() == 0 ? 0 : 1;
+    if (value is String) return value == 'true' || value == '1' ? 1 : 0;
+    return 0;
+  }
+
+  Map<String, dynamic> _invoiceRowToDb(Map<String, dynamic> row, int voucherId) => {
+        'voucher_id': voucherId,
+        'employee_id': row['employee_id']?.toString() ?? '',
+        'employee_name': row['employee_name']?.toString() ?? '',
+        'amount': (row['amount'] as num?)?.toDouble() ?? 0,
+        'from_date': row['from_date']?.toString() ?? '',
+        'to_date': row['to_date']?.toString() ?? '',
+        'ifsc_code': row['ifsc_code']?.toString() ?? '',
+        'credit_account': row['credit_account']?.toString() ?? '',
+        'sb_code': row['sb_code']?.toString() ?? '10',
+        'bank_detail': row['bank_detail']?.toString() ?? '',
+        'place': row['place']?.toString() ?? '',
+        'dept_code': row['dept_code']?.toString() ?? '',
+        'debit_account': row['debit_account']?.toString() ?? '',
+        'debit_account_name': row['debit_account_name']?.toString() ?? '',
+      };
 }

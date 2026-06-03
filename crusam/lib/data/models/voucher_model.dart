@@ -21,6 +21,13 @@ class VoucherModel {
   final String          clientName;
   final String          clientAddress;
   final String          clientGstin;
+  final String          cloudId;
+  final String          createdBy;
+  final String          updatedBy;
+  final String          createdAt;
+  final String          updatedAt;
+  final bool            isDeleted;
+  final String?         deletedAt;
 
   const VoucherModel({
     this.id,
@@ -41,6 +48,13 @@ class VoucherModel {
     this.clientName      = '',
     this.clientAddress   = '',
     this.clientGstin     = '',
+    this.cloudId         = '',
+    this.createdBy       = '',
+    this.updatedBy       = '',
+    this.createdAt       = '',
+    this.updatedAt       = '',
+    this.isDeleted       = false,
+    this.deletedAt,
   });
 
   VoucherModel copyWith({
@@ -49,6 +63,8 @@ class VoucherModel {
     double? totalTax, double? roundOff, double? finalTotal, VoucherStatus? status,
     String? billNo, String? poNo, String? itemDescription,
     String? clientName, String? clientAddress, String? clientGstin,
+    String? cloudId, String? createdBy, String? updatedBy,
+    String? createdAt, String? updatedAt, bool? isDeleted, String? deletedAt,
   }) => VoucherModel(
     id: id ?? this.id, title: title ?? this.title, deptCode: deptCode ?? this.deptCode,
     date: date ?? this.date, rows: rows ?? this.rows,
@@ -59,6 +75,10 @@ class VoucherModel {
     itemDescription: itemDescription ?? this.itemDescription,
     clientName: clientName ?? this.clientName, clientAddress: clientAddress ?? this.clientAddress,
     clientGstin: clientGstin ?? this.clientGstin,
+    cloudId: cloudId ?? this.cloudId, createdBy: createdBy ?? this.createdBy,
+    updatedBy: updatedBy ?? this.updatedBy, createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt, isDeleted: isDeleted ?? this.isDeleted,
+    deletedAt: deletedAt ?? this.deletedAt,
   );
 
   Map<String, dynamic> toDbMap() => {
@@ -81,7 +101,20 @@ class VoucherModel {
   'final_total':      finalTotal,
   'total_in_words':   '',
   'status':           status.name,
+  'cloud_id':         cloudId,
+  'created_by':       createdBy,
+  'updated_by':       updatedBy,
+  if (createdAt.isNotEmpty) 'created_at': createdAt,
+  if (updatedAt.isNotEmpty) 'updated_at': updatedAt,
+  'is_deleted':       isDeleted ? 1 : 0,
+  'deleted_at':       deletedAt,
 };
+
+  Map<String, dynamic> toJson() => {
+    ...toDbMap()..remove('id'),
+    'is_deleted': isDeleted,
+    'rows': rows.map((r) => r.toJson()).toList(),
+  };
 
   static String _dateOnlyFromDb(dynamic value) {
     final raw = (value?.toString() ?? '').trim();
@@ -117,5 +150,13 @@ class VoucherModel {
   clientName:      (m['client_name']      as String?) ?? '',
   clientAddress:   (m['client_address']   as String?) ?? '',
   clientGstin:     (m['client_gstin']     as String?) ?? '',
+  cloudId:         (m['cloud_id']         as String?) ?? '',
+  createdBy:       (m['created_by']       as String?) ?? '',
+  updatedBy:       (m['updated_by']       as String?) ?? '',
+  createdAt:       (m['created_at']       as String?) ?? '',
+  updatedAt:       (m['updated_at']       as String?) ?? '',
+  isDeleted:       ((m['is_deleted'] as num?)?.toInt() ?? 0) == 1 ||
+                   m['is_deleted'] == true,
+  deletedAt:       m['deleted_at'] as String?,
 );
 }
