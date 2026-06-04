@@ -1,3 +1,5 @@
+
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -17,6 +19,7 @@ class SalaryDataNotifier extends ChangeNotifier {
   String _deptCode    = '';
 
   final Map<int, int> _days = {};
+  final Map<int, TextEditingController> _controllers = {};
 
   int    get month     => _month;
   int    get year      => _year;
@@ -65,6 +68,32 @@ class SalaryDataNotifier extends ChangeNotifier {
     return dt.toIso8601String().split('T').first;
   }
 
+  // ---------- Controller cache for days fields ----------
+  TextEditingController getOrCreateController(int employeeId) {
+    return _controllers.putIfAbsent(employeeId, () {
+      final c = TextEditingController(
+        text: (_days[employeeId] ?? 0) == 0 ? '' : '${_days[employeeId]}',
+      );
+      c.addListener(() {
+        final d = int.tryParse(c.text) ?? 0;
+        setDays(employeeId, d);
+      });
+      return c;
+    });
+  }
+
+  void disposeController(int employeeId) {
+    _controllers.remove(employeeId)?.dispose();
+  }
+
+  void disposeAllControllers() {
+    for (final c in _controllers.values) {
+      c.dispose();
+    }
+    _controllers.clear();
+  }
+
+  // ---------- Existing setters & getters ----------
   void setMonthYear(int month, int year) {
     if (_month == month && _year == year) return;
     _month = month;

@@ -15,6 +15,9 @@ class DriveService {
 
   static const _appFolderName = 'Crusam';
   String? _appFolderId;
+  String? _vouchersFolderId;
+  String? _settingsFolderId;
+  String? _backupsFolderId;
 
   // ── Get or create the Crusam folder ──────────────────────────────────────
   Future<String?> getOrCreateAppFolder() async {
@@ -274,6 +277,254 @@ class DriveService {
     if (json == null) return null;
     return SyncEmployee.fromJson(json);
   }
+
+  // ── Generic subfolder helper ──────────────────────────────────────────────
+  Future<String?> _ensureSubfolder(String parentId, String name) async {
+    final client = await GoogleAuthService.instance.getAuthenticatedClient();
+    if (client == null) return null;
+    try {
+      final driveApi = drive.DriveApi(client);
+      final result = await driveApi.files.list(
+        q: "name='$name' and "
+            "mimeType='application/vnd.google-apps.folder' and "
+            "'$parentId' in parents and "
+            "trashed=false",
+        spaces: 'drive',
+        $fields: 'files(id)',
+      );
+      if (result.files != null && result.files!.isNotEmpty) {
+        return result.files!.first.id;
+      }
+      final folder = drive.File()
+        ..name = name
+        ..mimeType = 'application/vnd.google-apps.folder'
+        ..parents = [parentId];
+      final created = await driveApi.files.create(folder, $fields: 'id');
+      return created.id;
+    } catch (e) {
+      debugPrint('DriveService._ensureSubfolder($name) error: $e');
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  // ── Vouchers folder ───────────────────────────────────────────────────────
+  Future<String?> ensureVouchersFolder() async {
+    if (_vouchersFolderId != null) return _vouchersFolderId;
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) return null;
+    _vouchersFolderId = await _ensureSubfolder(appFolderId, 'vouchers');
+    return _vouchersFolderId;
+  }
+
+  // ── Settings folder ───────────────────────────────────────────────────────
+  Future<String?> ensureSettingsFolder() async {
+    if (_settingsFolderId != null) return _settingsFolderId;
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) return null;
+    _settingsFolderId = await _ensureSubfolder(appFolderId, 'settings');
+    return _settingsFolderId;
+  }
+
+  // ── Backups folder ────────────────────────────────────────────────────────
+  Future<String?> ensureBackupsFolder() async {
+    if (_backupsFolderId != null) return _backupsFolderId;
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) return null;
+    _backupsFolderId = await _ensureSubfolder(appFolderId, 'backups');
+    return _backupsFolderId;
+  }
+
+  // ── Metadata ──────────────────────────────────────────────────────────────
+  Future<DriveMetadata> readMetadata() async {
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) {
+      return DriveMetadata(updatedAt: DateTime.now().toUtc().toIso8601String());
+    }
+    final fileId = await findFileId('metadata.json', appFolderId);
+    if (fileId == null) {
+      return DriveMetadata(updatedAt: DateTime.now().toUtc().toIso8601String());
+    }
+    final json = await downloadJson(fileId);
+    if (json == null) {
+      return DriveMetadata(updatedAt: DateTime.now().toUtc().toIso8601String());
+    }
+    return DriveMetadata.fromJson(json);
+  }
+
+  Future<void> writeMetadata(DriveMetadata metadata) async {
+    final appFolderId = await ensureCrusamFolder();
+    if (appFolderId == null) return;
+    final existingFileId = await findFileId('metadata.json', appFolderId);
+    await uploadJson(
+      fileName: 'metadata.json',
+      data: metadata.toJson(),
+      parentFolderId: appFolderId,
+      existingFileId: existingFileId,
+    );
+  }
+
+  Future<void> _registerDevice() async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    String deviceId = 'device_unknown';
+    String deviceName = 'Windows PC';
+    try {
+      final host = Platform.localHostname;
+      deviceId = 'device_${host.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_')}';
+      deviceName = host;
+    } catch (_) {}
+
+    final metadata = await readMetadata();
+    final thisDevice = DriveDevice(
+      deviceId: deviceId,
+      deviceName: deviceName,
+      platform: Platform.operatingSystem,
+      appVersion: '1.0.0',
+      dbSchemaVersion: 5,
+      lastSeen: now,
+    );
+    final updatedDevices = [
+      ...metadata.devices.where((d) => d.deviceId != deviceId),
+      thisDevice,
+    ];
+    await writeMetadata(metadata.copyWith(updatedAt: now, devices: updatedDevices));
+  }
+
+  // ── Voucher index ─────────────────────────────────────────────────────────
+  Future<SyncIndex> readVouchersIndex() async {
+    final folderId = await ensureVouchersFolder();
+    if (folderId == null) {
+      return SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(), entries: []);
+    }
+    final indexFileId = await findFileId('index.json', folderId);
+    if (indexFileId == null) {
+      return SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(), entries: []);
+    }
+    final json = await downloadJson(indexFileId);
+    if (json == null) {
+      return SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(), entries: []);
+    }
+    return SyncIndex.fromJson(json);
+  }
+
+  Future<void> writeVouchersIndex(SyncIndex index) async {
+    final folderId = await ensureVouchersFolder();
+    if (folderId == null) return;
+    final existingFileId = await findFileId('index.json', folderId);
+    await uploadJson(
+      fileName: 'index.json',
+      data: index.toJson(),
+      parentFolderId: folderId,
+      existingFileId: existingFileId,
+    );
+  }
+
+  // ── Settings files ────────────────────────────────────────────────────────
+  Future<void> writeCompanyConfig(Map<String, dynamic> config) async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return;
+    final existingId = await findFileId('company_config.json', folderId);
+    await uploadJson(
+        fileName: 'company_config.json',
+        data: config,
+        parentFolderId: folderId,
+        existingFileId: existingId);
+  }
+
+  Future<Map<String, dynamic>?> readCompanyConfig() async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return null;
+    final fileId = await findFileId('company_config.json', folderId);
+    if (fileId == null) return null;
+    return downloadJson(fileId);
+  }
+
+  Future<void> writeMargins(Map<String, dynamic> margins) async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return;
+    final existingId = await findFileId('margins.json', folderId);
+    await uploadJson(
+        fileName: 'margins.json',
+        data: margins,
+        parentFolderId: folderId,
+        existingFileId: existingId);
+  }
+
+  Future<Map<String, dynamic>?> readMargins() async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return null;
+    final fileId = await findFileId('margins.json', folderId);
+    if (fileId == null) return null;
+    return downloadJson(fileId);
+  }
+
+  Future<void> writeItemDescriptions(List<Map<String, dynamic>> descriptions) async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return;
+    final existingId = await findFileId('item_descriptions.json', folderId);
+    await uploadJson(
+        fileName: 'item_descriptions.json',
+        data: {'descriptions': descriptions},
+        parentFolderId: folderId,
+        existingFileId: existingId);
+  }
+
+  Future<List<Map<String, dynamic>>?> readItemDescriptions() async {
+    final folderId = await ensureSettingsFolder();
+    if (folderId == null) return null;
+    final fileId = await findFileId('item_descriptions.json', folderId);
+    if (fileId == null) return null;
+    final json = await downloadJson(fileId);
+    if (json == null) return null;
+    final list = json['descriptions'] as List?;
+    return list?.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  // ── Full structure bootstrap ──────────────────────────────────────────────
+  Future<void> initializeDriveStructure() async {
+    if (!GoogleAuthService.instance.isSignedIn) return;
+    try {
+      // 1. Ensure all top-level folders exist
+      await ensureCrusamFolder();
+      await ensureEmployeesFolder();
+      await ensureVouchersFolder();
+      await ensureSettingsFolder();
+      await ensureBackupsFolder();
+
+      // 2. Seed employees/index.json if this is a fresh folder
+      final empFolderId = await ensureEmployeesFolder();
+      if (empFolderId != null) {
+        final empIndexId = await findFileId('index.json', empFolderId);
+        if (empIndexId == null) {
+          await writeEmployeesIndex(SyncIndex(
+              updatedAt: DateTime.now().toUtc().toIso8601String(),
+              entries: []));
+        }
+      }
+
+      // 3. Seed vouchers/index.json if this is a fresh folder
+      final vFolderId = await ensureVouchersFolder();
+      if (vFolderId != null) {
+        final vIndexId = await findFileId('index.json', vFolderId);
+        if (vIndexId == null) {
+          await writeVouchersIndex(SyncIndex(
+              updatedAt: DateTime.now().toUtc().toIso8601String(),
+              entries: []));
+        }
+      }
+
+      // 4. Register / update this device in metadata.json
+      await _registerDevice();
+
+      debugPrint('DriveService.initializeDriveStructure: complete');
+    } catch (e) {
+      debugPrint('DriveService.initializeDriveStructure error: $e');
+    }
+  }
 }
 
 class SyncManager {
@@ -284,8 +535,8 @@ class SyncManager {
   final _drive = DriveService.instance;
 
   Future<void> syncOnStartup() async {
-    final folderId = await _drive.ensureEmployeesFolder();
-    if (folderId == null) return;
+    // Ensure the full folder structure exists before reading anything
+    await _drive.initializeDriveStructure();
 
     final index = await _drive.readEmployeesIndex();
     for (final entry in index.entries) {
@@ -326,5 +577,60 @@ class SyncManager {
         await _db.removePendingSync(entry.id!);
       }
     }
+  }
+
+  // ── NEW: push local employee changes to the sync queue ──────────────────
+  Future<void> pushEmployeeChange({
+    required String cloudId,
+    required String operation,        // 'create' | 'update' | 'delete'
+    required Map<String, dynamic> employeeDbRow,
+  }) async {
+    final now = (employeeDbRow['updated_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+
+    final entry = SyncPendingEntry(
+      entityType:     'employee',
+      cloudId:        cloudId,
+      operation:      operation,
+      payload:        employeeDbRow,
+      localUpdatedAt: now,
+    );
+
+    await _db.addPendingSync(entry);
+    _processSilently();
+  }
+
+  // ── NEW: push local invoice/voucher changes to the sync queue ───────────
+  Future<void> pushInvoiceChange({
+    required String cloudId,
+    required String operation,        // 'create' | 'update' | 'delete'
+    required Map<String, dynamic> invoiceDbRow,
+  }) async {
+    final now = (invoiceDbRow['updated_at'] as String?) ??
+        DateTime.now().toUtc().toIso8601String();
+
+    final entry = SyncPendingEntry(
+      entityType:     'invoice',
+      cloudId:        cloudId,
+      operation:      operation,
+      payload:        invoiceDbRow,
+      localUpdatedAt: now,
+    );
+
+    await _db.addPendingSync(entry);
+    _processSilently();
+  }
+
+  // ── NEW: public full-sync trigger (pull then push) ──────────────────────
+  Future<void> syncNow() async {
+    await syncOnStartup();
+    await processPendingUploads();
+  }
+
+  // ── Internal helper: fire-and-forget push without crashing the caller ──
+  void _processSilently() {
+    processPendingUploads().catchError((e) {
+      debugPrint('SyncManager._processSilently error: $e');
+    });
   }
 }
