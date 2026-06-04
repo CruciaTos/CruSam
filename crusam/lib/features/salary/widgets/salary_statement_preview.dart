@@ -4,13 +4,10 @@ import '../../../data/models/employee_model.dart';
 
 /// Landscape A4 salary statement preview.
 ///
-/// Deductions (PF, MSW, ESIC, PT) and Net Salary are calculated from
+/// All columns (Basic, Other, Gross, PF, MSW, ESIC, PT, Net) use
 /// **prorated (earned)** values based on days present from [daysMap].
-/// If an employee has zero days entered, all deduction columns and
-/// Net Salary show 0 (greyed out).
-///
-/// Basic / Other / Gross columns always show full-month structure values.
-/// Column widths are fully configurable via [columnWidths].
+/// If an employee has zero days entered, deduction columns and Net Salary
+/// show 0 (greyed out). Basic / Other / Gross also show 0 when days = 0.
 ///
 /// Column index map (18 columns total):
 ///  0  Sr. No        1  Name           2  PF NO.         3  UAN NO.
@@ -61,7 +58,7 @@ class SalaryStatementPreview extends StatelessWidget {
   final bool                isMsw;
   final bool                isFeb;
 
-  /// Maps employee ID → days present.  Absent / 0 → deductions all 0.
+  /// Maps employee ID → days present.  Absent / 0 → all columns show 0.
   final Map<int, int> daysMap;
 
   /// Total calendar days in the selected month (e.g. 31 for March).
@@ -104,6 +101,12 @@ class SalaryStatementPreview extends StatelessWidget {
     return e.basicCharges * d / daysInMonth;
   }
 
+  double _earnedOther(EmployeeModel e) {
+    final d = _days(e);
+    if (d == 0 || daysInMonth == 0) return 0;
+    return e.otherCharges * d / daysInMonth;
+  }
+
   double _earnedGross(EmployeeModel e) {
     final d = _days(e);
     if (d == 0 || daysInMonth == 0) return 0;
@@ -111,9 +114,9 @@ class SalaryStatementPreview extends StatelessWidget {
   }
 
   int _pf(EmployeeModel e) {
-  final eb = _earnedBasic(e);
-  if (eb == 0) return 0;
-  return eb >= 15000 ? 1800 : (eb * 0.12).round();
+    final eb = _earnedBasic(e);
+    if (eb == 0) return 0;
+    return eb >= 15000 ? 1800 : (eb * 0.12).round();
   }
 
   int _esicInt(EmployeeModel e) {
@@ -141,7 +144,7 @@ class SalaryStatementPreview extends StatelessWidget {
     return eg == 0 ? 0 : eg - _totalDed(e);
   }
 
-  // ── Effective column-width map (now 0–17) ─────────────────────────────────
+  // ── Effective column-width map (0–17) ─────────────────────────────────────
   Map<int, TableColumnWidth> _colWidths() {
     final result = <int, TableColumnWidth>{};
     for (int i = 0; i <= 17; i++) {
@@ -164,7 +167,6 @@ class SalaryStatementPreview extends StatelessWidget {
     int                          daysInMonth  = 0,
     Map<int, double>             columnWidths = const {},
   }) {
-    // Sort by department code then name before rendering
     final sorted = List<EmployeeModel>.from(employees)
       ..sort(_deptThenName);
 
@@ -199,7 +201,6 @@ class SalaryStatementPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sort by department code then name for the live preview too
     final sorted = List<EmployeeModel>.from(employees)
       ..sort(_deptThenName);
 
@@ -248,7 +249,6 @@ class SalaryStatementPreview extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Page header ────────────────────────────────────────────
             _PageHeader(
               config:    config,
               monthName: monthName,
@@ -270,7 +270,7 @@ class SalaryStatementPreview extends StatelessWidget {
   }
 }
 
-// ── Page header (unchanged) ───────────────────────────────────────────────────
+// ── Page header ───────────────────────────────────────────────────────────────
 
 class _PageHeader extends StatelessWidget {
   final CompanyConfigModel config;
@@ -288,7 +288,6 @@ class _PageHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Logo
         SizedBox(
           width: 90,
           height: 50,
@@ -299,7 +298,6 @@ class _PageHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Title block
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -335,8 +333,7 @@ class _PageHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _SalaryTable — StatelessWidget
-// The table is horizontally centered within the available space.
+// _SalaryTable
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _SalaryTable extends StatelessWidget {
@@ -357,9 +354,9 @@ class _SalaryTable extends StatelessWidget {
   static const _altBg   = Color(0xFFF8FAFC);
   static const _green   = Color(0xFF1A6B2F);
 
-  static const _hStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
-  static const _dStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Colors.black);
-  static const _dBold  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
+  static const _hStyle  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
+  static const _dStyle  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Colors.black);
+  static const _dBold   = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: Colors.black);
   static const _netStyle  = TextStyle(fontSize: 7.5, fontWeight: FontWeight.bold,  color: _green);
   static const _zeroStyle = TextStyle(fontSize: 7.5, fontWeight: FontWeight.normal, color: Color(0xFFBBBBBB));
   static const _monoStyle = TextStyle(fontSize: 6.5, fontWeight: FontWeight.normal, color: Colors.black, fontFamily: 'monospace');
@@ -376,20 +373,20 @@ class _SalaryTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalWidth = _totalTableWidth();
 
-    // Grand totals (computed over ALL employees, not just this page slice)
+    // ── Grand totals: sum of EARNED values over ALL employees ──────────────
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     int    sumPf = 0, sumMsw = 0, sumEsicP = 0, sumPt = 0, sumTd = 0;
 
     for (final e in preview.employees) {
-      sumBasic       += e.basicCharges;
-      sumOther       += e.otherCharges;
-      sumGross       += e.grossSalary;
-      sumPf          += preview._pf(e);
-      sumMsw         += preview._msw();
-      sumEsicP       += preview._esicInt(e);
-      sumPt          += preview._pt(e);
-      sumTd          += preview._totalDed(e);
-      sumNet         += preview._net(e);
+      sumBasic  += preview._earnedBasic(e);
+      sumOther  += preview._earnedOther(e);
+      sumGross  += preview._earnedGross(e);
+      sumPf     += preview._pf(e);
+      sumMsw    += preview._msw();
+      sumEsicP  += preview._esicInt(e);
+      sumPt     += preview._pt(e);
+      sumTd     += preview._totalDed(e);
+      sumNet    += preview._net(e);
     }
 
     return Align(
@@ -429,15 +426,22 @@ class _SalaryTable extends StatelessWidget {
 
             // ── Data rows ─────────────────────────────────────────────────────
             ...slice.asMap().entries.map((entry) {
-              final globalIdx   = startIndex + entry.key;
-              final e           = entry.value;
-              final hasDays     = (preview.daysMap[e.id ?? -1] ?? 0) > 0;
-              final pf          = preview._pf(e);
-              final eP          = preview._esicInt(e);
-              final msw         = preview._msw();
-              final pt          = preview._pt(e);
-              final td          = preview._totalDed(e);
-              final net         = preview._net(e);
+              final globalIdx = startIndex + entry.key;
+              final e         = entry.value;
+              final hasDays   = (preview.daysMap[e.id ?? -1] ?? 0) > 0;
+
+              // ── Earned earnings (zero when no days) ──────────────────────
+              final eBasic = preview._earnedBasic(e);
+              final eOther = preview._earnedOther(e);
+              final eGross = preview._earnedGross(e);
+
+              // ── Deductions (zero when no days) ───────────────────────────
+              final pf  = preview._pf(e);
+              final eP  = preview._esicInt(e);
+              final msw = preview._msw();
+              final pt  = preview._pt(e);
+              final td  = preview._totalDed(e);
+              final net = preview._net(e);
 
               return TableRow(
                 decoration: BoxDecoration(
@@ -452,12 +456,20 @@ class _SalaryTable extends StatelessWidget {
                   _d(e.zone,  center: true),
                   _mono(e.ifscCode),
                   _mono(e.accountNumber),
-                  _d(_n(e.basicCharges), right: true),
-                  _d(_n(e.otherCharges), right: true),
-                  _d('0', center: true),
-                  _d(_n(e.grossSalary),  right: true, style: _dBold),
 
-                  // ── Deduction columns: prorated or zero ───────────────────
+                  // ── Basic / Other / Gross: earned values ─────────────────
+                  hasDays
+                      ? _d(_n(eBasic), right: true)
+                      : _d('0', right: true, style: _zeroStyle),
+                  hasDays
+                      ? _d(_n(eOther), right: true)
+                      : _d('0', right: true, style: _zeroStyle),
+                  _d('0', center: true),
+                  hasDays
+                      ? _d(_n(eGross), right: true, style: _dBold)
+                      : _d('0', right: true, style: _zeroStyle),
+
+                  // ── Deduction columns ────────────────────────────────────
                   hasDays
                       ? _d('$pf',  right: true)
                       : _d('0',    right: true, style: _zeroStyle),

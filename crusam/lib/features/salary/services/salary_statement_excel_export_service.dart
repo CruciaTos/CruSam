@@ -9,6 +9,7 @@ import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 
 /// Service to export Salary Statement to Excel (.xlsx) format.
+/// Basic, Other, and Gross columns show EARNED (prorated) values.
 class ExcelExportService {
   // --------------------------------------------------------------------------
   // Column Widths (in Excel units)
@@ -84,6 +85,7 @@ class ExcelExportService {
     _writeTitleRow(sheet, currentRow++, title, _headers.length);
     _writeHeaderRow(sheet, currentRow++);
 
+    // ── Accumulators: sum of EARNED values ─────────────────────────────────
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     int sumPf = 0, sumMsw = 0, sumEsicP = 0, sumPt = 0, sumTd = 0;
 
@@ -95,25 +97,30 @@ class ExcelExportService {
       final earnedBasic = hasDays && daysInMonth > 0
           ? e.basicCharges * days / daysInMonth
           : 0.0;
+      final earnedOther = hasDays && daysInMonth > 0
+          ? e.otherCharges * days / daysInMonth
+          : 0.0;
       final earnedGross = hasDays && daysInMonth > 0
           ? e.grossSalary * days / daysInMonth
           : 0.0;
-      final pf    = hasDays ? (earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round()) : 0;
+
+      final pf      = hasDays ? (earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round()) : 0;
       final esicInt = e.grossSalary <= 21000
           ? (earnedGross * 0.0075).ceil()
           : 0;
-      final msw         = isMsw ? 6 : 0;
-      final displayedMsw = hasDays ? msw : 0;
-      final pt          = _calculatePT(earnedGross, e.gender, isFeb);
-      final totalDed    = pf + esicInt + msw + pt;
+      final mswVal        = isMsw ? 6 : 0;
+      final displayedMsw  = hasDays ? mswVal : 0;
+      final pt            = _calculatePT(earnedGross, e.gender, isFeb);
+      final totalDed      = pf + esicInt + mswVal + pt;
       final displayedTotalDed = hasDays ? totalDed : 0;
-      final net         = hasDays ? earnedGross - totalDed : 0.0;
+      final net           = hasDays ? earnedGross - totalDed : 0.0;
 
-      sumBasic  += e.basicCharges;
-      sumOther  += e.otherCharges;
-      sumGross  += e.grossSalary;
+      // ── Accumulate earned totals ─────────────────────────────────────────
+      sumBasic  += earnedBasic;
+      sumOther  += earnedOther;
+      sumGross  += earnedGross;
       sumPf     += pf;
-      sumMsw    += msw;
+      sumMsw    += mswVal;
       sumEsicP  += esicInt;
       sumPt     += pt;
       sumTd     += totalDed;
@@ -136,14 +143,15 @@ class ExcelExportService {
           hAlign: HAlignType.left);
       _setCellValue(sheet, currentRow, col++, e.accountNumber,
           hAlign: HAlignType.left);
-      _setCellValue(sheet, currentRow, col++, e.basicCharges,
-          isNumber: true);
-      _setCellValue(sheet, currentRow, col++, e.otherCharges,
-          isNumber: true);
+
+      // ── Basic / Other / Gross: earned values ────────────────────────────
+      _setCellValue(sheet, currentRow, col++, earnedBasic, isNumber: true);
+      _setCellValue(sheet, currentRow, col++, earnedOther, isNumber: true);
       _setCellValue(sheet, currentRow, col++, 0,
           isNumber: true, hAlign: HAlignType.center);
-      _setCellValue(sheet, currentRow, col++, e.grossSalary,
-          isNumber: true);
+      _setCellValue(sheet, currentRow, col++, earnedGross, isNumber: true);
+
+      // ── Deductions ────────────────────────────────────────────────────────
       _setCellValue(sheet, currentRow, col++,
           hasDays ? pf : 0, isNumber: true);
       _setCellValue(sheet, currentRow, col++, displayedMsw,
@@ -160,7 +168,7 @@ class ExcelExportService {
           isNumber: true, decimalPlaces: 0);
 
       if (!hasDays) {
-        for (int c = 13; c <= 18; c++) {
+        for (int c = 9; c <= 18; c++) {
           sheet
               .getRangeByIndex(currentRow, c)
               .cellStyle

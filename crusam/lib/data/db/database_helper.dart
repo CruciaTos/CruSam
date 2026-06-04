@@ -13,8 +13,6 @@ class DatabaseHelper {
   DatabaseHelper._();
   static final instance = DatabaseHelper._();
   static Database? _db;
-  static const _employeeSeedMasterReplacementMigrationKey =
-      'employee_seed_master_replacement_v1';
 
   Future<Database> get database async => _db ??= await _init();
 
@@ -70,16 +68,7 @@ class DatabaseHelper {
     await _ensureColumn(db, 'salary_disbursement_items', 'branch', "TEXT NOT NULL DEFAULT ''");
 
     await _normalizeEmployeeCodes(db);
-
-    // Keep legacy seed backfills only until the one-time master replacement has
-    // run. After that, user/Drive employee edits must remain the source of truth.
-    final seedMasterReplacementComplete = await _isMigrationComplete(
-      db,
-      _employeeSeedMasterReplacementMigrationKey,
-    );
-    if (!seedMasterReplacementComplete) {
-      await _backfillEmployeeCharges(db);
-    }
+    await _backfillEmployeeCharges(db);
   }
 
   String _normalizeEmployeeCodeValue(dynamic value) {
@@ -95,25 +84,6 @@ class DatabaseHelper {
       normalized['code'] = _normalizeEmployeeCodeValue(normalized['code']);
     }
     return normalized;
-  }
-
-  Map<String, dynamic> _seedEmployeePayload(
-    Map<String, dynamic> seed,
-    String now,
-  ) {
-    final basic = (seed['basic_charges'] as num?)?.toDouble() ?? 0;
-    final other = (seed['other_charges'] as num?)?.toDouble() ?? 0;
-    return _normalizeEmployeeData({
-      ...seed,
-      'basic_charges': basic,
-      'other_charges': other,
-      'gross_salary': basic + other,
-      'gender': (seed['gender'] as String?) ?? 'M',
-      'is_deleted': 0,
-      'deleted_at': null,
-      'updated_at': now,
-      'synced_at': null,
-    });
   }
 
   Future<void> _normalizeEmployeeCodes(Database db) async {
@@ -166,117 +136,6 @@ class DatabaseHelper {
     if (hasInserts) {
       await batch.commit(noResult: true);
     }
-  }
-
-  Future<bool> _isMigrationComplete(DatabaseExecutor db, String key) async {
-    final rows = await db.query(
-      'app_migrations',
-      columns: ['key'],
-      where: 'key = ?',
-      whereArgs: [key],
-      limit: 1,
-    );
-    return rows.isNotEmpty;
-  }
-
-  Future<void> _markMigrationComplete(
-    DatabaseExecutor db,
-    String key,
-    String now,
-  ) async {
-    await db.insert(
-      'app_migrations',
-      {'key': key, 'completed_at': now},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  /// One-time migration that makes [kEmployeeSeedData] the employee master list.
-  ///
-  /// This intentionally runs only once per local database. It refreshes seed
-  /// employees, soft-deletes non-seed employees, and marks changed rows as
-  /// needing sync. After the migration marker is written, future launches will
-  /// not overwrite user/Drive edits with seed data again.
-  Future<bool> applyOneTimeEmployeeSeedMasterReplacement() async {
-    final db = await database;
-    if (await _isMigrationComplete(
-      db,
-      _employeeSeedMasterReplacementMigrationKey,
-    )) {
-      return false;
-    }
-
-    final now = DateTime.now().toUtc().toIso8601String();
-
-    await db.transaction((txn) async {
-      final existingEmployees = await txn.query('employees');
-      final existingByKey = <String, Map<String, dynamic>>{};
-      final seedMatchedExistingIds = <int>{};
-
-      for (final employee in existingEmployees) {
-        existingByKey.putIfAbsent(_employeeSeedKey(employee), () => employee);
-      }
-
-      final seedKeys = <String>{};
-
-      for (final seed in kEmployeeSeedData) {
-        final key = _employeeSeedKey(seed);
-        seedKeys.add(key);
-
-        final existing = existingByKey[key];
-        final payload = _seedEmployeePayload(seed, now);
-
-        if (existing == null) {
-          await txn.insert(
-            'employees',
-            {
-              ...payload,
-              'created_at': now,
-            },
-            conflictAlgorithm: ConflictAlgorithm.ignore,
-          );
-          continue;
-        }
-
-        final existingId = existing['id'] as int?;
-        if (existingId != null) seedMatchedExistingIds.add(existingId);
-
-        await txn.update(
-          'employees',
-          payload,
-          where: 'id = ?',
-          whereArgs: [existingId],
-        );
-      }
-
-      for (final employee in existingEmployees) {
-        final id = employee['id'] as int?;
-        final isDeleted = ((employee['is_deleted'] as num?)?.toInt() ?? 0) == 1;
-        if (isDeleted || (id != null && seedMatchedExistingIds.contains(id))) {
-          continue;
-        }
-
-        await txn.update(
-          'employees',
-          {
-            'is_deleted': 1,
-            'deleted_at': now,
-            'updated_at': now,
-            'synced_at': null,
-          },
-          where: 'id = ?',
-          whereArgs: [id],
-        );
-      }
-
-      await _markMigrationComplete(
-        txn,
-        _employeeSeedMasterReplacementMigrationKey,
-        now,
-      );
-    });
-
-    return true;
   }
 
   /// Updates basic_charges and other_charges for existing employees that have
@@ -536,17 +395,7 @@ class DatabaseHelper {
         await db.insert('item_descriptions', {'text': d, 'is_custom': 0});
       }
     }
-
-    // Keep the old safety seed only until the one-time master replacement has
-    // run. After that migration, user/Drive edits must not be overwritten or
-    // reinserted from the seed on future launches.
-    final seedMasterReplacementComplete = await _isMigrationComplete(
-      db,
-      _employeeSeedMasterReplacementMigrationKey,
-    );
-    if (!seedMasterReplacementComplete) {
-      await _ensureSeedEmployees(db);
-    }
+    await _ensureSeedEmployees(db);
   }
 
   // ── New sync helpers ──────────────────────────────────────────────────────

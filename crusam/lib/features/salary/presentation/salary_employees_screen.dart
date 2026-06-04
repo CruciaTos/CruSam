@@ -16,8 +16,11 @@ class SalaryEmployeesScreen extends StatefulWidget {
 class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   final _ctrl = SalaryStateController.instance;
 
-  int _month = DateTime.now().month;
-  final int _year = DateTime.now().year;
+  // ── Read month/year from the notifier so the selection persists
+  // ── when navigating between tabs. Only fall back to now() if the
+  // ── notifier has never been set (i.e. first ever launch).
+  late int _month = SalaryDataNotifier.instance.month;
+  final int _year = SalaryDataNotifier.instance.year;
 
   final Map<int, FocusNode> _daysFocusNodes = {};
 
@@ -35,7 +38,9 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     super.initState();
     _ctrl.addListener(_syncFocusNodes);
     _ctrl.loadEmployees();
-    SalaryDataNotifier.instance.setMonthYear(_month, _year);
+    // Do NOT call setMonthYear here — the notifier already holds the
+    // correct value. Only sync local _month from it in case it differs.
+    _month = SalaryDataNotifier.instance.month;
   }
 
   @override
@@ -155,7 +160,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   );
 }
 
-// ─── Smooth Month Dropdown (opens exactly below, scrollable, max 4 items) ─────
+// ─── Smooth Month Dropdown ────────────────────────────────────────────────────
 class SmoothDropdown<T> extends StatelessWidget {
   final T value;
   final List<T> items;
@@ -182,15 +187,15 @@ class SmoothDropdown<T> extends StatelessWidget {
     return PopupMenuButton<T>(
       initialValue: value,
       onSelected: onChanged,
-      offset: Offset(0, 50) , // 👈 No gap, opens directly below
+      offset: const Offset(0, 50),
       color: const Color(0xFF1E293B),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: AppColors.slate400.withOpacity(0.3)),
       ),
       constraints: BoxConstraints(
-        minWidth: width,        // Match button width
-        maxHeight: maxHeight,   // Limit visible items
+        minWidth: width,
+        maxHeight: maxHeight,
       ),
       itemBuilder: (context) {
         return items.map((item) {
@@ -229,7 +234,7 @@ class SmoothDropdown<T> extends StatelessWidget {
   }
 }
 
-// ─── Toolbar (unchanged) ──────────────────────────────────────────────────────
+// ─── Toolbar ──────────────────────────────────────────────────────────────────
 class _Toolbar extends StatelessWidget {
   final String title;
   final int month;
@@ -258,6 +263,7 @@ class _Toolbar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Row 1: title + month dropdown
         Row(
           children: [
             Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
@@ -270,14 +276,26 @@ class _Toolbar extends StatelessWidget {
               width: 150,
               maxVisibleItems: 4,
             ),
-            const SizedBox(width: AppSpacing.lg),
-            if (isMsw) _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
-            if (isFeb) ...[
-              const SizedBox(width: 8),
-              _badge('February — PT ₹300 for eligible', AppColors.indigo50, AppColors.indigo600),
-            ],
           ],
         ),
+
+        // Row 2: MSW / February badges (only if any are active)
+        if (isMsw || isFeb) ...[
+          const SizedBox(height: 6),   // gap between dropdown and badges
+          Row(
+            children: [
+              const Spacer(),
+              if (isMsw)
+                _badge('MSW month — ₹6 deduction active', AppColors.amber100, AppColors.amber700),
+              if (isMsw && isFeb)
+                const SizedBox(width: 8),   // horizontal gap between two badges
+              if (isFeb)
+                _badge('February — PT ₹300 for eligible', AppColors.indigo50, AppColors.indigo600),
+            ],
+          ),
+        ],
+
+        // Company code chips
         if (codes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           SingleChildScrollView(
@@ -320,4 +338,3 @@ class _Toolbar extends StatelessWidget {
     child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
   );
 }
-

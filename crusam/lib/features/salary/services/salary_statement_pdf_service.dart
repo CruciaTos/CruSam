@@ -3,6 +3,8 @@
 // Builds the Salary Statement PDF directly using the pdf/widgets (pw) package.
 // Column widths are scaled proportionally so the table fills the full usable
 // A4-landscape width — matching the on-screen SalaryStatementPreview exactly.
+//
+// Basic / Other / Gross columns show EARNED (prorated) values.
 
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -23,7 +25,7 @@ class SalaryStatementPdfService {
   static pw.Font? _bold;
   static pw.MemoryImage? _logo;
 
-  // ── Palette (mirrors _SalaryTable constants) ───────────────────────────────
+  // ── Palette ────────────────────────────────────────────────────────────────
   static const _black  = PdfColor.fromInt(0xFF000000);
   static const _hdrBg  = PdfColor.fromInt(0xFFE3E8F4);
   static const _totBg  = PdfColor.fromInt(0xFFD6DCF5);
@@ -35,7 +37,7 @@ class SalaryStatementPdfService {
   static const int    _rowsPerPage = 32;
   static const double _marginPt    = 14.0;
 
-  // A4 landscape width in pt = 841.89; usable after 14pt margins each side:
+  // A4 landscape usable width after 14pt margins each side
   static const double _pageAvailableWidth = 841.89 - 2 * _marginPt; // 813.89
 
   // ── Init ───────────────────────────────────────────────────────────────────
@@ -72,11 +74,6 @@ class SalaryStatementPdfService {
       );
 
   // ── Scale column widths to fill page exactly ───────────────────────────────
-  //
-  // Takes the user-supplied (or default) column widths from
-  // SalaryStatementPreview.defaultColumnWidths, totals them, then scales
-  // every column uniformly so the sum equals _pageAvailableWidth.
-  // This is the key step that eliminates the gap seen in the screenshot PDF.
   static Map<int, double> _scaledWidths(Map<int, double> userWidths) {
     double total = 0;
     final effective = <int, double>{};
@@ -100,15 +97,20 @@ class SalaryStatementPdfService {
     return e.basicCharges * days / dim;
   }
 
+  static double _earnedOther(EmployeeModel e, int days, int dim) {
+    if (days == 0 || dim == 0) return 0;
+    return e.otherCharges * days / dim;
+  }
+
   static double _earnedGross(EmployeeModel e, int days, int dim) {
     if (days == 0 || dim == 0) return 0;
     return e.grossSalary * days / dim;
   }
 
   static int _pf(EmployeeModel e, int days, int dim) {
-  final eb = _earnedBasic(e, days, dim);
-  if (eb == 0) return 0;
-  return eb >= 15000 ? 1800 : (eb * 0.12).round();
+    final eb = _earnedBasic(e, days, dim);
+    if (eb == 0) return 0;
+    return eb >= 15000 ? 1800 : (eb * 0.12).round();
   }
 
   static int _esic(EmployeeModel e, int days, int dim) {
@@ -154,7 +156,6 @@ class SalaryStatementPdfService {
   }) async {
     await _init();
 
-    // Sort: department code then name (mirrors ExcelExportService._deptThenName)
     final sorted = List<EmployeeModel>.from(employees)
       ..sort((a, b) {
         final c = a.code.trim().toLowerCase()
@@ -166,14 +167,14 @@ class SalaryStatementPdfService {
 
     final scaled = _scaledWidths(columnWidths);
 
-    // ── Grand totals (computed over ALL employees, not per-page slice) ────────
+    // ── Grand totals: sum of EARNED values ────────────────────────────────
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     int    sumPf = 0, sumMswAcc = 0, sumEsic = 0, sumPt = 0, sumTd = 0;
     for (final e in sorted) {
       final d = _days(e, daysMap);
-      sumBasic    += e.basicCharges;
-      sumOther    += e.otherCharges;
-      sumGross    += e.grossSalary;
+      sumBasic    += _earnedBasic(e, d, daysInMonth);
+      sumOther    += _earnedOther(e, d, daysInMonth);
+      sumGross    += _earnedGross(e, d, daysInMonth);
       sumPf       += _pf(e, d, daysInMonth);
       sumMswAcc   += _msw(isMsw);
       sumEsic     += _esic(e, d, daysInMonth);
@@ -223,7 +224,6 @@ class SalaryStatementPdfService {
       ));
     }
 
-    // Updated call – target parameter removed
     await _saveAndShare(
       doc,
       'salary_statement_${monthName.toLowerCase()}_$year',
@@ -335,12 +335,10 @@ class SalaryStatementPdfService {
     required int    sumPf,    required int    sumMsw,   required int    sumEsic,
     required int    sumPt,    required int    sumTd,    required double sumNet,
   }) {
-    // Column widths map for pw.Table
     final cw = <int, pw.TableColumnWidth>{
       for (int i = 0; i <= 17; i++) i: pw.FixedColumnWidth(scaled[i]!)
     };
 
-    // Header labels — match SalaryStatementPreview column labels
     const headers = [
       'Sr.\nNo.',
       'Name of\nTechnician',
@@ -363,28 +361,31 @@ class SalaryStatementPdfService {
     ];
 
     final tableRows = <pw.TableRow>[
-      // ── Header row ──────────────────────────────────────────────────────────
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: _hdrBg),
-        children: headers
-            .map((h) => _hdrCell(h))
-            .toList(),
+        children: headers.map((h) => _hdrCell(h)).toList(),
       ),
     ];
 
-    // ── Data rows ──────────────────────────────────────────────────────────────
+    // ── Data rows ──────────────────────────────────────────────────────────
     for (int i = 0; i < slice.length; i++) {
-      final e          = slice[i];
-      final globalIdx  = startIndex + i;
-      final d          = _days(e, daysMap);
-      final hasDays    = d > 0;
+      final e         = slice[i];
+      final globalIdx = startIndex + i;
+      final d         = _days(e, daysMap);
+      final hasDays   = d > 0;
 
-      final pf         = _pf(e, d, daysInMonth);
-      final esic       = _esic(e, d, daysInMonth);
-      final mswVal     = _msw(isMsw);
-      final pt         = _pt(e, d, daysInMonth, isFeb);
-      final td         = _totalDed(e, d, daysInMonth, isMsw, isFeb);
-      final net        = _net(e, d, daysInMonth, isMsw, isFeb);
+      // Earned earnings
+      final eBasic = _earnedBasic(e, d, daysInMonth);
+      final eOther = _earnedOther(e, d, daysInMonth);
+      final eGross = _earnedGross(e, d, daysInMonth);
+
+      // Deductions
+      final pf   = _pf(e, d, daysInMonth);
+      final esic = _esic(e, d, daysInMonth);
+      final mswV = _msw(isMsw);
+      final pt   = _pt(e, d, daysInMonth, isFeb);
+      final td   = _totalDed(e, d, daysInMonth, isMsw, isFeb);
+      final net  = _net(e, d, daysInMonth, isMsw, isFeb);
 
       final rowBg = globalIdx.isOdd ? _altBg : PdfColors.white;
 
@@ -399,16 +400,26 @@ class SalaryStatementPdfService {
           _dc(e.zone,          center: true),
           _dc(e.ifscCode,      left: true,  size: 6.0),
           _dc(e.accountNumber, left: true,  size: 6.0),
-          _dc(_n(e.basicCharges), right: true),
-          _dc(_n(e.otherCharges), right: true),
-          _dc('0',             center: true),
-          _dc(_n(e.grossSalary), right: true, bold: true),
+
+          // ── Basic / Other / Gross: earned values ──────────────────────
+          hasDays
+              ? _dc(_n(eBasic), right: true)
+              : _dc('0',        right: true, color: _grey),
+          hasDays
+              ? _dc(_n(eOther), right: true)
+              : _dc('0',        right: true, color: _grey),
+          _dc('0', center: true),
+          hasDays
+              ? _dc(_n(eGross), right: true, bold: true)
+              : _dc('0',        right: true, color: _grey),
+
+          // ── Deductions ────────────────────────────────────────────────
           hasDays
               ? _dc('$pf',    right: true)
               : _dc('0',      right: true, color: _grey),
           hasDays
-              ? _dc('$mswVal', center: true)
-              : _dc('0',       center: true, color: _grey),
+              ? _dc('$mswV',  center: true)
+              : _dc('0',      center: true, color: _grey),
           hasDays
               ? _dc(esic == 0 ? '0' : '$esic', center: true)
               : _dc('0', center: true, color: _grey),
@@ -425,7 +436,7 @@ class SalaryStatementPdfService {
       ));
     }
 
-    // ── Totals row (last page only) ────────────────────────────────────────────
+    // ── Totals row (last page only) ────────────────────────────────────────
     if (showTotals) {
       tableRows.add(pw.TableRow(
         decoration: const pw.BoxDecoration(color: _totBg),
@@ -457,7 +468,6 @@ class SalaryStatementPdfService {
 
   // ── Cell helpers ──────────────────────────────────────────────────────────
 
-  /// Header cell — bold, centered, wraps on \n.
   static pw.Widget _hdrCell(String t) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(horizontal: 2, vertical: 3),
         child: pw.Text(
@@ -467,7 +477,6 @@ class SalaryStatementPdfService {
         ),
       );
 
-  /// Data cell.
   static pw.Widget _dc(
     String t, {
     bool       center = false,
@@ -494,7 +503,6 @@ class SalaryStatementPdfService {
     );
   }
 
-  /// Totals row cell.
   static pw.Widget _tc(
     String t, {
     bool      center = false,
@@ -516,9 +524,8 @@ class SalaryStatementPdfService {
 
   static String _n(double v) => v.toStringAsFixed(0);
 
-  // ── Save + Share (PATCH APPLIED) ──────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────
 
-  /// Prevents overwriting existing files.
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
     final dot  = basePath.lastIndexOf('.');
@@ -532,42 +539,32 @@ class SalaryStatementPdfService {
     }
   }
 
-  /// Saves the PDF silently to disk — no share popup.
   static Future<void> _saveAndShare(
     pw.Document doc,
     String      slug,
-    String      subject,   // kept for API compatibility — unused
+    String      subject,
   ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
     final dir      = await _outputDir();
     final basePath = '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path     = await _uniquePath(basePath);
-    // Task 4: save silently — no Share.shareXFiles call
     await File(path).writeAsBytes(bytes, flush: true);
   }
 
-  /// Determines the output directory:
-  /// 1. Salary-specific path (if set)
-  /// 2. General PDF path (if set)
-  /// 3. System Downloads folder
-  /// 4. Application documents directory
   static Future<Directory> _outputDir() async {
     final prefs = ExportPreferencesNotifier.instance;
 
-    // Task 3: check salary-specific path first
     if (prefs.salaryPdfPath.isNotEmpty) {
       final dir = Directory(prefs.salaryPdfPath);
       if (await dir.exists()) return dir;
     }
 
-    // Fall back to general PDF path
     if (prefs.pdfPath.isNotEmpty) {
       final dir = Directory(prefs.pdfPath);
       if (await dir.exists()) return dir;
     }
 
-    // System default
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ?? '.';
     final dl = Directory(
