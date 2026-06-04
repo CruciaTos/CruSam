@@ -23,22 +23,13 @@ class _SalaryDisbursementsScreenState
     extends State<SalaryDisbursementsScreen> {
   final _notifier = SalaryDisbursementNotifier.instance;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _notifier.load();
-    });
-  }
-
-  // ── Generate + Export (one tap) ────────────────────────────────────────────
+  // ── Generate + Export ──────────────────────────────────────────────────────
 
   Future<void> _onGenerate() async {
     if (_notifier.selectedCount == 0) {
       _showSnack('Select at least one employee first.');
       return;
     }
-
     showLoader(context, message: 'Generating & exporting salary disbursement…');
     try {
       final n    = SalaryDataNotifier.instance;
@@ -55,8 +46,6 @@ class _SalaryDisbursementsScreenState
       if (mounted) hideLoader(context);
     }
   }
-
-  // ── Re-export from history ─────────────────────────────────────────────────
 
   Future<void> _onExportExcel(SalaryDisbursementModel disbursement) async {
     showLoader(context, message: 'Exporting Excel…');
@@ -104,6 +93,14 @@ class _SalaryDisbursementsScreenState
   }
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifier.load();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: Listenable.merge([_notifier, SalaryDataNotifier.instance]),
@@ -116,7 +113,7 @@ class _SalaryDisbursementsScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Toolbar ──────────────────────────────────────────────
+              // ── Toolbar ────────────────────────────────────────────────
               _Toolbar(
                 monthName:     n.monthName,
                 year:          n.year,
@@ -129,11 +126,11 @@ class _SalaryDisbursementsScreenState
               ),
               const SizedBox(height: AppSpacing.lg),
 
-              // ── Error ─────────────────────────────────────────────────
+              // ── Error ───────────────────────────────────────────────────
               if (notifier.error.isNotEmpty)
                 Container(
-                  margin:   const EdgeInsets.only(bottom: AppSpacing.md),
-                  padding:  const EdgeInsets.all(12),
+                  margin:  const EdgeInsets.only(bottom: AppSpacing.md),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color:        Colors.red.shade50,
                     borderRadius: BorderRadius.circular(AppSpacing.radius),
@@ -143,30 +140,38 @@ class _SalaryDisbursementsScreenState
                       style: TextStyle(color: Colors.red.shade800)),
                 ),
 
-              // ── Body ─────────────────────────────────────────────────
+              // ── Body ────────────────────────────────────────────────────
               Expanded(
                 child: notifier.isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Left: candidates table
-                          Expanded(
-                            flex: 3,
-                            child: _CandidatesPanel(
-                              notifier:   notifier,
-                              onGenerate: _onGenerate,
+                          // ── Left pane: history + selection controls ──────
+                          SizedBox(
+                            width: 288,
+                            child: Container(
+                              color: Colors.grey[200],
+                              padding: const EdgeInsets.all(AppSpacing.md),
+                              child: _LeftPane(
+                                notifier:  notifier,
+                                onGenerate: _onGenerate,
+                                onExport:  _onExportExcel,
+                                onDelete:  _onDelete,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: AppSpacing.xl),
-                          // Right: history
+
+                          // ── Divider ──────────────────────────────────────
+                          Container(
+                            width: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 16),
+                            color: AppColors.slate200,
+                          ),
+
+                          // ── Right pane: disbursement preview table ────────
                           Expanded(
-                            flex: 2,
-                            child: _HistoryPanel(
-                              history:  notifier.history,
-                              onExport: _onExportExcel,
-                              onDelete: _onDelete,
-                            ),
+                            child: _PreviewPane(notifier: notifier),
                           ),
                         ],
                       ),
@@ -239,9 +244,8 @@ class _Toolbar extends StatelessWidget {
         const SizedBox(width: 4),
         isGenerating
             ? const SizedBox(
-                width:  24,
-                height: 24,
-                child:  CircularProgressIndicator(strokeWidth: 2))
+                width: 24, height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2))
             : ElevatedButton.icon(
                 onPressed: selectedCount > 0 ? onGenerate : null,
                 icon:  const Icon(Icons.account_balance_outlined, size: 16),
@@ -257,135 +261,164 @@ class _Toolbar extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _CandidatesPanel — the main selection table
+// _LeftPane  — selection controls + history
 // ══════════════════════════════════════════════════════════════════════════════
 
-class _CandidatesPanel extends StatelessWidget {
+class _LeftPane extends StatelessWidget {
   final SalaryDisbursementNotifier notifier;
-  final VoidCallback                onGenerate;
+  final VoidCallback onGenerate;
+  final void Function(SalaryDisbursementModel) onExport;
+  final void Function(SalaryDisbursementModel) onDelete;
 
-  const _CandidatesPanel({
+  const _LeftPane({
     required this.notifier,
     required this.onGenerate,
+    required this.onExport,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final candidates = notifier.candidates;
+    final allSelected = notifier.allSelected;
 
-    return Container(
-      decoration: BoxDecoration(
-        color:        Colors.white,
-        border:       Border.all(color: AppColors.slate200),
-        borderRadius: BorderRadius.circular(AppSpacing.radius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Table header ────────────────────────────────────────────
-          _TableHeader(
-            allSelected: notifier.allSelected,
-            onSelectAll: notifier.allSelected
-                ? notifier.deselectAll
-                : notifier.selectAll,
-          ),
-          // ── Rows ────────────────────────────────────────────────────
-          if (candidates.isEmpty)
-            const _EmptyState()
-          else
+    return ListView(
+      children: [
+        // ── Section: Selection Summary ─────────────────────────────────────
+        Text('Selection', style: AppTextStyles.h4),
+        const SizedBox(height: AppSpacing.md),
+
+        // Select all / deselect all row
+        Row(
+          children: [
+            Checkbox(
+              value: allSelected,
+              tristate: !allSelected && notifier.selectedCount > 0,
+              onChanged: (_) =>
+                  allSelected ? notifier.deselectAll() : notifier.selectAll(),
+              activeColor: AppColors.indigo500,
+              side: const BorderSide(color: AppColors.slate500),
+            ),
             Expanded(
-              child: ListView.separated(
-                padding: EdgeInsets.zero,
-                itemCount: candidates.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: AppColors.slate100),
-                itemBuilder: (ctx, i) {
-                  final item = candidates[i];
-                  return _CandidateRow(
-                    item:       item,
-                    isSelected: notifier.isEmployeeSelected(item.employeeId),
-                    onToggle:   () => notifier.toggleEmployee(item.employeeId),
-                  );
-                },
+              child: Text(
+                allSelected
+                    ? 'All selected'
+                    : notifier.selectedCount == 0
+                        ? 'None selected'
+                        : '${notifier.selectedCount} of ${candidates.length} selected',
+                style: AppTextStyles.small.copyWith(color: AppColors.slate300),
               ),
             ),
-          // ── Totals bar ───────────────────────────────────────────────
-          if (candidates.isNotEmpty)
-            _TotalsBar(
-              totalAll:      candidates.fold(0.0, (s, c) => s + c.amount),
-              totalSelected: notifier.selectedTotal,
-              selectedCount: notifier.selectedCount,
-              totalCount:    candidates.length,
+          ],
+        ),
+        const SizedBox(height: AppSpacing.sm),
+
+        // Employee chips list (scrollable within the pane)
+        if (candidates.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'No eligible employees.\nEnter days in the Employees tab first.',
+              style: AppTextStyles.small.copyWith(color: AppColors.slate400),
+              textAlign: TextAlign.center,
             ),
-        ],
-      ),
-    );
-  }
-}
+          )
+        else
+          ...candidates.map((item) {
+            final isSelected = notifier.isEmployeeSelected(item.employeeId);
+            return _EmployeeChip(
+              item:       item,
+              isSelected: isSelected,
+              onToggle:   () => notifier.toggleEmployee(item.employeeId),
+            );
+          }),
 
-// ── Table header row ──────────────────────────────────────────────────────────
+        const SizedBox(height: AppSpacing.md),
+        const Divider(),
+        const SizedBox(height: AppSpacing.sm),
 
-class _TableHeader extends StatelessWidget {
-  final bool         allSelected;
-  final VoidCallback onSelectAll;
-
-  const _TableHeader({
-    required this.allSelected,
-    required this.onSelectAll,
-  });
-
-  static const _labels = [
-    '',               // checkbox column
-    'Beneficiary Name',
-    'Bank Name',
-    'Account Number',
-    'IFSC',
-    'Amount (₹)',
-    'Status',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.slate900,
-        borderRadius: BorderRadius.vertical(
-            top: Radius.circular(AppSpacing.radius - 1)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            child: Checkbox(
-              value:       allSelected,
-              onChanged:   (_) => onSelectAll(),
-              activeColor: AppColors.indigo500,
-              side:        const BorderSide(color: AppColors.slate500),
-            ),
+        // ── Totals summary ─────────────────────────────────────────────────
+        Text('Summary',
+            style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
+        const SizedBox(height: AppSpacing.sm),
+        _summaryRow(
+          'Total Employees',
+          '${candidates.length}',
+          AppColors.indigo400,
+        ),
+        _summaryRow(
+          'Total Payable',
+          '₹${candidates.fold(0.0, (s, c) => s + c.amount).toStringAsFixed(0)}',
+          AppColors.indigo400,
+        ),
+        if (notifier.selectedCount > 0) ...[
+          const SizedBox(height: 4),
+          _summaryRow(
+            'Selected',
+            '${notifier.selectedCount}',
+            AppColors.amber700,
           ),
-          ..._labels.skip(1).map((lbl) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 12),
-                  child: Text(lbl,
-                      style: AppTextStyles.label
-                          .copyWith(color: AppColors.slate400)),
-                ),
-              )),
+          _summaryRow(
+            'Selected Amount',
+            '₹${notifier.selectedTotal.toStringAsFixed(0)}',
+            AppColors.emerald700,
+            bold: true,
+          ),
         ],
-      ),
+
+        const SizedBox(height: AppSpacing.xl),
+        const Divider(),
+        const SizedBox(height: AppSpacing.sm),
+
+        // ── Disbursement History ───────────────────────────────────────────
+        Text('Disbursement History', style: AppTextStyles.h4),
+        const SizedBox(height: AppSpacing.md),
+
+        if (notifier.history.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No disbursements yet.',
+              style: AppTextStyles.small.copyWith(color: AppColors.slate400),
+            ),
+          )
+        else
+          ...notifier.history.map((d) => _HistoryCard(
+                disbursement: d,
+                onExport:     () => onExport(d),
+                onDelete:     () => onDelete(d),
+              )),
+      ],
     );
   }
+
+  static Widget _summaryRow(String label, String value, Color color,
+      {bool bold = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: AppTextStyles.small),
+            Text(value,
+                style: AppTextStyles.small.copyWith(
+                  color:      color,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+                  fontSize:   bold ? 13 : 12,
+                )),
+          ],
+        ),
+      );
 }
 
-// ── Single candidate row (always interactive) ────────────────────────────────
+// ── Employee selection chip ────────────────────────────────────────────────────
 
-class _CandidateRow extends StatelessWidget {
+class _EmployeeChip extends StatelessWidget {
   final SalaryDisbursementItemModel item;
   final bool         isSelected;
   final VoidCallback onToggle;
 
-  const _CandidateRow({
+  const _EmployeeChip({
     required this.item,
     required this.isSelected,
     required this.onToggle,
@@ -395,216 +428,74 @@ class _CandidateRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onToggle,
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        color: isSelected
-            ? AppColors.indigo600.withValues(alpha: 0.06)
-            : Colors.transparent,
+        margin:  const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.indigo600.withValues(alpha: 0.10)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.indigo600.withValues(alpha: 0.35)
+                : AppColors.slate700,
+          ),
+        ),
         child: Row(
           children: [
-            SizedBox(
-              width: 48,
-              child: Checkbox(
-                value:       isSelected,
-                onChanged:   (_) => onToggle(),
-                activeColor: AppColors.indigo500,
-              ),
+            Checkbox(
+              value:     isSelected,
+              onChanged: (_) => onToggle(),
+              activeColor: AppColors.indigo500,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
             ),
-            Expanded(child: _cell(item.employeeName,  bold: true)),
-            Expanded(child: _cell(item.bankName.isEmpty ? '—' : item.bankName)),
-            Expanded(child: _cell(item.accountNumber, mono: true)),
-            Expanded(child: _cell(item.ifscCode,      mono: true)),
+            const SizedBox(width: 6),
             Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 12),
-                child: Text(
-                  '₹${item.amount.toStringAsFixed(2)}',
-                  style: AppTextStyles.bodySemi.copyWith(
-                    color:      AppColors.emerald700,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 12),
-                child: _StatusBadge(status: item.status),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static Widget _cell(String text,
-      {bool bold = false, bool mono = false}) =>
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-        child: Text(
-          text,
-          style: AppTextStyles.body.copyWith(
-            fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
-            fontFamily: mono ? 'monospace' : null,
-            fontSize:   13,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-      );
-}
-
-// ── Totals bar ────────────────────────────────────────────────────────────────
-
-class _TotalsBar extends StatelessWidget {
-  final double totalAll;
-  final double totalSelected;
-  final int    selectedCount;
-  final int    totalCount;
-
-  const _TotalsBar({
-    required this.totalAll,
-    required this.totalSelected,
-    required this.selectedCount,
-    required this.totalCount,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color:  AppColors.slate900,
-        border: const Border(top: BorderSide(color: AppColors.slate700)),
-        borderRadius: const BorderRadius.vertical(
-            bottom: Radius.circular(AppSpacing.radius - 1)),
-      ),
-      child: Row(
-        children: [
-          _chip('Total Employees', '$totalCount', AppColors.slate400),
-          const SizedBox(width: 24),
-          _chip('Total Payable',
-              '₹${totalAll.toStringAsFixed(0)}', AppColors.indigo400),
-          const Spacer(),
-          if (selectedCount > 0) ...[
-            _chip('Selected', '$selectedCount', AppColors.amber100),
-            const SizedBox(width: 16),
-            _chip('Selected Amount',
-                '₹${totalSelected.toStringAsFixed(0)}', AppColors.emerald700),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static Widget _chip(String label, String value, Color color) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('$label: ',
-              style: AppTextStyles.small
-                  .copyWith(color: AppColors.slate500, fontSize: 13)),
-          Text(value,
-              style: AppTextStyles.small.copyWith(
-                  color:      color,
-                  fontWeight: FontWeight.w700,
-                  fontSize:   13)),
-        ],
-      );
-}
-
-// ── Empty state ────────────────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) => Expanded(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.account_balance_wallet_outlined,
-                  size: 48, color: AppColors.slate300),
-              const SizedBox(height: 12),
-              Text('No eligible employees',
-                  style: AppTextStyles.h4
-                      .copyWith(color: AppColors.slate400)),
-              const SizedBox(height: 6),
-              Text(
-                'Enter days worked in the Employees tab first,\n'
-                'then come back here.',
-                style:     AppTextStyles.small,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      );
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// _HistoryPanel — right panel showing past disbursement batches
-// ══════════════════════════════════════════════════════════════════════════════
-
-class _HistoryPanel extends StatelessWidget {
-  final List<SalaryDisbursementModel>          history;
-  final void Function(SalaryDisbursementModel) onExport;
-  final void Function(SalaryDisbursementModel) onDelete;
-
-  const _HistoryPanel({
-    required this.history,
-    required this.onExport,
-    required this.onDelete,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color:        Colors.white,
-        border:       Border.all(color: AppColors.slate200),
-        borderRadius: BorderRadius.circular(AppSpacing.radius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color:        AppColors.slate900,
-              borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(AppSpacing.radius - 1)),
-            ),
-            child: Text('Disbursement History',
-                style: AppTextStyles.bodyMedium
-                    .copyWith(fontWeight: FontWeight.w600)),
-          ),
-          history.isEmpty
-              ? const Expanded(
-                  child: Center(
-                    child: Text('No disbursements yet.',
-                        style: TextStyle(color: AppColors.slate400)),
-                  ),
-                )
-              : Expanded(
-                  child: ListView.separated(
-                    padding:          EdgeInsets.zero,
-                    itemCount:        history.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: AppColors.slate100),
-                    itemBuilder: (ctx, i) => _HistoryCard(
-                      disbursement: history[i],
-                      onExport:     () => onExport(history[i]),
-                      onDelete:     () => onDelete(history[i]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.employeeName,
+                    style: AppTextStyles.small.copyWith(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                      color: isSelected
+                          ? AppColors.indigo400
+                          : AppColors.slate300,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-        ],
+                  Text(
+                    item.bankName.isEmpty ? '—' : item.bankName,
+                    style: AppTextStyles.small.copyWith(
+                      fontSize: 10,
+                      color: AppColors.slate500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '₹${item.amount.toStringAsFixed(0)}',
+              style: AppTextStyles.small.copyWith(
+                color:      AppColors.emerald700,
+                fontWeight: FontWeight.w700,
+                fontSize:   12,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
+
+// ── History card ──────────────────────────────────────────────────────────────
 
 class _HistoryCard extends StatelessWidget {
   final SalaryDisbursementModel disbursement;
@@ -626,52 +517,413 @@ class _HistoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final month = _monthNames[(disbursement.month - 1).clamp(0, 11)];
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color:        Colors.white,
+        borderRadius: BorderRadius.circular(AppSpacing.radius),
+        border:       Border.all(color: AppColors.slate200),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$month ${disbursement.year}',
-                  style: AppTextStyles.bodySemi.copyWith(
-                      fontSize: 14, fontWeight: FontWeight.w700),
-                ),
+          Row(children: [
+            Expanded(
+              child: Text(
+                '$month ${disbursement.year}',
+                style: AppTextStyles.small.copyWith(
+                    fontSize: 13, fontWeight: FontWeight.w700),
               ),
-              _StatusBadge(status: disbursement.status),
-            ],
-          ),
-          const SizedBox(height: 4),
-          if (disbursement.exportedAt != null)
+            ),
+            _StatusBadge(status: disbursement.status),
+          ]),
+          if (disbursement.exportedAt != null) ...[
+            const SizedBox(height: 2),
             Text(
               'Exported ${disbursement.exportedAt!.split('T').first}',
               style: AppTextStyles.small.copyWith(color: AppColors.slate500),
             ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _ActionBtn(
-                icon:  Icons.table_chart_outlined,
-                label: 'Export Excel',
-                color: Colors.green.shade700,
-                onTap: onExport,
-              ),
-              const Spacer(),
-              _ActionBtn(
-                icon:  Icons.delete_outline,
-                label: 'Delete',
-                color: Colors.red,
-                onTap: onDelete,
-              ),
-            ],
-          ),
+          ],
+          const SizedBox(height: 6),
+          Row(children: [
+            _ActionBtn(
+              icon:  Icons.table_chart_outlined,
+              label: 'Export Excel',
+              color: Colors.green.shade700,
+              onTap: onExport,
+            ),
+            const Spacer(),
+            _ActionBtn(
+              icon:  Icons.delete_outline,
+              label: 'Delete',
+              color: Colors.red,
+              onTap: onDelete,
+            ),
+          ]),
         ],
       ),
     );
   }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// _PreviewPane  — live preview table matching Excel column layout exactly
+// ══════════════════════════════════════════════════════════════════════════════
+
+class _PreviewPane extends StatelessWidget {
+  final SalaryDisbursementNotifier notifier;
+
+  const _PreviewPane({required this.notifier});
+
+  // Excel column widths (from SalaryDisbursementService) mapped to flex values
+  // Amount(22) | Debit A/C(20) | IFSC(14) | Credit A/C(20) | Code(10) |
+  // Beneficiary(22) | Branch(29) | Bank Details(25)
+  static const _colFlex = [22, 20, 14, 20, 10, 22, 29, 25];
+
+  static const _headers = [
+    'Amount',
+    'Debit A/C No.',
+    'IFSC',
+    'Credit A/c No.',
+    'Code',
+    'Beneficiary',
+    'Branch',
+    'Bank Details',
+  ];
+
+  static const _scrollbarTheme = ScrollbarThemeData(
+    thickness: WidgetStatePropertyAll(6),
+    radius: Radius.circular(4),
+    thumbColor: WidgetStatePropertyAll(AppColors.indigo500),
+    trackColor: WidgetStatePropertyAll(Color(0x26536DFE)),
+    trackBorderColor: WidgetStatePropertyAll(Colors.transparent),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final candidates = notifier.candidates;
+    final config     = notifier.config;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Hint bar ──────────────────────────────────────────────────────
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.slate800,
+            borderRadius: BorderRadius.circular(AppSpacing.radius),
+          ),
+          child: Row(children: [
+            const Icon(Icons.table_chart_outlined,
+                size: 13, color: AppColors.slate400),
+            const SizedBox(width: 6),
+            Text(
+              'Preview matches Excel export layout exactly  ·  Selected rows highlighted',
+              style: AppTextStyles.small.copyWith(color: AppColors.slate400),
+            ),
+          ]),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+
+        // ── Table ─────────────────────────────────────────────────────────
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D1424),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(color: AppColors.slate700, width: 0.5),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              child: Column(
+                children: [
+                  // Header row
+                  _PreviewHeader(colFlex: _colFlex, headers: _headers),
+
+                  // Data rows
+                  if (candidates.isEmpty)
+                    const Expanded(
+                      child: Center(
+                        child: _EmptyPreview(),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: ScrollbarTheme(
+                        data: _scrollbarTheme,
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            itemCount: candidates.length + 1, // +1 for total row
+                            separatorBuilder: (_, __) => const Divider(
+                                height: 1, color: AppColors.slate800),
+                            itemBuilder: (ctx, i) {
+                              if (i == candidates.length) {
+                                // Total row
+                                return _TotalRow(
+                                  colFlex:   _colFlex,
+                                  total:     candidates.fold(
+                                      0.0, (s, c) => s + c.amount),
+                                  selectedTotal: notifier.selectedTotal,
+                                  selectedCount: notifier.selectedCount,
+                                  totalCount: candidates.length,
+                                );
+                              }
+                              final item       = candidates[i];
+                              final isSelected = notifier.isEmployeeSelected(
+                                  item.employeeId);
+                              return _PreviewRow(
+                                item:         item,
+                                colFlex:      _colFlex,
+                                isSelected:   isSelected,
+                                debitAccount: config.accountNo,
+                                rowIndex:     i,
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Preview header ─────────────────────────────────────────────────────────────
+
+class _PreviewHeader extends StatelessWidget {
+  final List<int>    colFlex;
+  final List<String> headers;
+
+  const _PreviewHeader({required this.colFlex, required this.headers});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.slate900,
+        border: Border(bottom: BorderSide(color: AppColors.slate700)),
+      ),
+      child: Row(
+        children: List.generate(headers.length, (i) {
+          final isFirst = i == 0;
+          final isAmount = i == 0;
+          return Expanded(
+            flex: colFlex[i],
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: i > 0
+                  ? const BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: AppColors.slate800, width: 0.5)))
+                  : null,
+              alignment:
+                  isAmount ? Alignment.centerRight : Alignment.centerLeft,
+              child: Text(
+                headers[i],
+                style: AppTextStyles.label.copyWith(
+                  color:    AppColors.slate400,
+                  fontSize: 11,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Preview data row ───────────────────────────────────────────────────────────
+
+class _PreviewRow extends StatelessWidget {
+  final SalaryDisbursementItemModel item;
+  final List<int>  colFlex;
+  final bool       isSelected;
+  final String     debitAccount;
+  final int        rowIndex;
+
+  const _PreviewRow({
+    required this.item,
+    required this.colFlex,
+    required this.isSelected,
+    required this.debitAccount,
+    required this.rowIndex,
+  });
+
+  // Matches Excel column order exactly:
+  // Amount | Debit A/C | IFSC | Credit A/C | Code | Beneficiary | Branch | Bank Details
+  List<String> get _cells => [
+    '₹${item.amount.toStringAsFixed(2)}',  // Amount
+    debitAccount,                           // Debit A/C (config.accountNo)
+    item.ifscCode,                          // IFSC
+    item.accountNumber,                     // Credit A/C
+    '10',                                   // Code (always 10)
+    item.employeeName,                      // Beneficiary
+    item.branch,                            // Branch
+    item.bankName.isEmpty ? '—' : item.bankName, // Bank Details
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final cells  = _cells;
+    final rowBg  = isSelected
+        ? AppColors.indigo600.withValues(alpha: 0.10)
+        : rowIndex.isEven
+            ? const Color(0xFF0D1424)
+            : const Color(0xFF111827);
+
+    return Container(
+      color: rowBg,
+      child: Row(
+        children: List.generate(cells.length, (i) {
+          final isAmount = i == 0;
+          final isMono   = i == 1 || i == 2 || i == 3; // account/ifsc
+          final isBene   = i == 5;
+
+          return Expanded(
+            flex: colFlex[i],
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: i > 0
+                  ? BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: AppColors.slate800, width: 0.5)))
+                  : null,
+              alignment:
+                  isAmount ? Alignment.centerRight : Alignment.centerLeft,
+              child: Text(
+                cells[i],
+                style: AppTextStyles.body.copyWith(
+                  fontSize:   isAmount ? 12 : 11,
+                  fontWeight: isAmount || isBene
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                  color: isAmount
+                      ? AppColors.emerald700
+                      : isBene
+                          ? (isSelected
+                              ? AppColors.indigo400
+                              : AppColors.slate200)
+                          : AppColors.slate400,
+                  fontFamily: isMono ? 'monospace' : null,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Total row ─────────────────────────────────────────────────────────────────
+
+class _TotalRow extends StatelessWidget {
+  final List<int> colFlex;
+  final double    total;
+  final double    selectedTotal;
+  final int       selectedCount;
+  final int       totalCount;
+
+  const _TotalRow({
+    required this.colFlex,
+    required this.total,
+    required this.selectedTotal,
+    required this.selectedCount,
+    required this.totalCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 8 columns — put total in col 0, "TOTAL" label in col 5 (Beneficiary)
+    // put selected amount in col 0 context below
+    final cells = List<String>.filled(8, '');
+    cells[0] = '₹${total.toStringAsFixed(2)}';
+    cells[5] = 'TOTAL ($totalCount employees)';
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.slate900,
+        border: Border(top: BorderSide(color: AppColors.slate700)),
+      ),
+      child: Row(
+        children: List.generate(8, (i) {
+          final isAmount = i == 0;
+          final isBene   = i == 5;
+          return Expanded(
+            flex: colFlex[i],
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              decoration: i > 0
+                  ? const BoxDecoration(
+                      border: Border(
+                          left: BorderSide(
+                              color: AppColors.slate700, width: 0.5)))
+                  : null,
+              alignment:
+                  isAmount ? Alignment.centerRight : Alignment.centerLeft,
+              child: cells[i].isEmpty
+                  ? null
+                  : Text(
+                      cells[i],
+                      style: AppTextStyles.small.copyWith(
+                        fontSize:   isAmount ? 12 : 11,
+                        fontWeight: FontWeight.w700,
+                        color: isAmount
+                            ? AppColors.indigo400
+                            : AppColors.slate500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ── Empty preview ─────────────────────────────────────────────────────────────
+
+class _EmptyPreview extends StatelessWidget {
+  const _EmptyPreview();
+
+  @override
+  Widget build(BuildContext context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              size: 48, color: AppColors.slate600),
+          const SizedBox(height: 12),
+          Text('No eligible employees',
+              style:
+                  AppTextStyles.h4.copyWith(color: AppColors.slate500)),
+          const SizedBox(height: 6),
+          Text(
+            'Enter days worked in the Employees tab first,\nthen come back here.',
+            style:     AppTextStyles.small.copyWith(color: AppColors.slate600),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      );
+}
+
+// ── Shared widgets ────────────────────────────────────────────────────────────
 
 class _ActionBtn extends StatelessWidget {
   final IconData     icon;
@@ -704,8 +956,6 @@ class _ActionBtn extends StatelessWidget {
         ),
       );
 }
-
-// ── Status badge shared by candidates and history ─────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
   final SalaryDisbursementStatus status;

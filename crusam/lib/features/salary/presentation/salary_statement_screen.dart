@@ -10,7 +10,7 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
-import '../../../shared/widgets/full_screen_loader.dart'; // ← added
+import '../../../shared/widgets/full_screen_loader.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_statement_excel_export_service.dart';
@@ -30,15 +30,10 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   bool _exporting = false;
   bool _exportingExcel = false;
 
-  // Scroll controllers — one vertical, one horizontal
   late final ScrollController _vScroll;
   late final ScrollController _hScroll;
 
-  // Column width overrides (index → width in px)
-  // Now covers indices 0–17 (18 columns)
   late final Map<int, double> _columnWidths;
-
-  // Text controllers for the column-width fields
   late final List<TextEditingController> _colCtrls;
 
   static const String _prefsKey = 'salary_statement_column_widths';
@@ -49,10 +44,8 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     _vScroll = ScrollController();
     _hScroll = ScrollController();
 
-    // 1. Start with default widths
     _columnWidths = _initializeColumnWidths();
 
-    // 2. Create text controllers using the current widths
     _colCtrls = List.generate(
       _columnWidths.length,
       (i) => TextEditingController(
@@ -62,39 +55,22 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
               .toStringAsFixed(0)),
     );
 
-    // 3. Load persisted widths and update both the map and controllers
     _loadColumnWidths();
 
     if (_stateCtrl.employees.isEmpty) _stateCtrl.loadEmployees();
     _loadConfig();
   }
 
-  /// Attempts to copy default widths; falls back to a built-in map if static
-  /// is uninitialized. Now covers 0–17 (18 columns).
   Map<int, double> _initializeColumnWidths() {
     try {
       return Map.of(SalaryStatementPreview.defaultColumnWidths);
     } catch (e) {
-      // Fallback default column widths (18 columns)
       return {
-        0: 26.0,
-        1: 124.0,
-        2: 84.0,
-        3: 92.0,
-        4: 30.0,
-        5: 38.0,
-        6: 74.0,
-        7: 104.0,
-        8: 50.0,
-        9: 50.0,
-        10: 38.0,
-        11: 54.0,
-        12: 36.0,
-        13: 30.0,
-        14: 30.0,
-        15: 36.0,
-        16: 50.0,
-        17: 56.0,
+        0: 26.0, 1: 124.0, 2: 84.0,  3: 92.0,
+        4: 30.0, 5: 38.0,  6: 74.0,  7: 104.0,
+        8: 50.0, 9: 50.0, 10: 38.0, 11: 54.0,
+       12: 36.0,13: 30.0, 14: 30.0, 15: 36.0,
+       16: 50.0,17: 56.0,
       };
     }
   }
@@ -109,11 +85,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     super.dispose();
   }
 
-  // ----------------------------------------------------------------------
-  // PERSISTENCE METHODS
-  // ----------------------------------------------------------------------
-
-  /// Loads saved column widths from SharedPreferences and applies them.
   Future<void> _loadColumnWidths() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -132,12 +103,10 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       if (loaded.isEmpty) return;
 
       setState(() {
-        // Merge loaded widths into the current map
         loaded.forEach((index, width) {
           _columnWidths[index] = width;
         });
 
-        // Update the text controllers to reflect the loaded values
         for (int i = 0; i < _colCtrls.length; i++) {
           final width = _columnWidths[i] ??
               SalaryStatementPreview.defaultColumnWidths[i] ??
@@ -147,11 +116,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       });
     } catch (e) {
       debugPrint('Failed to load column widths: $e');
-      // Silently fall back to defaults
     }
   }
 
-  /// Persists the current column widths to SharedPreferences.
   Future<void> _saveColumnWidths() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -165,10 +132,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
   }
 
-  // ----------------------------------------------------------------------
-  // CONFIG & EXPORT
-  // ----------------------------------------------------------------------
-
   Future<void> _loadConfig() async {
     final map = await DatabaseHelper.instance.getCompanyConfig();
     if (map != null && mounted) {
@@ -176,7 +139,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
   }
 
-  // ── PDF export — now uses SalaryStatementPdfService (pw-based, no screenshot) ──
   Future<void> _exportPdf() async {
     if (_exporting) return;
     final n         = SalaryDataNotifier.instance;
@@ -190,7 +152,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
 
     setState(() => _exporting = true);
-    showLoader(context, message: 'Generating salary statement PDF…');   // ← added
+    showLoader(context, message: 'Generating salary statement PDF…');
     try {
       final daysMap = <int, int>{};
       for (final e in employees) {
@@ -217,7 +179,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
-      if (mounted) hideLoader(context);   // ← added as first line
+      if (mounted) hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -236,7 +198,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
 
     setState(() => _exportingExcel = true);
-    showLoader(context, message: 'Exporting salary statement Excel…');   // ← added
+    showLoader(context, message: 'Exporting salary statement Excel…');
     try {
       final daysMap = <int, int>{};
       for (final e in employees) {
@@ -256,7 +218,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       );
 
       if (!mounted) return;
-      // Task 4: file saved silently — no snackbar on success.
       if (path == null) {
         throw Exception('Failed to save Excel file');
       }
@@ -269,7 +230,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
-      if (mounted) hideLoader(context);   // ← added as first line
+      if (mounted) hideLoader(context);
       if (mounted) setState(() => _exportingExcel = false);
     }
   }
@@ -294,7 +255,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Toolbar ─────────────────────────────────────────────────
               _Toolbar(
                 title:          title,
                 monthName:      n.monthName,
@@ -312,14 +272,12 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
               const SizedBox(height: AppSpacing.lg),
 
-              // ── Body ────────────────────────────────────────────────────
               Expanded(
                 child: _stateCtrl.isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ── Left pane ──────────────────────────────────
                           SizedBox(
                             width: 272,
                             child: Container(
@@ -339,13 +297,10 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                                 onColReset: () {
                                   setState(() {
                                     for (int i = 0;
-                                        i <
-                                            SalaryStatementPreview
-                                                .columnLabels.length;
+                                        i < SalaryStatementPreview.columnLabels.length;
                                         i++) {
                                       _columnWidths[i] =
-                                          SalaryStatementPreview
-                                                  .defaultColumnWidths[i] ??
+                                          SalaryStatementPreview.defaultColumnWidths[i] ??
                                               60.0;
                                       _colCtrls[i].text =
                                           _columnWidths[i]!.toStringAsFixed(0);
@@ -357,19 +312,16 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                             ),
                           ),
 
-                          // ── Divider ────────────────────────────────────
                           Container(
                             width: 1,
                             margin: const EdgeInsets.symmetric(horizontal: 16),
                             color: AppColors.slate200,
                           ),
 
-                          // ── Preview pane ───────────────────────────────
                           Expanded(
                             child: employees.isEmpty
                                 ? _EmptyState(
-                                    hasEmployees:
-                                        _stateCtrl.employees.isNotEmpty)
+                                    hasEmployees: _stateCtrl.employees.isNotEmpty)
                                 : _PreviewPane(
                                     config:       _config,
                                     employees:    employees,
@@ -392,7 +344,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _Toolbar
+// _Toolbar  (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _Toolbar extends StatelessWidget {
@@ -437,13 +389,11 @@ class _Toolbar extends StatelessWidget {
             const Spacer(),
             if (employees.isNotEmpty) ...[
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: AppColors.indigo600.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.indigo600.withValues(alpha: 0.3)),
+                  border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.3)),
                 ),
                 child: Text(
                   '${employees.length} employee${employees.length == 1 ? '' : 's'}',
@@ -471,8 +421,7 @@ class _Toolbar extends StatelessWidget {
             ],
             exportingPdf
                 ? const SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 24, height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : OutlinedButton.icon(
                     onPressed: onExportPdf,
@@ -486,8 +435,7 @@ class _Toolbar extends StatelessWidget {
             const SizedBox(width: 8),
             exportingExcel
                 ? const SizedBox(
-                    width: 24,
-                    height: 24,
+                    width: 24, height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : OutlinedButton.icon(
@@ -506,8 +454,7 @@ class _Toolbar extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _codeChip(
-                  'All', selectedCode == 'All', () => onCodeChanged(null)),
+              _codeChip('All', selectedCode == 'All', () => onCodeChanged(null)),
               ...['F&B', 'I&L', 'P&S', 'A&P'].map((c) =>
                   _codeChip(c, selectedCode == c, () => onCodeChanged(c))),
             ],
@@ -517,24 +464,18 @@ class _Toolbar extends StatelessWidget {
     );
   }
 
-  static Widget _codeChip(
-          String label, bool active, VoidCallback onTap) =>
+  static Widget _codeChip(String label, bool active, VoidCallback onTap) =>
       Padding(
         padding: const EdgeInsets.only(right: 6),
         child: GestureDetector(
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: active
-                  ? AppColors.indigo600
-                  : AppColors.slate800,
+              color: active ? AppColors.indigo600 : AppColors.slate800,
               border: Border.all(
-                  color: active
-                      ? AppColors.indigo600
-                      : AppColors.slate600),
+                  color: active ? AppColors.indigo600 : AppColors.slate600),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(label,
@@ -549,7 +490,7 @@ class _Toolbar extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _LeftPane  — aggregates  +  column-width adjustments
+// _LeftPane
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _LeftPane extends StatefulWidget {
@@ -595,6 +536,12 @@ class _LeftPaneState extends State<_LeftPane> {
     return e.basicCharges * d / widget.daysInMonth;
   }
 
+  double _earnedOther(EmployeeModel e) {
+    final d = _days(e);
+    if (d == 0 || widget.daysInMonth == 0) return 0;
+    return e.otherCharges * d / widget.daysInMonth;
+  }
+
   int _pf(EmployeeModel e) {
     final eb = _earnedBasic(e);
     return eb == 0 ? 0 : (eb >= 15000 ? 1800 : (eb * 0.12).round());
@@ -627,27 +574,31 @@ class _LeftPaneState extends State<_LeftPane> {
 
   @override
   Widget build(BuildContext context) {
-    // Aggregate
+    // ── Aggregates ────────────────────────────────────────────────────────
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
+    double sumEarnedBasic = 0, sumEarnedOther = 0, sumEarnedGross = 0;
     int sumPf = 0, sumEsic = 0, sumMsw = 0, sumPt = 0, sumTd = 0;
     int withDays = 0;
 
     for (final e in widget.employees) {
-      sumBasic += e.basicCharges;
-      sumOther += e.otherCharges;
-      sumGross += e.grossSalary;
-      sumPf    += _pf(e);
-      sumEsic  += _esic(e);
-      sumMsw   += _msw();
-      sumPt    += _pt(e);
-      sumTd    += _td(e);
-      sumNet   += _net(e);
+      sumBasic      += e.basicCharges;
+      sumOther      += e.otherCharges;
+      sumGross      += e.grossSalary;
+      sumEarnedBasic += _earnedBasic(e);
+      sumEarnedOther += _earnedOther(e);
+      sumEarnedGross += _earnedGross(e);
+      sumPf   += _pf(e);
+      sumEsic += _esic(e);
+      sumMsw  += _msw();
+      sumPt   += _pt(e);
+      sumTd   += _td(e);
+      sumNet  += _net(e);
       if (_days(e) > 0) withDays++;
     }
 
     return ListView(
       children: [
-        // ── Salary Aggregates ──────────────────────────────────────────────
+        // ── Full Earnings ─────────────────────────────────────────────────
         Text('Salary Aggregates', style: AppTextStyles.h4),
         const SizedBox(height: AppSpacing.lg),
 
@@ -666,6 +617,23 @@ class _LeftPaneState extends State<_LeftPane> {
         _row('Total Gross', '₹${sumGross.toStringAsFixed(0)}', AppColors.indigo600, bold: true),
         const Divider(height: AppSpacing.lg),
 
+        // ── NEW: Earned Salary section ────────────────────────────────────
+        Text('Earned Salary (Prorated)',
+            style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
+        const SizedBox(height: AppSpacing.sm),
+        _row('Earned Basic',
+            '₹${sumEarnedBasic.toStringAsFixed(0)}',
+            AppColors.indigo600),
+        _row('Earned Other',
+            '₹${sumEarnedOther.toStringAsFixed(0)}',
+            AppColors.indigo600),
+        _row('Earned Gross',
+            '₹${sumEarnedGross.toStringAsFixed(0)}',
+            AppColors.emerald700,
+            bold: true),
+        const Divider(height: AppSpacing.lg),
+
+        // ── Deductions ────────────────────────────────────────────────────
         Text('Deductions (Prorated)',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
@@ -859,7 +827,7 @@ class _LeftPaneState extends State<_LeftPane> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _PreviewPane
+// _PreviewPane  (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _PreviewPane extends StatelessWidget {
@@ -889,13 +857,12 @@ class _PreviewPane extends StatelessWidget {
     trackBorderColor: WidgetStatePropertyAll(Colors.transparent),
   );
 
-  /// Computes the total rendered width of the preview from active column widths.
   double _previewWidth() {
     double w = 0;
     SalaryStatementPreview.defaultColumnWidths.forEach((k, defaultVal) {
       w += columnWidths[k] ?? defaultVal;
     });
-    return w + 28 + 12; // page margins (14*2) + table border slack
+    return w + 28 + 12;
   }
 
   @override
@@ -903,7 +870,6 @@ class _PreviewPane extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Scroll hint ──────────────────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -922,7 +888,6 @@ class _PreviewPane extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.sm),
 
-        // ── Scrollable content area ──────────────────────────────────────
         Expanded(
           child: LayoutBuilder(
             builder: (context, viewportConstraints) {
@@ -991,7 +956,7 @@ class _PreviewPane extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Empty State
+// Empty State  (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _EmptyState extends StatelessWidget {
@@ -1026,7 +991,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Shared badge widgets
+// Shared badge widgets  (unchanged)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _MonthBadge extends StatelessWidget {
