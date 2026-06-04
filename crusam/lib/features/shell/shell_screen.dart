@@ -74,7 +74,6 @@ const _kNav = <_NavItem>[
       ]),
     ]),
     _Route('/salary-statement',    Icons.summarize_outlined,        'Salary Statement'),
-    _Route('/salary-disburse',     Icons.account_balance_outlined,  'Salary Disbursements'),
   ]),
 ];
 

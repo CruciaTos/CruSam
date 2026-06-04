@@ -142,8 +142,7 @@ class AppRouter {
           ),
           GoRoute(
             path: '/salary-disburse',
-            pageBuilder: (context, state) =>
-                _buildPageTransition(state, const SalaryDisbursementsScreen()),
+            redirect: (_, __) => '/dashboard',
           ),
           GoRoute(
             path: '/salary-preview',

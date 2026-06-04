@@ -238,11 +238,27 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
   }
 
+  // ── Generate Disbursement Excel ───────────────────────────────────────────
+  //
+  // Uses whichever employees are currently visible (filtered by the active
+  // company-code chip).  The code is embedded in both deptCode (stored in
+  // the DB batch) and the Excel filename so you always know which filter
+  // produced the file:
+  //
+  //   All selected   →  Salary_Disbursement_June_2025.xlsx
+  //   F&B selected   →  Salary_Disbursement_June_F&B_2025.xlsx
+  //   I&L selected   →  Salary_Disbursement_June_I&L_2025.xlsx
+  //
+  // The trick for the filename: generateExcel() builds the name from the
+  // monthName argument.  We pass a decorated monthName that already contains
+  // the code suffix (e.g. "June_F&B").  The service sanitises slashes etc.
+  // but ampersands are fine and underscores are left as-is.
   Future<void> _generateDisbursement() async {
     if (_generatingDisbursement) return;
 
-    final n         = SalaryDataNotifier.instance;
-    final employees = _stateCtrl.filteredEmployees;
+    final n          = SalaryDataNotifier.instance;
+    final employees  = _stateCtrl.filteredEmployees;
+    final filterCode = _stateCtrl.selectedCompanyCode; // 'All' | 'F&B' | …
 
     if (employees.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -255,7 +271,8 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     showLoader(context, message: 'Generating salary disbursement…');
 
     try {
-      // 1. Build candidate items — no selection UI, everyone in
+      // 1. Build candidate items from the currently visible (filtered) employees.
+      //    alreadyDisbursedIds is empty — no tick-box gatekeeping.
       final candidates = await SalaryDisbursementService.buildCandidateItems(
         employees:           employees,
         salaryData:          n,
@@ -274,15 +291,18 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         return;
       }
 
-      // 2. Persist the batch
+      // 2. Persist the batch.
+      //    deptCode stores exactly the active filter ('All', 'F&B', etc.)
+      //    so history cards in the disbursement screen show the right label.
       final disbursement = await SalaryDisbursementService.createDisbursement(
         month:    n.month,
         year:     n.year,
-        deptCode: _stateCtrl.selectedCompanyCode,
+        deptCode: filterCode,
         items:    candidates,
       );
 
-      // 3. Fetch persisted items directly from the database
+      // 3. Fetch persisted items directly — DatabaseHelper has no
+      //    getDisbursementItems wrapper, so we query the table ourselves.
       final db       = await DatabaseHelper.instance.database;
       final itemMaps = await db.query(
         'salary_disbursement_items',
@@ -293,33 +313,51 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
           .map(SalaryDisbursementItemModel.fromDbMap)
           .toList();
 
-      // 4. Generate + save Excel
+      // 4. Build the decorated monthName that carries the filter code.
+      //
+      //    generateExcel() uses monthName in:
+      //      'Salary_Disbursement_${monthName}_${year}.xlsx'
+      //    so we embed the code directly:
+      //      filterCode == 'All'  →  'June'          → Salary_Disbursement_June_2025.xlsx
+      //      filterCode == 'F&B'  →  'June_F&B'      → Salary_Disbursement_June_F&B_2025.xlsx
+      //
+      //    The service's _saveExcelFileWithIncrement replaces nothing that
+      //    would break here — only [/\\?*:[]] are stripped, & is kept as-is.
+      final String monthNameForFile = filterCode == 'All'
+          ? n.monthName
+          : '${n.monthName}_$filterCode';
+
+      // 5. Generate + save Excel.
       final path = await SalaryDisbursementService.generateExcel(
         disbursement: disbursement,
         items:        persistedItems,
         config:       _config,
-        monthName:    n.monthName,
+        monthName:    monthNameForFile,
       );
 
-      // 5. Mark as exported
+      // 6. Mark the batch as exported.
       if (path != null) {
         final updated = disbursement.copyWith(
           status:     SalaryDisbursementStatus.exported,
           exportedAt: DateTime.now().toIso8601String(),
         );
+        final rowMap = updated.toDbMap()..remove('id');
         await db.update(
           'salary_disbursements',
-          updated.toDbMap()..remove('id'),
+          rowMap,
           where:     'id = ?',
           whereArgs: [disbursement.id!],
         );
       }
 
       if (!mounted) return;
+      final label = filterCode == 'All' ? 'all employees' : filterCode;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            path != null ? 'Disbursement saved: $path' : 'Disbursement created.',
+            path != null
+                ? 'Disbursement ($label) saved: $path'
+                : 'Disbursement ($label) created.',
           ),
         ),
       );
@@ -464,7 +502,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onExportExcel;
   final String selectedCode;
   final void Function(String?) onCodeChanged;
-  final bool       generatingDisbursement;
+  final bool         generatingDisbursement;
   final VoidCallback onGenerateDisbursement;
 
   const _Toolbar({
@@ -486,6 +524,12 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Build a human-readable label for the disbursement button so the user
+    // always knows exactly which scope will be exported.
+    final disbLabel = selectedCode == 'All'
+        ? 'Disbursement'
+        : 'Disbursement ($selectedCode)';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -556,6 +600,7 @@ class _Toolbar extends StatelessWidget {
                     ),
                   ),
             const SizedBox(width: 8),
+            // ── Disbursement button — label updates with active filter ──────
             generatingDisbursement
                 ? const SizedBox(
                     width: 24, height: 24,
@@ -564,7 +609,7 @@ class _Toolbar extends StatelessWidget {
                 : OutlinedButton.icon(
                     onPressed: employees.isEmpty ? null : onGenerateDisbursement,
                     icon: const Icon(Icons.account_balance_outlined, size: 16),
-                    label: const Text('Disbursement'),
+                    label: Text(disbLabel),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal.shade700,
                       side: BorderSide(color: Colors.teal.shade400),
@@ -704,9 +749,9 @@ class _LeftPaneState extends State<_LeftPane> {
     int withDays = 0;
 
     for (final e in widget.employees) {
-      sumBasic      += e.basicCharges;
-      sumOther      += e.otherCharges;
-      sumGross      += e.grossSalary;
+      sumBasic       += e.basicCharges;
+      sumOther       += e.otherCharges;
+      sumGross       += e.grossSalary;
       sumEarnedBasic += _earnedBasic(e);
       sumEarnedOther += _earnedOther(e);
       sumEarnedGross += _earnedGross(e);
@@ -721,6 +766,7 @@ class _LeftPaneState extends State<_LeftPane> {
 
     return ListView(
       children: [
+        // ── Full Earnings ─────────────────────────────────────────────────
         Text('Salary Aggregates', style: AppTextStyles.h4),
         const SizedBox(height: AppSpacing.lg),
 
@@ -838,6 +884,7 @@ class _LeftPaneState extends State<_LeftPane> {
         const Divider(),
         const SizedBox(height: AppSpacing.sm),
 
+        // ── Column Width Adjustments ───────────────────────────────────────
         GestureDetector(
           onTap: () => setState(() => _showColWidths = !_showColWidths),
           child: Row(
