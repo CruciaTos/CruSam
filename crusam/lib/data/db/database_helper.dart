@@ -66,6 +66,8 @@ class DatabaseHelper {
     await _ensureColumn(db, 'employees', 'synced_at', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'voucher_col_widths', 'TEXT');
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
+    await _ensureColumn(db, 'salary_disbursement_items', 'sb_code', "TEXT NOT NULL DEFAULT ''");
+    await _ensureColumn(db, 'salary_disbursement_items', 'branch', "TEXT NOT NULL DEFAULT ''");
 
     await _normalizeEmployeeCodes(db);
 

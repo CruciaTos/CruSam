@@ -120,7 +120,7 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build candidate items (fix: removed reference to emp.employeeCode)
+  // Build candidate items
   // ─────────────────────────────────────────────────────────────────────────
   static Future<List<SalaryDisbursementItemModel>> buildCandidateItems({
     required List<EmployeeModel> employees,
@@ -148,10 +148,7 @@ class SalaryDisbursementService {
         continue;
       }
 
-      // Code – use employee id as string
-      final String code = id.toString();
-
-      // Place – bank details / branch info
+      final String code   = id.toString();
       final String branch = emp.bankDetails;
 
       items.add(SalaryDisbursementItemModel(
@@ -176,17 +173,15 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Persist a new disbursement batch (unchanged)
+  // Persist a new disbursement batch (referenceNo removed)
   // ─────────────────────────────────────────────────────────────────────────
   static Future<SalaryDisbursementModel> createDisbursement({
-    required String  referenceNo,
     required int     month,
     required int     year,
     required String  deptCode,
     required List<SalaryDisbursementItemModel> items,
   }) async {
     final model = SalaryDisbursementModel(
-      referenceNo: referenceNo,
       month:       month,
       year:        year,
       deptCode:    deptCode,
@@ -221,7 +216,6 @@ class SalaryDisbursementService {
     _writeTitleRow(sheet, disbursement, monthName, config);
     _writeHeaderRow(sheet);   // row 4
 
-    // Sort items by employee name (already sorted)
     int    rowIndex = 4;               // first data row will be 5
     double total    = 0;
     for (final item in items) {
@@ -241,9 +235,9 @@ class SalaryDisbursementService {
 
     // ── Total row ──────────────────────────────────────────────────────────
     rowIndex++;
-    final int totalRowIndex = rowIndex;      // one row below last data row
+    final int totalRowIndex = rowIndex;
     _writeTotalRow(sheet, totalRowIndex, items.isNotEmpty, total, lastDataRow);
-    final int totalRowExcel = totalRowIndex + 1;  // actual Excel row of total
+    final int totalRowExcel = totalRowIndex + 1;
 
     // ── Signature image placeholder ────────────────────────────────────────
     await _insertSignatureImage(sheet, lastDataRow);
@@ -253,10 +247,10 @@ class SalaryDisbursementService {
     if (_includeBankSplit) {
       nextRow = _writeBankSplitSection(
         sheet,
-        startRow: totalRowExcel + _bankSplitOffset,
-        baseTotal: total,
+        startRow:    totalRowExcel + _bankSplitOffset,
+        baseTotal:   total,
         idbiToOther: idbiToOther,
-        idbiToIdbi: idbiToIdbi,
+        idbiToIdbi:  idbiToIdbi,
       );
     }
 
@@ -265,6 +259,8 @@ class SalaryDisbursementService {
     final List<int> bytes = workbook.saveAsStream();
     workbook.dispose();
 
+    // Auto-incrementing file name: Salary_Disbursement_June_2025,
+    // Salary_Disbursement_June_2025_1, _2, etc.
     final fileName =
         'Salary_Disbursement_${monthName.replaceAll(' ', '_')}_${disbursement.year}';
     return _saveExcelFileWithIncrement(bytes, fileName);
@@ -334,7 +330,7 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Data row – same indexing logic as ExcelExportService (rowIndex is base-0 offset)
+  // Data row
   // ─────────────────────────────────────────────────────────────────────────
   static void _writeDataRow(
     Worksheet sheet,
@@ -358,14 +354,14 @@ class SalaryDisbursementService {
       col++;
     }
 
-    set(item.amount,            isNumber: true);
+    set(item.amount,        isNumber: true);
     set(config.accountNo);
     set(item.ifscCode);
     set(item.accountNumber);
-    set(item.sbCode);            // Code
-    set(item.employeeName);     // Beneficiary
-    set(item.branch);           // Place
-    set(item.bankName);         // Bank Details
+    set(item.sbCode);
+    set(item.employeeName);
+    set(item.branch);
+    set(item.bankName);
 
     // Apply border to all cells in this row
     for (int c = _dataStartCol; c < col; c++) {
@@ -374,19 +370,18 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Total row – sum formula + amount-in-words merged into adjacent cells
+  // Total row
   // ─────────────────────────────────────────────────────────────────────────
   static void _writeTotalRow(
     Worksheet sheet,
-    int rowIndex,      // base-0 index (total row will be rowIndex+1)
+    int rowIndex,
     bool hasData,
     double baseTotal,
-    int lastDataRow,   // base-0 index of the row after last data
+    int lastDataRow,
   ) {
     final int excelRow   = rowIndex + 1;
     final int amountCol  = _dataStartCol;
 
-    // Sum cell (Amount column)
     final Range sumCell = sheet.getRangeByIndex(excelRow, amountCol);
     if (hasData) {
       final String colLetter = _colIndexToLetter(amountCol);
@@ -414,7 +409,6 @@ class SalaryDisbursementService {
   // ─────────────────────────────────────────────────────────────────────────
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
-      // No actual image – kept for format parity with ExcelExportService
       final ByteData data = await rootBundle.load('');
       final Uint8List bytes = data.buffer.asUint8List();
       // … decode and add picture (code omitted – will fail safely)
@@ -422,7 +416,7 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Bank Transfer Split section (identical to ExcelExportService)
+  // Bank Transfer Split section
   // ─────────────────────────────────────────────────────────────────────────
   static int _writeBankSplitSection(
     Worksheet sheet, {
@@ -527,7 +521,7 @@ class SalaryDisbursementService {
   // Print setup (8 columns)
   // ─────────────────────────────────────────────────────────────────────────
   static void _configurePrintSetup(Worksheet sheet, int lastRow) {
-    final int    toColumnIndex = _dataStartCol + 7; // 8 columns
+    final int    toColumnIndex = _dataStartCol + 7;
     final String endColLetter  = _colIndexToLetter(toColumnIndex);
     sheet.pageSetup.printArea =
         '$_printStartCol$_printStartRow:$endColLetter$lastRow';
@@ -573,7 +567,11 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Save file with auto‑increment (mirrors ExcelExportService)
+  // Save file with auto-increment
+  //
+  // Base name:  Salary_Disbursement_June_2025.xlsx
+  // Subsequent: Salary_Disbursement_June_2025_1.xlsx
+  //             Salary_Disbursement_June_2025_2.xlsx  …
   // ─────────────────────────────────────────────────────────────────────────
   static Future<String?> _saveExcelFileWithIncrement(
       List<int> bytes, String baseName) async {
@@ -588,14 +586,15 @@ class SalaryDisbursementService {
       dir ??= await getDownloadsDirectory() ??
               await getApplicationDocumentsDirectory();
 
+      // First attempt: baseName.xlsx (no suffix)
       String filePath = '${dir.path}${Platform.pathSeparator}$baseName.xlsx';
-      File file = File(filePath);
+      File   file     = File(filePath);
 
       int counter = 1;
       while (await file.exists()) {
         filePath =
             '${dir.path}${Platform.pathSeparator}${baseName}_$counter.xlsx';
-        file = File(filePath);
+        file    = File(filePath);
         counter++;
       }
 

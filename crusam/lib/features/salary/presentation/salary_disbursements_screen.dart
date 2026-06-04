@@ -1,20 +1,4 @@
 // lib/features/salary/presentation/salary_disbursements_screen.dart
-//
-// Salary Disbursement screen — mirrors Tax Invoice Disbursement UX.
-// Source data: employee salary statements (net payable amounts) instead
-// of invoice payable amounts.
-//
-// Layout (identical to invoice disbursement):
-//   ┌─ Toolbar ─────────────────────────────────────────────────────────┐
-//   │  Title  · Month badge  ·  [Generate]  [Export Excel]             │
-//   │  Code filter chips                                                │
-//   └───────────────────────────────────────────────────────────────────┘
-//   ┌─ Candidates table ─────────────────────────────────────────────────┐
-//   │  ☑ | Reference No | Beneficiary | Bank | Account | IFSC | Amount  │
-//   │  ──────────────────── Totals bar ─────────────────────────────────│
-//   └───────────────────────────────────────────────────────────────────┘
-//   ┌─ History list ─────────────────────────────────────────────────────┐
-//   └───────────────────────────────────────────────────────────────────┘
 
 import 'package:flutter/material.dart';
 
@@ -37,10 +21,7 @@ class SalaryDisbursementsScreen extends StatefulWidget {
 
 class _SalaryDisbursementsScreenState
     extends State<SalaryDisbursementsScreen> {
-  final _notifier  = SalaryDisbursementNotifier.instance;
-  final _refNoCtrl = TextEditingController();
-
-  static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+  final _notifier = SalaryDisbursementNotifier.instance;
 
   @override
   void initState() {
@@ -50,13 +31,7 @@ class _SalaryDisbursementsScreenState
     });
   }
 
-  @override
-  void dispose() {
-    _refNoCtrl.dispose();
-    super.dispose();
-  }
-
-  // ── Generate ───────────────────────────────────────────────────────────────
+  // ── Generate + Export (one tap) ────────────────────────────────────────────
 
   Future<void> _onGenerate() async {
     if (_notifier.selectedCount == 0) {
@@ -64,23 +39,15 @@ class _SalaryDisbursementsScreenState
       return;
     }
 
-    // Ask for reference number
-    final ref = await showDialog<String>(
-      context: context,
-      builder: (ctx) => _RefNoDialog(ctrl: _refNoCtrl),
-    );
-    if (ref == null || !mounted) return;
-
-    showLoader(context, message: 'Generating salary disbursement…');
+    showLoader(context, message: 'Generating & exporting salary disbursement…');
     try {
-      final n = SalaryDataNotifier.instance;
-      final result = await _notifier.generateDisbursement(
-        referenceNo: ref,
-        deptCode:    n.monthName, // use month as loose dept label if no filter
+      final n    = SalaryDataNotifier.instance;
+      final path = await _notifier.generateDisbursement(
+        deptCode: n.monthName,
       );
       if (!mounted) return;
-      if (result != null) {
-        _showSnack('Disbursement generated successfully.');
+      if (path != null) {
+        _showSnack('Saved: $path');
       } else {
         _showSnack('Failed to generate disbursement.', isError: true);
       }
@@ -89,42 +56,18 @@ class _SalaryDisbursementsScreenState
     }
   }
 
-  // ── Export Excel ───────────────────────────────────────────────────────────
+  // ── Re-export from history ─────────────────────────────────────────────────
 
   Future<void> _onExportExcel(SalaryDisbursementModel disbursement) async {
     showLoader(context, message: 'Exporting Excel…');
     try {
       final path = await _notifier.exportDisbursementExcel(disbursement);
       if (!mounted) return;
-      if (path == null) {
+      if (path != null) {
+        _showSnack('Saved: $path');
+      } else {
         _showSnack('Export failed.', isError: true);
       }
-    } finally {
-      if (mounted) hideLoader(context);
-    }
-  }
-
-  Future<void> _onMarkDisbursed(SalaryDisbursementModel disbursement) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title:   const Text('Mark as Disbursed'),
-        content: const Text(
-            'This will mark the selected batch as disbursed. Cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Confirm')),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    showLoader(context, message: 'Updating status…');
-    try {
-      await _notifier.markDisbursed(disbursement);
     } finally {
       if (mounted) hideLoader(context);
     }
@@ -211,7 +154,7 @@ class _SalaryDisbursementsScreenState
                           Expanded(
                             flex: 3,
                             child: _CandidatesPanel(
-                              notifier: notifier,
+                              notifier:   notifier,
                               onGenerate: _onGenerate,
                             ),
                           ),
@@ -220,10 +163,9 @@ class _SalaryDisbursementsScreenState
                           Expanded(
                             flex: 2,
                             child: _HistoryPanel(
-                              history:         notifier.history,
-                              onExport:        _onExportExcel,
-                              onMarkDisbursed: _onMarkDisbursed,
-                              onDelete:        _onDelete,
+                              history:  notifier.history,
+                              onExport: _onExportExcel,
+                              onDelete: _onDelete,
                             ),
                           ),
                         ],
@@ -282,7 +224,7 @@ class _Toolbar extends StatelessWidget {
             child: Text(
               '$selectedCount selected  ·  ₹${totalSelected.toStringAsFixed(0)}',
               style: AppTextStyles.small.copyWith(
-                color: AppColors.indigo400,
+                color:      AppColors.indigo400,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -290,20 +232,20 @@ class _Toolbar extends StatelessWidget {
           const SizedBox(width: AppSpacing.md),
         ],
         IconButton(
-          icon: const Icon(Icons.refresh, size: 18, color: AppColors.slate400),
+          icon:    const Icon(Icons.refresh, size: 18, color: AppColors.slate400),
           tooltip: 'Refresh',
           onPressed: isLoading ? null : onRefresh,
         ),
         const SizedBox(width: 4),
         isGenerating
             ? const SizedBox(
-                width: 24,
+                width:  24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2))
+                child:  CircularProgressIndicator(strokeWidth: 2))
             : ElevatedButton.icon(
                 onPressed: selectedCount > 0 ? onGenerate : null,
                 icon:  const Icon(Icons.account_balance_outlined, size: 16),
-                label: const Text('Generate Disbursement'),
+                label: const Text('Generate & Export'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.indigo600,
                   foregroundColor: Colors.white,
@@ -362,8 +304,7 @@ class _CandidatesPanel extends StatelessWidget {
                   return _CandidateRow(
                     item:       item,
                     isSelected: notifier.isEmployeeSelected(item.employeeId),
-                    onToggle:   () =>
-                        notifier.toggleEmployee(item.employeeId),
+                    onToggle:   () => notifier.toggleEmployee(item.employeeId),
                   );
                 },
               ),
@@ -371,10 +312,10 @@ class _CandidatesPanel extends StatelessWidget {
           // ── Totals bar ───────────────────────────────────────────────
           if (candidates.isNotEmpty)
             _TotalsBar(
-              totalAll:       candidates.fold(0.0, (s, c) => s + c.amount),
-              totalSelected:  notifier.selectedTotal,
-              selectedCount:  notifier.selectedCount,
-              totalCount:     candidates.length,
+              totalAll:      candidates.fold(0.0, (s, c) => s + c.amount),
+              totalSelected: notifier.selectedTotal,
+              selectedCount: notifier.selectedCount,
+              totalCount:    candidates.length,
             ),
         ],
       ),
@@ -413,14 +354,13 @@ class _TableHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Select-all checkbox
           SizedBox(
             width: 48,
             child: Checkbox(
-              value: allSelected,
-              onChanged: (_) => onSelectAll(),
+              value:       allSelected,
+              onChanged:   (_) => onSelectAll(),
               activeColor: AppColors.indigo500,
-              side: const BorderSide(color: AppColors.slate500),
+              side:        const BorderSide(color: AppColors.slate500),
             ),
           ),
           ..._labels.skip(1).map((lbl) => Expanded(
@@ -428,8 +368,8 @@ class _TableHeader extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 12),
                   child: Text(lbl,
-                      style: AppTextStyles.label.copyWith(
-                          color: AppColors.slate400)),
+                      style: AppTextStyles.label
+                          .copyWith(color: AppColors.slate400)),
                 ),
               )),
         ],
@@ -438,7 +378,7 @@ class _TableHeader extends StatelessWidget {
   }
 }
 
-// ── Single candidate row ──────────────────────────────────────────────────────
+// ── Single candidate row (always interactive) ────────────────────────────────
 
 class _CandidateRow extends StatelessWidget {
   final SalaryDisbursementItemModel item;
@@ -506,8 +446,7 @@ class _CandidateRow extends StatelessWidget {
         child: Text(
           text,
           style: AppTextStyles.body.copyWith(
-            fontWeight:
-                bold ? FontWeight.w600 : FontWeight.w400,
+            fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
             fontFamily: mono ? 'monospace' : null,
             fontSize:   13,
           ),
@@ -567,9 +506,9 @@ class _TotalsBar extends StatelessWidget {
                   .copyWith(color: AppColors.slate500, fontSize: 13)),
           Text(value,
               style: AppTextStyles.small.copyWith(
-                  color: color,
+                  color:      color,
                   fontWeight: FontWeight.w700,
-                  fontSize: 13)),
+                  fontSize:   13)),
         ],
       );
 }
@@ -595,7 +534,7 @@ class _EmptyState extends StatelessWidget {
               Text(
                 'Enter days worked in the Employees tab first,\n'
                 'then come back here.',
-                style: AppTextStyles.small,
+                style:     AppTextStyles.small,
                 textAlign: TextAlign.center,
               ),
             ],
@@ -609,15 +548,13 @@ class _EmptyState extends StatelessWidget {
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _HistoryPanel extends StatelessWidget {
-  final List<SalaryDisbursementModel>         history;
+  final List<SalaryDisbursementModel>          history;
   final void Function(SalaryDisbursementModel) onExport;
-  final void Function(SalaryDisbursementModel) onMarkDisbursed;
   final void Function(SalaryDisbursementModel) onDelete;
 
   const _HistoryPanel({
     required this.history,
     required this.onExport,
-    required this.onMarkDisbursed,
     required this.onDelete,
   });
 
@@ -632,10 +569,8 @@ class _HistoryPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(
               color:        AppColors.slate900,
               borderRadius: BorderRadius.vertical(
@@ -645,26 +580,23 @@ class _HistoryPanel extends StatelessWidget {
                 style: AppTextStyles.bodyMedium
                     .copyWith(fontWeight: FontWeight.w600)),
           ),
-          // List
           history.isEmpty
               ? const Expanded(
                   child: Center(
                     child: Text('No disbursements yet.',
-                        style:
-                            TextStyle(color: AppColors.slate400)),
+                        style: TextStyle(color: AppColors.slate400)),
                   ),
                 )
               : Expanded(
                   child: ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemCount: history.length,
+                    padding:          EdgeInsets.zero,
+                    itemCount:        history.length,
                     separatorBuilder: (_, __) =>
                         const Divider(height: 1, color: AppColors.slate100),
                     itemBuilder: (ctx, i) => _HistoryCard(
-                      disbursement:    history[i],
-                      onExport:        () => onExport(history[i]),
-                      onMarkDisbursed: () => onMarkDisbursed(history[i]),
-                      onDelete:        () => onDelete(history[i]),
+                      disbursement: history[i],
+                      onExport:     () => onExport(history[i]),
+                      onDelete:     () => onDelete(history[i]),
                     ),
                   ),
                 ),
@@ -677,13 +609,11 @@ class _HistoryPanel extends StatelessWidget {
 class _HistoryCard extends StatelessWidget {
   final SalaryDisbursementModel disbursement;
   final VoidCallback             onExport;
-  final VoidCallback             onMarkDisbursed;
   final VoidCallback             onDelete;
 
   const _HistoryCard({
     required this.disbursement,
     required this.onExport,
-    required this.onMarkDisbursed,
     required this.onDelete,
   });
 
@@ -695,9 +625,6 @@ class _HistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final month = _monthNames[(disbursement.month - 1).clamp(0, 11)];
-    final canExport   = disbursement.status != SalaryDisbursementStatus.disbursed;
-    final canDisburse = disbursement.status == SalaryDisbursementStatus.exported ||
-                        disbursement.status == SalaryDisbursementStatus.generated;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -708,38 +635,29 @@ class _HistoryCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  disbursement.referenceNo.isEmpty
-                      ? '$month ${disbursement.year}'
-                      : disbursement.referenceNo,
+                  '$month ${disbursement.year}',
                   style: AppTextStyles.bodySemi.copyWith(
-                    fontSize: 14, fontWeight: FontWeight.w700),
+                      fontSize: 14, fontWeight: FontWeight.w700),
                 ),
               ),
               _StatusBadge(status: disbursement.status),
             ],
           ),
           const SizedBox(height: 4),
-          Text('$month ${disbursement.year}',
-              style: AppTextStyles.small
-                  .copyWith(color: AppColors.slate500)),
+          if (disbursement.exportedAt != null)
+            Text(
+              'Exported ${disbursement.exportedAt!.split('T').first}',
+              style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+            ),
           const SizedBox(height: 8),
           Row(
             children: [
-              if (canExport)
-                _ActionBtn(
-                  icon:  Icons.table_chart_outlined,
-                  label: 'Export Excel',
-                  color: Colors.green.shade700,
-                  onTap: onExport,
-                ),
-              if (canExport) const SizedBox(width: 8),
-              if (canDisburse)
-                _ActionBtn(
-                  icon:  Icons.check_circle_outline,
-                  label: 'Mark Disbursed',
-                  color: AppColors.indigo600,
-                  onTap: onMarkDisbursed,
-                ),
+              _ActionBtn(
+                icon:  Icons.table_chart_outlined,
+                label: 'Export Excel',
+                color: Colors.green.shade700,
+                onTap: onExport,
+              ),
               const Spacer(),
               _ActionBtn(
                 icon:  Icons.delete_outline,
@@ -779,8 +697,8 @@ class _ActionBtn extends StatelessWidget {
             const SizedBox(width: 4),
             Text(label,
                 style: TextStyle(
-                    fontSize: 12,
-                    color:     color,
+                    fontSize:   12,
+                    color:      color,
                     fontWeight: FontWeight.w500)),
           ]),
         ),
@@ -800,7 +718,6 @@ class _StatusBadge extends StatelessWidget {
       SalaryDisbursementStatus.pending   => (AppColors.amber100,   AppColors.amber700),
       SalaryDisbursementStatus.generated => (AppColors.indigo50,   AppColors.indigo600),
       SalaryDisbursementStatus.exported  => (AppColors.emerald100, AppColors.emerald700),
-      SalaryDisbursementStatus.disbursed => (AppColors.slate100,   AppColors.slate600),
     };
 
     return Container(
@@ -817,51 +734,6 @@ class _StatusBadge extends StatelessWidget {
           color:      fg,
         ),
       ),
-    );
-  }
-}
-
-// ── Reference number dialog ───────────────────────────────────────────────────
-
-class _RefNoDialog extends StatelessWidget {
-  final TextEditingController ctrl;
-
-  const _RefNoDialog({required this.ctrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Reference Number'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Enter a reference number for this disbursement batch. '
-            'Leave blank to use an auto-generated reference.',
-            style: TextStyle(fontSize: 13),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: ctrl,
-            autofocus:  true,
-            decoration: const InputDecoration(
-              hintText: 'e.g. AE/SAL/25-26/001',
-              isDense:  true,
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-          child: const Text('Generate'),
-        ),
-      ],
     );
   }
 }

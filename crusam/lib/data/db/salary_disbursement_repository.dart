@@ -2,8 +2,6 @@
 //
 // Drop-in extension on DatabaseHelper. Wire these methods into
 // DatabaseHelper directly (same class body) or call via a thin wrapper.
-//
-// Usage pattern mirrors getAllVouchers / insertVoucher / updateVoucher.
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -102,6 +100,7 @@ extension SalaryDisbursementRepository on DatabaseHelper {
 
   // ── Already-disbursed employee IDs for a given month/year ────────────────
   // Used to grey out / exclude employees who've already been disbursed.
+  // Considers any batch in 'generated' or 'exported' state.
 
   Future<Set<int>> getDisbursedEmployeeIds({
     required int month,
@@ -113,7 +112,7 @@ extension SalaryDisbursementRepository on DatabaseHelper {
       FROM salary_disbursement_items i
       JOIN salary_disbursements d ON d.id = i.disbursement_id
       WHERE d.month = ? AND d.year = ?
-        AND (d.status = 'generated' OR d.status = 'exported' OR d.status = 'disbursed')
+        AND (d.status = 'generated' OR d.status = 'exported')
     ''', [month, year]);
     return rows.map((r) => r['employee_id'] as int).toSet();
   }

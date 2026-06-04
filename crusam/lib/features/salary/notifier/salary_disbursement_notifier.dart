@@ -23,8 +23,8 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
   CompanyConfigModel                   _config       = const CompanyConfigModel();
   List<SalaryDisbursementModel>        _history      = [];
 
-  bool _loading      = false;
-  bool _generating   = false;
+  bool   _loading    = false;
+  bool   _generating = false;
   String _error      = '';
 
   // ── Accessors ──────────────────────────────────────────────────────────────
@@ -70,21 +70,21 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
       final cfgMap = await DatabaseHelper.instance.getCompanyConfig();
       if (cfgMap != null) _config = CompanyConfigModel.fromMap(cfgMap);
 
-      // Load already-disbursed IDs for this month/year
+      // Load already-disbursed IDs (used only for history, not to restrict candidates)
       _disbursedIds = await DatabaseHelper.instance
           .getDisbursedEmployeeIds(month: n.month, year: n.year);
 
-      // Build candidate items from current salary data
+      // Build ALL candidates – no filtering, no status marking
       _candidates = await SalaryDisbursementService.buildCandidateItems(
-        employees:          _employees,
-        salaryData:         n,
-        alreadyDisbursedIds: _disbursedIds,
+        employees:           _employees,
+        salaryData:          n,
+        alreadyDisbursedIds: {},   // show everyone
       );
 
       // Load disbursement history
       _history = await DatabaseHelper.instance.getAllSalaryDisbursements();
 
-      // Reset selection to only valid candidates
+      // Reset selection to only existing candidates
       _selected = _selected
           .where((id) => _candidates.any((c) => c.employeeId == id))
           .toSet();
@@ -99,6 +99,7 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
   // ── Selection ──────────────────────────────────────────────────────────────
 
   void toggleEmployee(int employeeId) {
+    // No longer blocked by exported status – all employees can be toggled.
     if (_selected.contains(employeeId)) {
       _selected = {..._selected}..remove(employeeId);
     } else {
@@ -121,10 +122,12 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
       _candidates.isNotEmpty &&
       _candidates.every((c) => _selected.contains(c.employeeId));
 
-  // ── Generate + Export ──────────────────────────────────────────────────────
+  // ── Generate + Export (one step) ──────────────────────────────────────────
+  //
+  // Persists the disbursement, exports Excel, and simply clears the selection.
+  // Candidates remain fully interactive – you can select and generate again.
 
-  Future<SalaryDisbursementModel?> generateDisbursement({
-    required String referenceNo,
+  Future<String?> generateDisbursement({
     required String deptCode,
   }) async {
     if (_selected.isEmpty) return null;
@@ -138,17 +141,44 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
           .where((c) => _selected.contains(c.employeeId))
           .toList();
 
+      // 1. Persist the batch
       final disbursement = await SalaryDisbursementService.createDisbursement(
-        referenceNo: referenceNo,
-        month:       n.month,
-        year:        n.year,
-        deptCode:    deptCode,
-        items:       selectedItems,
+        month:    n.month,
+        year:     n.year,
+        deptCode: deptCode,
+        items:    selectedItems,
       );
 
-      // Refresh history + candidates
-      await load(forceReload: true);
-      return disbursement;
+      // 2. Fetch persisted items
+      final persistedItems = await DatabaseHelper.instance
+          .getDisbursementItems(disbursement.id!);
+
+      // 3. Generate Excel
+      final path = await SalaryDisbursementService.generateExcel(
+        disbursement: disbursement,
+        items:        persistedItems,
+        config:       _config,
+        monthName:    n.monthName,
+      );
+
+      // 4. Mark as exported
+      if (path != null) {
+        final updated = disbursement.copyWith(
+          status:     SalaryDisbursementStatus.exported,
+          exportedAt: DateTime.now().toIso8601String(),
+        );
+        await DatabaseHelper.instance.updateSalaryDisbursement(updated);
+      }
+
+      // 5. Refresh disbursed IDs and history (no candidate status change)
+      _disbursedIds = await DatabaseHelper.instance
+          .getDisbursedEmployeeIds(month: n.month, year: n.year);
+      _history = await DatabaseHelper.instance.getAllSalaryDisbursements();
+
+      // Clear the selection so the Generate button resets
+      _selected = {};
+
+      return path;
     } catch (e) {
       _error = e.toString();
       return null;
@@ -158,44 +188,51 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
     }
   }
 
+  // ── Re-export an existing batch (uses its own month name) ────────────────
+
   Future<String?> exportDisbursementExcel(
     SalaryDisbursementModel disbursement,
   ) async {
     final items = await DatabaseHelper.instance
         .getDisbursementItems(disbursement.id!);
 
-    final n = SalaryDataNotifier.instance;
+    // Derive the month name from the batch, NOT from current SalaryDataNotifier
+    final monthName = _monthName(disbursement.month);
+
     final path = await SalaryDisbursementService.generateExcel(
       disbursement: disbursement,
       items:        items,
       config:       _config,
-      monthName:    n.monthName,
+      monthName:    monthName,
     );
 
     if (path != null) {
-      // Update status to exported
       final updated = disbursement.copyWith(
         status:     SalaryDisbursementStatus.exported,
         exportedAt: DateTime.now().toIso8601String(),
       );
       await DatabaseHelper.instance.updateSalaryDisbursement(updated);
-      await load(forceReload: true);
+      // Refresh history
+      _history = await DatabaseHelper.instance.getAllSalaryDisbursements();
+      notifyListeners();
     }
 
     return path;
   }
 
-  Future<void> markDisbursed(SalaryDisbursementModel disbursement) async {
-    final updated = disbursement.copyWith(
-      status:      SalaryDisbursementStatus.disbursed,
-      disbursedAt: DateTime.now().toIso8601String(),
-    );
-    await DatabaseHelper.instance.updateSalaryDisbursement(updated);
-    await load(forceReload: true);
-  }
+  // ── Delete ─────────────────────────────────────────────────────────────────
 
   Future<void> deleteDisbursement(int id) async {
     await DatabaseHelper.instance.deleteSalaryDisbursement(id);
     await load(forceReload: true);
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  String _monthName(int month) {
+    const names = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return names[(month - 1).clamp(0, 11)];
   }
 }
