@@ -1,50 +1,97 @@
 // lib/features/salary/services/salary_disbursement_service.dart
 //
-// Mirrors ExcelExportService.exportBankDisbursement but sources
-// employee bank details + final salary amounts from the salary module
-// instead of voucher rows.
+// Mirrors ExcelExportService.exportBankDisbursement layout exactly
+// (columns, widths, row positions, total-with-words, bank split, print area).
+// Data comes from the salary module: final salary amounts + employee bank details.
 //
-// "Final salary amount" = earned gross - total deductions (net payable).
+// 🛠️  Columns: Amount | Debit A/C no. | IFSC | Credit A/c no. | Code |
+//               Beneficiary | Place | Bank Details
+//
+// 🧩  Code -> employee ID
+// 🧩  Place -> bank details (branch info)
 
 import 'dart:io';
-
+import 'dart:typed_data';
+import 'package:crusam/data/db/salary_disbursement_repository.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:crusam/core/preferences/export_preferences_notifier.dart';
+import 'package:crusam/data/db/database_helper.dart';
+import 'package:crusam/data/models/company_config_model.dart';
+import 'package:crusam/data/models/employee_model.dart';
+import 'package:crusam/shared/utils/format_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 
-import '../../../core/preferences/export_preferences_notifier.dart';
-import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/employee_model.dart';
 import '../models/salary_disbursement_model.dart';
-import 'package:crusam/data/db/salary_disbursement_repository.dart';
 import '../notifier/salary_data_notifier.dart';
-
-// ── Column widths (same proportions as invoice bank sheet) ────────────────────
 
 class SalaryDisbursementService {
   SalaryDisbursementService._();
 
-  // ── Column width constants (matches ExcelExportService proportions) ───────
-  static const double _colWidthAmount      = 22.0;
-  static const double _colWidthBeneficiary = 26.0;
-  static const double _colWidthAccountNo   = 22.0;
-  static const double _colWidthIfsc        = 16.0;
-  static const double _colWidthBankName    = 24.0;
-  static const double _colWidthRefNo       = 20.0;
-  static const double _colWidthRemarks     = 28.0;
+  // ─────────────────────────────────────────────────────────────────────────
+  // 📌 BLANK LEFT COLUMN — matches ExcelExportService
+  // ─────────────────────────────────────────────────────────────────────────
+  static const bool   _includeLeftBlankColumn = true;
+  static const double _colWidthBlankLeft      = 3.0;
 
-  static const List<String> _headers = [
-    'Amount',
-    'Beneficiary Name',
-    'Account Number',
-    'IFSC Code',
-    'Bank Name',
-    'Reference No.',
-    'Remarks',
-  ];
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🎯 COLUMN WIDTHS (8 columns – same as ExcelExportService)
+  // ─────────────────────────────────────────────────────────────────────────
+  static const double _colWidthAmount       = 22.0;
+  static const double _colWidthDebitAc      = 20.0;
+  static const double _colWidthIFSC         = 14.0;
+  static const double _colWidthCreditAc     = 20.0;
+  static const double _colWidthCode         = 10.0;
+  static const double _colWidthBeneficiary  = 22.0;
+  static const double _colWidthPlace        = 29.0;
+  static const double _colWidthBankDetails  = 25.0;
 
-  // ── Net salary calculation (mirrors SalaryStatementPdfService) ────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🖨️ PRINT SETUP
+  // ─────────────────────────────────────────────────────────────────────────
+  static const String _printStartCol = 'A';
+  static const int    _printStartRow = 1;
+  static const bool   _fitToPage     = true;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // 📊 BANK SPLIT SUMMARY CONFIGURATION
+  // ─────────────────────────────────────────────────────────────────────────
+  static const bool   _includeBankSplit        = true;
+  static const int    _bankSplitOffset         = 2;
+  static const String _bankSplitLabel          = 'BANK TRANSFER SPLIT';
+  static const bool   _splitBoxUseBackground   = false;
+  static const bool   _splitBoxOuterBorder     = true;
+  static const String _splitBoxBgColor         = '#FF1E293B';
+  static const String _splitTextColor          = '#FFFFFFFF';
+  static const String _splitLabelColor         = '#FF94A3B8';
+  static const String _splitValueColor         = '#FFCBD5E1';
+  static const int    _bankSplitColumnOffset   = 3;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🔲 DATA TABLE OUTER BORDER
+  // ─────────────────────────────────────────────────────────────────────────
+  static const bool _dataTableOuterBorder = true;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 📏 TOTAL IN WORDS CELL MERGING (in the total row)
+  // ─────────────────────────────────────────────────────────────────────────
+  static const int _wordsCellMergeCount = 2; // merges Debit A/C + IFSC + Credit A/C
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 🖼️ SIGNATURE IMAGE (kept for format parity – no real image loaded)
+  // ─────────────────────────────────────────────────────────────────────────
+  static const int _signatureColOffset = 8;
+  static const int _signatureRowOffset = 12;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // 📏 Column helpers
+  // ─────────────────────────────────────────────────────────────────────────
+  static int get _dataStartCol => _includeLeftBlankColumn ? 2 : 1;
+  static int get _dataEndCol   => _dataStartCol + 7; // 8 columns (0..7)
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Net salary calculation (unchanged)
+  // ─────────────────────────────────────────────────────────────────────────
   static double _computeNetSalary({
     required EmployeeModel employee,
     required int days,
@@ -53,14 +100,14 @@ class SalaryDisbursementService {
     required bool isFeb,
   }) {
     if (days == 0 || daysInMonth == 0) return 0;
-    final eBasic  = employee.basicCharges * days / daysInMonth;
-    final eGross  = employee.grossSalary  * days / daysInMonth;
-    final pf      = (eBasic * 0.12).round().toDouble();
-    final esic    = employee.grossSalary >= 21000
+    final eBasic = employee.basicCharges * days / daysInMonth;
+    final eGross = employee.grossSalary  * days / daysInMonth;
+    final pf     = (eBasic * 0.12).round().toDouble();
+    final esic   = employee.grossSalary >= 21000
         ? 0.0
         : (eGross * 0.0075).ceilToDouble();
-    final msw     = isMsw ? 6.0 : 0.0;
-    final female  = employee.gender.toUpperCase() == 'F';
+    final msw    = isMsw ? 6.0 : 0.0;
+    final female = employee.gender.toUpperCase() == 'F';
     double pt;
     if (female) {
       pt = eGross < 25000 ? 0 : (isFeb ? 300 : 200);
@@ -72,11 +119,9 @@ class SalaryDisbursementService {
     return eGross - pf - esic - msw - pt;
   }
 
-  // ── Build candidate items from current salary state ───────────────────────
-  //
-  // Returns items that are ELIGIBLE for disbursement (net > 0, not already
-  // disbursed, have valid bank details).
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build candidate items (fix: removed reference to emp.employeeCode)
+  // ─────────────────────────────────────────────────────────────────────────
   static Future<List<SalaryDisbursementItemModel>> buildCandidateItems({
     required List<EmployeeModel> employees,
     required SalaryDataNotifier  salaryData,
@@ -91,28 +136,37 @@ class SalaryDisbursementService {
 
       final days = salaryData.getDays(id);
       final net  = _computeNetSalary(
-        employee:   emp,
-        days:       days,
+        employee:    emp,
+        days:        days,
         daysInMonth: salaryData.totalDays,
-        isMsw:      salaryData.isMsw,
-        isFeb:      salaryData.isFeb,
+        isMsw:       salaryData.isMsw,
+        isFeb:       salaryData.isFeb,
       );
 
       if (net <= 0) continue;
-      if (emp.accountNumber.trim().isEmpty || emp.ifscCode.trim().isEmpty) continue;
+      if (emp.accountNumber.trim().isEmpty || emp.ifscCode.trim().isEmpty) {
+        continue;
+      }
+
+      // Code – use employee id as string
+      final String code = id.toString();
+
+      // Place – bank details / branch info
+      final String branch = emp.bankDetails;
 
       items.add(SalaryDisbursementItemModel(
-        disbursementId: 0,      // filled in on persist
+        disbursementId: 0,
         employeeId:     id,
         employeeName:   emp.name,
         bankName:       emp.bankDetails,
         accountNumber:  emp.accountNumber,
         ifscCode:       emp.ifscCode,
         amount:         double.parse(net.toStringAsFixed(2)),
+        sbCode:         code,
+        branch:         branch,
       ));
     }
 
-    // Sort: dept code (via employee list order) then name
     items.sort((a, b) => a.employeeName
         .trim()
         .toLowerCase()
@@ -121,8 +175,9 @@ class SalaryDisbursementService {
     return items;
   }
 
-  // ── Persist a new disbursement batch ──────────────────────────────────────
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Persist a new disbursement batch (unchanged)
+  // ─────────────────────────────────────────────────────────────────────────
   static Future<SalaryDisbursementModel> createDisbursement({
     required String  referenceNo,
     required int     month,
@@ -138,164 +193,390 @@ class SalaryDisbursementService {
       status:      SalaryDisbursementStatus.generated,
       generatedAt: DateTime.now().toIso8601String(),
     );
-    final id = await DatabaseHelper.instance
-        .insertSalaryDisbursement(model);
-    await DatabaseHelper.instance
-        .insertDisbursementItems(id, items);
+    final id = await DatabaseHelper.instance.insertSalaryDisbursement(model);
+    await DatabaseHelper.instance.insertDisbursementItems(id, items);
     return model.copyWith(id: id);
   }
 
-  // ── Generate Excel (same structure as invoice bank disbursement sheet) ────
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Generate Excel (mirrors ExcelExportService._exportBankSheet)
+  // ─────────────────────────────────────────────────────────────────────────
   static Future<String?> generateExcel({
-    required SalaryDisbursementModel             disbursement,
-    required List<SalaryDisbursementItemModel>   items,
-    required CompanyConfigModel                  config,
-    required String                              monthName,
+    required SalaryDisbursementModel           disbursement,
+    required List<SalaryDisbursementItemModel> items,
+    required CompanyConfigModel                config,
+    required String                            monthName,
+    double idbiToOther = 0.0,
+    double idbiToIdbi  = 0.0,
   }) async {
     if (items.isEmpty) return null;
 
-    final Workbook workbook = Workbook();
+    final Workbook  workbook  = Workbook();
     workbook.worksheets.clear();
     final sheetName =
-        'Salary-Disb-${monthName.substring(0, 3)}-${disbursement.year}';
+        'Salary-Disb-${disbursement.deptCode.replaceAll(RegExp(r'[/\\?\*:\[\]]'), '-')}';
     final Worksheet sheet = workbook.worksheets.addWithName(sheetName);
 
     _setColumnWidths(sheet);
     _writeTitleRow(sheet, disbursement, monthName, config);
-    _writeHeaderRow(sheet);
+    _writeHeaderRow(sheet);   // row 4
 
-    int rowIndex = 4;
-    double total = 0;
-    for (int i = 0; i < items.length; i++) {
-      final item = items[i];
-      _writeDataRow(sheet, rowIndex, i + 1, item, disbursement.referenceNo);
+    // Sort items by employee name (already sorted)
+    int    rowIndex = 4;               // first data row will be 5
+    double total    = 0;
+    for (final item in items) {
+      _writeDataRow(sheet, rowIndex, item, config);
       total += item.amount;
       rowIndex++;
     }
-    final int lastDataRow = rowIndex;
+    final int lastDataRow = rowIndex;  // next row after last data
 
-    // Total row
+    // Outer border around the entire data table
+    if (_dataTableOuterBorder) {
+      final int headerRow = 4;
+      final Range tableRange = sheet.getRangeByIndex(
+          headerRow, _dataStartCol, lastDataRow, _dataEndCol);
+      _applyBorder(tableRange);
+    }
+
+    // ── Total row ──────────────────────────────────────────────────────────
     rowIndex++;
-    _writeTotalRow(sheet, rowIndex, total, lastDataRow);
+    final int totalRowIndex = rowIndex;      // one row below last data row
+    _writeTotalRow(sheet, totalRowIndex, items.isNotEmpty, total, lastDataRow);
+    final int totalRowExcel = totalRowIndex + 1;  // actual Excel row of total
 
-    // Outer table border
-    _applyBorder(sheet.getRangeByIndex(3, 1, lastDataRow, _headers.length));
+    // ── Signature image placeholder ────────────────────────────────────────
+    await _insertSignatureImage(sheet, lastDataRow);
+
+    // ── Bank Transfer Split box ────────────────────────────────────────────
+    int nextRow = totalRowExcel;
+    if (_includeBankSplit) {
+      nextRow = _writeBankSplitSection(
+        sheet,
+        startRow: totalRowExcel + _bankSplitOffset,
+        baseTotal: total,
+        idbiToOther: idbiToOther,
+        idbiToIdbi: idbiToIdbi,
+      );
+    }
+
+    _configurePrintSetup(sheet, nextRow);
 
     final List<int> bytes = workbook.saveAsStream();
     workbook.dispose();
 
     final fileName =
-        'Salary_Disbursement_${monthName}_${disbursement.year}.xlsx';
-    return _saveExcelFile(bytes, fileName);
+        'Salary_Disbursement_${monthName.replaceAll(' ', '_')}_${disbursement.year}';
+    return _saveExcelFileWithIncrement(bytes, fileName);
   }
 
-  // ── Column widths ──────────────────────────────────────────────────────────
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // Column widths (8 columns)
+  // ─────────────────────────────────────────────────────────────────────────
   static void _setColumnWidths(Worksheet sheet) {
-    sheet.getRangeByIndex(1, 1).columnWidth = _colWidthAmount;
-    sheet.getRangeByIndex(1, 2).columnWidth = _colWidthBeneficiary;
-    sheet.getRangeByIndex(1, 3).columnWidth = _colWidthAccountNo;
-    sheet.getRangeByIndex(1, 4).columnWidth = _colWidthIfsc;
-    sheet.getRangeByIndex(1, 5).columnWidth = _colWidthBankName;
-    sheet.getRangeByIndex(1, 6).columnWidth = _colWidthRefNo;
-    sheet.getRangeByIndex(1, 7).columnWidth = _colWidthRemarks;
+    int col = 1;
+    if (_includeLeftBlankColumn) {
+      sheet.getRangeByIndex(1, col).columnWidth = _colWidthBlankLeft;
+      col++;
+    }
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthAmount;       col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthDebitAc;      col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthIFSC;         col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCreditAc;     col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;         col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary;  col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Title row (row 2) – spans Amount..Place (6 cols), dept code on right
+  // ─────────────────────────────────────────────────────────────────────────
   static void _writeTitleRow(
     Worksheet sheet,
     SalaryDisbursementModel disbursement,
     String monthName,
     CompanyConfigModel config,
   ) {
-    final Range titleRange =
-        sheet.getRangeByIndex(1, 1, 1, _headers.length);
+    final int titleStartCol = _dataStartCol;
+    final int titleEndCol   = titleStartCol + 5; // Amount..Place
+    final Range titleRange  =
+        sheet.getRangeByIndex(2, titleStartCol, 2, titleEndCol);
     titleRange.merge();
     titleRange.setText(
       '${config.companyName} : Salary Disbursement — $monthName ${disbursement.year}',
     );
-    titleRange.cellStyle.bold     = true;
-    titleRange.cellStyle.fontSize = 12;
-    titleRange.cellStyle.hAlign   = HAlignType.left;
-    // Reference No in last column header area
-    sheet.getRangeByIndex(2, _headers.length).setText(
-      disbursement.referenceNo.isEmpty ? '' : 'Ref: ${disbursement.referenceNo}',
-    );
-    sheet.getRangeByIndex(2, _headers.length).cellStyle.hAlign =
-        HAlignType.right;
+    _applyCellStyle(titleRange,
+        bold: true, fontSize: 12, hAlign: HAlignType.left);
+
+    // Department code in the rightmost column (Bank Details)
+    final Range deptRange = sheet.getRangeByIndex(2, _dataEndCol);
+    deptRange.setText(disbursement.deptCode.isEmpty ? '' : disbursement.deptCode);
+    _applyCellStyle(deptRange,
+        bold: true, fontSize: 12, hAlign: HAlignType.right);
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Header row (row 4)
+  // ─────────────────────────────────────────────────────────────────────────
   static void _writeHeaderRow(Worksheet sheet) {
-    for (int i = 0; i < _headers.length; i++) {
-      final cell = sheet.getRangeByIndex(3, i + 1);
-      cell.setText(_headers[i]);
-      cell.cellStyle.bold      = true;
-      cell.cellStyle.hAlign    = HAlignType.center;
-      cell.cellStyle.vAlign    = VAlignType.center;
-      cell.cellStyle.backColor = '#E3E8F4';
-      _applyBorder(cell);
+    const headers = [
+      'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
+      'Beneficiary', 'Place', 'Bank Details',
+    ];
+    int col = _dataStartCol;
+    for (final h in headers) {
+      final Range cell = sheet.getRangeByIndex(4, col);
+      cell.setText(h);
+      _applyCellStyle(cell, bold: true, hAlign: HAlignType.center, border: true);
+      col++;
     }
-    sheet.getRangeByIndex(3, 1, 3, _headers.length).rowHeight = 30;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Data row – same indexing logic as ExcelExportService (rowIndex is base-0 offset)
+  // ─────────────────────────────────────────────────────────────────────────
   static void _writeDataRow(
     Worksheet sheet,
-    int rowIndex,
-    int srNo,
+    int rowIndex,    // rowIndex=4 writes to Excel row 5
     SalaryDisbursementItemModel item,
-    String referenceNo,
+    CompanyConfigModel config,
   ) {
-    void set(int col, dynamic value,
-        {bool isNumber = false, HAlignType align = HAlignType.left}) {
-      final cell = sheet.getRangeByIndex(rowIndex, col);
-      if (isNumber) {
+    int col = _dataStartCol;
+
+    void set(dynamic value, {bool isNumber = false}) {
+      final Range cell = sheet.getRangeByIndex(rowIndex + 1, col);
+      if (value == null) {
+        cell.setText('');
+      } else if (isNumber) {
         cell.setNumber((value as num).toDouble());
         cell.numberFormat = '#,##0.00';
       } else {
-        cell.setText(value?.toString() ?? '');
+        cell.setText(value.toString());
       }
-      cell.cellStyle.hAlign = align;
-      cell.cellStyle.vAlign = VAlignType.center;
-      _applyBorder(cell);
+      cell.cellStyle.hAlign = HAlignType.center;
+      col++;
     }
 
-    set(1, item.amount,        isNumber: true, align: HAlignType.right);
-    set(2, item.employeeName,  align: HAlignType.left);
-    set(3, item.accountNumber, align: HAlignType.center);
-    set(4, item.ifscCode,      align: HAlignType.center);
-    set(5, item.bankName,      align: HAlignType.left);
-    set(6, referenceNo,        align: HAlignType.center);
-    set(7, 'Salary ${item.employeeName}', align: HAlignType.left);
+    set(item.amount,            isNumber: true);
+    set(config.accountNo);
+    set(item.ifscCode);
+    set(item.accountNumber);
+    set(item.sbCode);            // Code
+    set(item.employeeName);     // Beneficiary
+    set(item.branch);           // Place
+    set(item.bankName);         // Bank Details
+
+    // Apply border to all cells in this row
+    for (int c = _dataStartCol; c < col; c++) {
+      _applyBorder(sheet.getRangeByIndex(rowIndex + 1, c));
+    }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Total row – sum formula + amount-in-words merged into adjacent cells
+  // ─────────────────────────────────────────────────────────────────────────
   static void _writeTotalRow(
-      Worksheet sheet, int rowIndex, double total, int lastDataRow) {
-    final labelCell = sheet.getRangeByIndex(rowIndex, 2);
-    labelCell.setText('TOTAL :-');
-    labelCell.cellStyle.bold   = true;
-    labelCell.cellStyle.hAlign = HAlignType.left;
+    Worksheet sheet,
+    int rowIndex,      // base-0 index (total row will be rowIndex+1)
+    bool hasData,
+    double baseTotal,
+    int lastDataRow,   // base-0 index of the row after last data
+  ) {
+    final int excelRow   = rowIndex + 1;
+    final int amountCol  = _dataStartCol;
 
-    final amtCell = sheet.getRangeByIndex(rowIndex, 1);
-    amtCell.setFormula('SUM(A4:A$lastDataRow)');
-    amtCell.numberFormat      = '#,##0.00';
-    amtCell.cellStyle.bold    = true;
-    amtCell.cellStyle.hAlign  = HAlignType.right;
+    // Sum cell (Amount column)
+    final Range sumCell = sheet.getRangeByIndex(excelRow, amountCol);
+    if (hasData) {
+      final String colLetter = _colIndexToLetter(amountCol);
+      sumCell.setFormula('SUM(${colLetter}5:${colLetter}$lastDataRow)');
+    } else {
+      sumCell.setNumber(0);
+    }
+    sumCell.numberFormat = '#,##0.00';
+    _applyCellStyle(sumCell, bold: true, hAlign: HAlignType.center, border: true);
 
-    final rowRange = sheet.getRangeByIndex(rowIndex, 1, rowIndex, _headers.length);
-    rowRange.cellStyle.bold      = true;
-    rowRange.cellStyle.backColor = '#D6DCF5';
-    _applyBorder(rowRange);
+    // Words merged over Debit A/C, IFSC, Credit A/C (3 columns)
+    final int wordsStartCol = amountCol + 1;
+    final int wordsEndCol   = wordsStartCol + _wordsCellMergeCount;
+    final Range wordsRange  =
+        sheet.getRangeByIndex(excelRow, wordsStartCol, excelRow, wordsEndCol);
+    if (_wordsCellMergeCount > 0) {
+      wordsRange.merge();
+    }
+    wordsRange.setText(numberToWords(baseTotal));
+    _applyCellStyle(wordsRange, hAlign: HAlignType.center, border: true);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Signature image placeholder (does nothing – asset path is empty)
+  // ─────────────────────────────────────────────────────────────────────────
+  static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
+    try {
+      // No actual image – kept for format parity with ExcelExportService
+      final ByteData data = await rootBundle.load('');
+      final Uint8List bytes = data.buffer.asUint8List();
+      // … decode and add picture (code omitted – will fail safely)
+    } catch (_) {}
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Bank Transfer Split section (identical to ExcelExportService)
+  // ─────────────────────────────────────────────────────────────────────────
+  static int _writeBankSplitSection(
+    Worksheet sheet, {
+    required int    startRow,
+    required double baseTotal,
+    required double idbiToOther,
+    required double idbiToIdbi,
+  }) {
+    int row = startRow;
+    final int labelCol = _dataStartCol;
+    final int valueCol = labelCol + _bankSplitColumnOffset;
+
+    // Title
+    final Range titleRange =
+        sheet.getRangeByIndex(row, labelCol, row, valueCol);
+    titleRange.merge();
+    titleRange.setText(_bankSplitLabel);
+    _applyCellStyle(titleRange,
+        bold: true, fontSize: 11, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      titleRange.cellStyle.backColor = _splitBoxBgColor;
+      titleRange.cellStyle.fontColor = _splitLabelColor;
+    }
+    row++;
+
+    _writeSplitRow(sheet, row, labelCol, valueCol,
+        'From IDBI to Other Bank', idbiToOther);
+    row++;
+    _writeSplitRow(sheet, row, labelCol, valueCol,
+        'From IDBI to IDBI Bank', idbiToIdbi);
+    row++;
+
+    // Divider
+    row++;
+    final Range dividerRange =
+        sheet.getRangeByIndex(row, labelCol, row, valueCol);
+    dividerRange.merge();
+    dividerRange.cellStyle.borders.bottom.lineStyle = LineStyle.thin;
+    if (_splitBoxUseBackground) {
+      dividerRange.cellStyle.borders.bottom.color = _splitLabelColor;
+    }
+    row++;
+
+    // Total Base Amount
+    final Range totalLabel = sheet.getRangeByIndex(row, labelCol);
+    totalLabel.setText('Total Base Amount');
+    _applyCellStyle(totalLabel,
+        bold: true, fontSize: 12, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      totalLabel.cellStyle.backColor = _splitBoxBgColor;
+      totalLabel.cellStyle.fontColor = _splitTextColor;
+    }
+
+    final Range totalValue = sheet.getRangeByIndex(row, valueCol);
+    totalValue.setNumber(baseTotal);
+    totalValue.numberFormat = '#,##0.00';
+    _applyCellStyle(totalValue,
+        bold: true, fontSize: 12, hAlign: HAlignType.right, border: true);
+    if (_splitBoxUseBackground) {
+      totalValue.cellStyle.backColor = _splitBoxBgColor;
+      totalValue.cellStyle.fontColor = _splitTextColor;
+    }
+
+    if (_splitBoxOuterBorder) {
+      final Range outerBox =
+          sheet.getRangeByIndex(startRow, labelCol, row, valueCol);
+      _applyBorder(outerBox);
+    }
+
+    return row;
+  }
+
+  static void _writeSplitRow(
+    Worksheet sheet,
+    int row,
+    int labelCol,
+    int valueCol,
+    String label,
+    double value,
+  ) {
+    final Range labelCell = sheet.getRangeByIndex(row, labelCol);
+    labelCell.setText(label);
+    _applyCellStyle(labelCell,
+        fontSize: 11, hAlign: HAlignType.left, border: true);
+    if (_splitBoxUseBackground) {
+      labelCell.cellStyle.backColor = _splitBoxBgColor;
+      labelCell.cellStyle.fontColor = _splitLabelColor;
+    }
+
+    final Range valueCell = sheet.getRangeByIndex(row, valueCol);
+    valueCell.setNumber(value);
+    valueCell.numberFormat = '#,##0.00';
+    _applyCellStyle(valueCell,
+        fontSize: 11, hAlign: HAlignType.right, border: true);
+    if (_splitBoxUseBackground) {
+      valueCell.cellStyle.backColor = _splitBoxBgColor;
+      valueCell.cellStyle.fontColor = _splitValueColor;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Print setup (8 columns)
+  // ─────────────────────────────────────────────────────────────────────────
+  static void _configurePrintSetup(Worksheet sheet, int lastRow) {
+    final int    toColumnIndex = _dataStartCol + 7; // 8 columns
+    final String endColLetter  = _colIndexToLetter(toColumnIndex);
+    sheet.pageSetup.printArea =
+        '$_printStartCol$_printStartRow:$endColLetter$lastRow';
+    if (_fitToPage) {
+      sheet.pageSetup.fitToPagesTall = 1;
+      sheet.pageSetup.fitToPagesWide = 1;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Style helpers
+  // ─────────────────────────────────────────────────────────────────────────
+  static void _applyCellStyle(
+    Range range, {
+    bool        bold     = false,
+    double      fontSize = 11,
+    HAlignType  hAlign   = HAlignType.left,
+    bool        border   = false,
+  }) {
+    range.cellStyle.bold     = bold;
+    range.cellStyle.fontSize = fontSize;
+    range.cellStyle.hAlign   = hAlign;
+    range.cellStyle.vAlign   = VAlignType.center;
+    if (border) _applyBorder(range);
   }
 
   static void _applyBorder(Range range) {
     range.cellStyle.borders.all.lineStyle = LineStyle.thin;
-    range.cellStyle.borders.all.color     = '#000000';
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // Column index → letter
+  // ─────────────────────────────────────────────────────────────────────────
+  static String _colIndexToLetter(int index) {
+    String result = '';
+    int n = index;
+    while (n > 0) {
+      final int rem = (n - 1) % 26;
+      result = String.fromCharCode(65 + rem) + result;
+      n = (n - 1) ~/ 26;
+    }
+    return result;
+  }
 
-  static Future<String?> _saveExcelFile(
-      List<int> bytes, String fileName) async {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Save file with auto‑increment (mirrors ExcelExportService)
+  // ─────────────────────────────────────────────────────────────────────────
+  static Future<String?> _saveExcelFileWithIncrement(
+      List<int> bytes, String baseName) async {
     try {
       final prefs = ExportPreferencesNotifier.instance;
       Directory? dir;
@@ -307,9 +588,19 @@ class SalaryDisbursementService {
       dir ??= await getDownloadsDirectory() ??
               await getApplicationDocumentsDirectory();
 
-      final path = '${dir.path}${Platform.pathSeparator}$fileName';
-      await File(path).writeAsBytes(bytes, flush: true);
-      return path;
+      String filePath = '${dir.path}${Platform.pathSeparator}$baseName.xlsx';
+      File file = File(filePath);
+
+      int counter = 1;
+      while (await file.exists()) {
+        filePath =
+            '${dir.path}${Platform.pathSeparator}${baseName}_$counter.xlsx';
+        file = File(filePath);
+        counter++;
+      }
+
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
     } catch (_) {
       return null;
     }

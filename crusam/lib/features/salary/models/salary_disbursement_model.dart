@@ -117,6 +117,8 @@ class SalaryDisbursementItemModel {
   final String accountNumber;
   final String ifscCode;
   final double amount;
+  final String sbCode;                // 🆕 Employee code or ID (for Code column)
+  final String branch;                // 🆕 Branch / place info
   final int?   salaryStatementId;
   final SalaryDisbursementStatus status;
   final String createdAt;
@@ -130,6 +132,8 @@ class SalaryDisbursementItemModel {
     required this.accountNumber,
     required this.ifscCode,
     required this.amount,
+    this.sbCode      = '',           // default
+    this.branch      = '',           // default
     this.salaryStatementId,
     this.status    = SalaryDisbursementStatus.pending,
     this.createdAt = '',
@@ -144,6 +148,8 @@ class SalaryDisbursementItemModel {
     String? accountNumber,
     String? ifscCode,
     double? amount,
+    String? sbCode,
+    String? branch,
     int?    salaryStatementId,
     SalaryDisbursementStatus? status,
     String? createdAt,
@@ -156,6 +162,8 @@ class SalaryDisbursementItemModel {
         accountNumber:       accountNumber       ?? this.accountNumber,
         ifscCode:            ifscCode            ?? this.ifscCode,
         amount:              amount              ?? this.amount,
+        sbCode:              sbCode              ?? this.sbCode,
+        branch:              branch              ?? this.branch,
         salaryStatementId:   salaryStatementId   ?? this.salaryStatementId,
         status:              status              ?? this.status,
         createdAt:           createdAt           ?? this.createdAt,
@@ -170,6 +178,8 @@ class SalaryDisbursementItemModel {
         'account_number':      accountNumber,
         'ifsc_code':           ifscCode,
         'amount':              amount,
+        'sb_code':             sbCode,          // 🆕
+        'branch':              branch,           // 🆕
         'salary_statement_id': salaryStatementId,
         'status':              status.name,
         'created_at':          createdAt,
@@ -185,6 +195,8 @@ class SalaryDisbursementItemModel {
         accountNumber:       (m['account_number']    as String?) ?? '',
         ifscCode:            (m['ifsc_code']         as String?) ?? '',
         amount:              ((m['amount']           as num?)?.toDouble()) ?? 0.0,
+        sbCode:              (m['sb_code']           as String?) ?? '',    // 🆕
+        branch:              (m['branch']            as String?) ?? '',    // 🆕
         salaryStatementId:   m['salary_statement_id'] as int?,
         status:              SalaryDisbursementStatus.fromString(
                                  (m['status'] as String?) ?? 'pending'),
