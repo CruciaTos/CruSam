@@ -83,9 +83,12 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
 
   double _earnedGross(EmployeeModel e) => _earnedBasic(e) + _earnedOther(e);
 
-  int _pf(EmployeeModel e) => (_earnedBasic(e) * 0.12).round();
+  int _pf(EmployeeModel e) {
+  final eb = _earnedBasic(e);
+  return eb >= 15000 ? 1800 : (eb * 0.12).round();
+}
 
-  bool _esicApplicable(EmployeeModel e) => e.grossSalary >= 21000;
+  bool _esicApplicable(EmployeeModel e) => e.grossSalary <= 21000;
 
   int _esic(EmployeeModel e) {
     if (!_esicApplicable(e)) return 0;

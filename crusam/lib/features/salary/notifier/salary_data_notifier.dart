@@ -1,12 +1,13 @@
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../../core/constants/app_constants.dart';
 
 class SalaryDataNotifier extends ChangeNotifier {
   SalaryDataNotifier._();
   static final SalaryDataNotifier instance = SalaryDataNotifier._();
+  bool _disposed = false;
 
   int _month = DateTime.now().month;
   int _year  = DateTime.now().year;
@@ -68,6 +69,25 @@ class SalaryDataNotifier extends ChangeNotifier {
     return dt.toIso8601String().split('T').first;
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  void _safeNotify() {
+    if (_disposed) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.persistentCallbacks ||
+        phase == SchedulerPhase.transientCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (!_disposed) notifyListeners();
+      });
+    } else {
+      notifyListeners();
+    }
+  }
+
   // ---------- Controller cache for days fields ----------
   TextEditingController getOrCreateController(int employeeId) {
     return _controllers.putIfAbsent(employeeId, () {
@@ -98,63 +118,63 @@ class SalaryDataNotifier extends ChangeNotifier {
     if (_month == month && _year == year) return;
     _month = month;
     _year  = year;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setDateIso(String value) {
     final normalized = DateTime.tryParse(value)?.toIso8601String().split('T').first;
     if (normalized == null || _dateIso == normalized) return;
     _dateIso = normalized;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setDateDisplay(String value) {
     final parsed = _parseDisplayDate(value);
     if (parsed == null || _dateIso == parsed) return;
     _dateIso = parsed;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setDays(int employeeId, int days) {
     if (_days[employeeId] == days) return;
     _days[employeeId] = days;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setPoNo(String poNo) {
     if (_poNo == poNo) return;
     _poNo = poNo;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setBillNo(String v) {
     if (_billNo == v) return;
     _billNo = v;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setClientName(String v) {
     if (_clientName == v) return;
     _clientName = v;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setClientAddr(String v) {
     if (_clientAddr == v) return;
     _clientAddr = v;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setClientGstin(String v) {
     if (_clientGstin == v) return;
     _clientGstin = v;
-    notifyListeners();
+    _safeNotify();
   }
 
   void setDeptCode(String v) {
     if (_deptCode == v) return;
     _deptCode = v;
-    notifyListeners();
+    _safeNotify();
   }
 
   int getDays(int employeeId) => _days[employeeId] ?? 0;

@@ -5,10 +5,10 @@
 // Data comes from the salary module: final salary amounts + employee bank details.
 //
 // 🛠️  Columns: Amount | Debit A/C no. | IFSC | Credit A/c no. | Code |
-//               Beneficiary | Place | Bank Details
+//               Beneficiary | Branch | Bank Details
 //
-// 🧩  Code -> employee ID
-// 🧩  Place -> bank details (branch info)
+// 🧩  Code -> always 10 for every employee
+// 🧩  Branch -> actual branch (from EmployeeModel.branch)
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -43,7 +43,7 @@ class SalaryDisbursementService {
   static const double _colWidthCreditAc     = 20.0;
   static const double _colWidthCode         = 10.0;
   static const double _colWidthBeneficiary  = 22.0;
-  static const double _colWidthPlace        = 29.0;
+  static const double _colWidthBranch       = 29.0;   // was Place, now Branch
   static const double _colWidthBankDetails  = 25.0;
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -102,10 +102,10 @@ class SalaryDisbursementService {
     if (days == 0 || daysInMonth == 0) return 0;
     final eBasic = employee.basicCharges * days / daysInMonth;
     final eGross = employee.grossSalary  * days / daysInMonth;
-    final pf     = (eBasic * 0.12).round().toDouble();
-    final esic   = employee.grossSalary >= 21000
-        ? 0.0
-        : (eGross * 0.0075).ceilToDouble();
+    final pf     = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).round().toDouble();
+    final esic   = employee.grossSalary <= 21000
+        ? (eGross * 0.0075).ceilToDouble()
+        : 0.0;
     final msw    = isMsw ? 6.0 : 0.0;
     final female = employee.gender.toUpperCase() == 'F';
     double pt;
@@ -148,19 +148,19 @@ class SalaryDisbursementService {
         continue;
       }
 
-      final String code   = id.toString();
-      final String branch = emp.bankDetails;
+      // ✅ Use actual branch from EmployeeModel.branch
+      final String branch = emp.branch;
 
       items.add(SalaryDisbursementItemModel(
         disbursementId: 0,
         employeeId:     id,
         employeeName:   emp.name,
-        bankName:       emp.bankDetails,
+        bankName:       emp.bankDetails,   // bank name
         accountNumber:  emp.accountNumber,
         ifscCode:       emp.ifscCode,
         amount:         double.parse(net.toStringAsFixed(2)),
-        sbCode:         code,
-        branch:         branch,
+        sbCode:         '10',              // not used in Excel; Code column is always 10
+        branch:         branch,            // actual branch
       ));
     }
 
@@ -281,7 +281,7 @@ class SalaryDisbursementService {
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthCreditAc;     col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthCode;         col++;
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthBeneficiary;  col++;
-    sheet.getRangeByIndex(1, col).columnWidth = _colWidthPlace;        col++;
+    sheet.getRangeByIndex(1, col).columnWidth = _colWidthBranch;       col++; // Branch
     sheet.getRangeByIndex(1, col).columnWidth = _colWidthBankDetails;
   }
 
@@ -295,7 +295,7 @@ class SalaryDisbursementService {
     CompanyConfigModel config,
   ) {
     final int titleStartCol = _dataStartCol;
-    final int titleEndCol   = titleStartCol + 5; // Amount..Place
+    final int titleEndCol   = titleStartCol + 5; // Amount..Place (now Branch)
     final Range titleRange  =
         sheet.getRangeByIndex(2, titleStartCol, 2, titleEndCol);
     titleRange.merge();
@@ -318,7 +318,7 @@ class SalaryDisbursementService {
   static void _writeHeaderRow(Worksheet sheet) {
     const headers = [
       'Amount', 'Debit A/C no.', 'IFSC', 'Credit A/c no.', 'Code',
-      'Beneficiary', 'Place', 'Bank Details',
+      'Beneficiary', 'Branch', 'Bank Details',   // ✅ Branch instead of Place
     ];
     int col = _dataStartCol;
     for (final h in headers) {
@@ -358,10 +358,10 @@ class SalaryDisbursementService {
     set(config.accountNo);
     set(item.ifscCode);
     set(item.accountNumber);
-    set(item.sbCode);
+    set('10');               // ✅ Code always 10
     set(item.employeeName);
-    set(item.branch);
-    set(item.bankName);
+    set(item.branch);        // ✅ Branch (actual branch)
+    set(item.bankName);      // Bank Details column remains
 
     // Apply border to all cells in this row
     for (int c = _dataStartCol; c < col; c++) {

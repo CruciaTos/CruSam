@@ -106,12 +106,13 @@ class SalaryStatementPdfService {
   }
 
   static int _pf(EmployeeModel e, int days, int dim) {
-    final eb = _earnedBasic(e, days, dim);
-    return eb == 0 ? 0 : (eb * 0.12).round();
+  final eb = _earnedBasic(e, days, dim);
+  if (eb == 0) return 0;
+  return eb >= 15000 ? 1800 : (eb * 0.12).round();
   }
 
   static int _esic(EmployeeModel e, int days, int dim) {
-    if (e.grossSalary >= 21000) return 0;
+    if (e.grossSalary > 21000) return 0;
     final eg = _earnedGross(e, days, dim);
     return eg == 0 ? 0 : (eg * 0.0075).ceil();
   }

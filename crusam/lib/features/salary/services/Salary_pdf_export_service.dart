@@ -754,8 +754,8 @@ class SalaryPdfExportService {
     final eB     = daysInMonth == 0 ? 0.0 : emp.basicCharges * days / daysInMonth;
     final eO     = daysInMonth == 0 ? 0.0 : emp.otherCharges * days / daysInMonth;
     final eG     = eB + eO;
-    final pf     = (eB * 0.12).round().toDouble();
-    final esic   = emp.grossSalary >= 21000 ? (eG * 0.0075).ceil().toDouble() : 0.0;
+    final pf     = eB >= 15000 ? 1800.0 : (eB * 0.12).round().toDouble();
+    final esic   = emp.grossSalary <= 21000 ? (eG * 0.0075).ceil().toDouble() : 0.0;
     final msw    = isMsw ? 6.0 : 0.0;
     final female = emp.gender.toUpperCase() == 'F';
     double pt;

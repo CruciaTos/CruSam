@@ -597,11 +597,11 @@ class _LeftPaneState extends State<_LeftPane> {
 
   int _pf(EmployeeModel e) {
     final eb = _earnedBasic(e);
-    return eb == 0 ? 0 : (eb * 0.12).round();
+    return eb == 0 ? 0 : (eb >= 15000 ? 1800 : (eb * 0.12).round());
   }
 
   int _esic(EmployeeModel e) {
-    if (e.grossSalary >= 21000) return 0;
+    if (e.grossSalary > 21000) return 0;
     final eg = _earnedGross(e);
     return eg == 0 ? 0 : (eg * 0.0075).ceil();
   }

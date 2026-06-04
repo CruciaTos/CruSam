@@ -98,10 +98,10 @@ class ExcelExportService {
       final earnedGross = hasDays && daysInMonth > 0
           ? e.grossSalary * days / daysInMonth
           : 0.0;
-      final pf    = hasDays ? (earnedBasic * 0.12).round() : 0;
-      final esicInt = e.grossSalary >= 21000
-          ? 0
-          : (hasDays ? (earnedGross * 0.0075).ceil() : 0);
+      final pf    = hasDays ? (earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round()) : 0;
+      final esicInt = e.grossSalary <= 21000
+          ? (earnedGross * 0.0075).ceil()
+          : 0;
       final msw         = isMsw ? 6 : 0;
       final displayedMsw = hasDays ? msw : 0;
       final pt          = _calculatePT(earnedGross, e.gender, isFeb);

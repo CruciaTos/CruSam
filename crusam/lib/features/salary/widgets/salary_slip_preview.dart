@@ -656,8 +656,8 @@ class SalarySlipPairPage extends StatelessWidget {
     final eGross = eBasic + eOther;
 
     // Deductions
-    final pf = (eBasic * 0.12).roundToDouble();
-    final esicApplicable = emp.grossSalary >= 21000;
+    final pf = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).roundToDouble();
+    final esicApplicable = emp.grossSalary <= 21000;
     final esic = esicApplicable ? (eGross * 0.0075).ceilToDouble() : 0.0;
     final msw = isMsw ? 6.0 : 0.0;
     final isFemale = emp.gender.toUpperCase() == 'F';

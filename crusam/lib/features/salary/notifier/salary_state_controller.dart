@@ -62,7 +62,7 @@ class SalaryStateController extends ChangeNotifier {
       filteredEmployees.fold(0.0, (s, e) => s + e.grossSalary);
 
   double get totalEsicEligibleGrossFull =>
-      filteredEmployees.where((e) => e.grossSalary >= 21000).fold(
+      filteredEmployees.where((e) => e.grossSalary <= 21000).fold(
         0.0, (s, e) => s + e.grossSalary);
 
   // ── Day-prorated totals — used for earned salary display ──────────────────
@@ -86,7 +86,7 @@ class SalaryStateController extends ChangeNotifier {
   // ── Attachment A calculations (use full, non-earned values) ───────────────
   /// PF = 13.61% of Total Basic Salary (full, not earned)
   double get attachmentAPf       => totalBasicFull * 0.1361;
-  /// ESIC = 3.25% of Total Gross Salary of ESIC-eligible employees (gross > 21000)
+  /// ESIC = 3.25% of Total Gross Salary of ESIC-eligible employees (gross <= 21000)
   double get attachmentAEsic     => totalEsicEligibleGrossFull * 0.0325;
   double get attachmentASubtotal => totalGrossFull + attachmentAPf + attachmentAEsic;
   double get attachmentATotal    => attachmentASubtotal.ceilToDouble();
