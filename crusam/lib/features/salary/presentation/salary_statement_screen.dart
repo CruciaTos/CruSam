@@ -15,6 +15,8 @@ import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_statement_excel_export_service.dart';
 import '../services/salary_statement_pdf_service.dart';
+import '../services/salary_disbursement_service.dart';
+import '../models/salary_disbursement_model.dart';
 import '../widgets/salary_statement_preview.dart';
 
 class SalaryStatementScreen extends StatefulWidget {
@@ -29,6 +31,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
   bool _exportingExcel = false;
+  bool _generatingDisbursement = false;
 
   late final ScrollController _vScroll;
   late final ScrollController _hScroll;
@@ -235,6 +238,105 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
   }
 
+  Future<void> _generateDisbursement() async {
+    if (_generatingDisbursement) return;
+
+    final n         = SalaryDataNotifier.instance;
+    final employees = _stateCtrl.filteredEmployees;
+
+    if (employees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No employees to disburse')),
+      );
+      return;
+    }
+
+    setState(() => _generatingDisbursement = true);
+    showLoader(context, message: 'Generating salary disbursement…');
+
+    try {
+      // 1. Build candidate items — no selection UI, everyone in
+      final candidates = await SalaryDisbursementService.buildCandidateItems(
+        employees:           employees,
+        salaryData:          n,
+        alreadyDisbursedIds: {},
+      );
+
+      if (candidates.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No employees qualify — check days entered and bank details.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      // 2. Persist the batch
+      final disbursement = await SalaryDisbursementService.createDisbursement(
+        month:    n.month,
+        year:     n.year,
+        deptCode: _stateCtrl.selectedCompanyCode,
+        items:    candidates,
+      );
+
+      // 3. Fetch persisted items directly from the database
+      final db       = await DatabaseHelper.instance.database;
+      final itemMaps = await db.query(
+        'salary_disbursement_items',
+        where:     'disbursement_id = ?',
+        whereArgs: [disbursement.id!],
+      );
+      final persistedItems = itemMaps
+          .map(SalaryDisbursementItemModel.fromDbMap)
+          .toList();
+
+      // 4. Generate + save Excel
+      final path = await SalaryDisbursementService.generateExcel(
+        disbursement: disbursement,
+        items:        persistedItems,
+        config:       _config,
+        monthName:    n.monthName,
+      );
+
+      // 5. Mark as exported
+      if (path != null) {
+        final updated = disbursement.copyWith(
+          status:     SalaryDisbursementStatus.exported,
+          exportedAt: DateTime.now().toIso8601String(),
+        );
+        await db.update(
+          'salary_disbursements',
+          updated.toDbMap()..remove('id'),
+          where:     'id = ?',
+          whereArgs: [disbursement.id!],
+        );
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            path != null ? 'Disbursement saved: $path' : 'Disbursement created.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Disbursement failed: $e'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) hideLoader(context);
+      if (mounted) setState(() => _generatingDisbursement = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -268,6 +370,8 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                 onExportExcel:  _exportExcel,
                 selectedCode:   code,
                 onCodeChanged:  (c) => _stateCtrl.setCompanyCode(c ?? 'All'),
+                generatingDisbursement: _generatingDisbursement,
+                onGenerateDisbursement: _generateDisbursement,
               ),
 
               const SizedBox(height: AppSpacing.lg),
@@ -344,7 +448,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _Toolbar  (unchanged)
+// _Toolbar
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _Toolbar extends StatelessWidget {
@@ -360,6 +464,8 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onExportExcel;
   final String selectedCode;
   final void Function(String?) onCodeChanged;
+  final bool       generatingDisbursement;
+  final VoidCallback onGenerateDisbursement;
 
   const _Toolbar({
     required this.title,
@@ -374,6 +480,8 @@ class _Toolbar extends StatelessWidget {
     required this.onExportExcel,
     required this.selectedCode,
     required this.onCodeChanged,
+    required this.generatingDisbursement,
+    required this.onGenerateDisbursement,
   });
 
   @override
@@ -445,6 +553,21 @@ class _Toolbar extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.green.shade700,
                       side: BorderSide(color: Colors.green.shade400),
+                    ),
+                  ),
+            const SizedBox(width: 8),
+            generatingDisbursement
+                ? const SizedBox(
+                    width: 24, height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : OutlinedButton.icon(
+                    onPressed: employees.isEmpty ? null : onGenerateDisbursement,
+                    icon: const Icon(Icons.account_balance_outlined, size: 16),
+                    label: const Text('Disbursement'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.teal.shade700,
+                      side: BorderSide(color: Colors.teal.shade400),
                     ),
                   ),
           ],
@@ -598,7 +721,6 @@ class _LeftPaneState extends State<_LeftPane> {
 
     return ListView(
       children: [
-        // ── Full Earnings ─────────────────────────────────────────────────
         Text('Salary Aggregates', style: AppTextStyles.h4),
         const SizedBox(height: AppSpacing.lg),
 
@@ -617,7 +739,6 @@ class _LeftPaneState extends State<_LeftPane> {
         _row('Total Gross', '₹${sumGross.toStringAsFixed(0)}', AppColors.indigo600, bold: true),
         const Divider(height: AppSpacing.lg),
 
-        // ── NEW: Earned Salary section ────────────────────────────────────
         Text('Earned Salary (Prorated)',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
@@ -633,7 +754,6 @@ class _LeftPaneState extends State<_LeftPane> {
             bold: true),
         const Divider(height: AppSpacing.lg),
 
-        // ── Deductions ────────────────────────────────────────────────────
         Text('Deductions (Prorated)',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
@@ -718,7 +838,6 @@ class _LeftPaneState extends State<_LeftPane> {
         const Divider(),
         const SizedBox(height: AppSpacing.sm),
 
-        // ── Column Width Adjustments ───────────────────────────────────────
         GestureDetector(
           onTap: () => setState(() => _showColWidths = !_showColWidths),
           child: Row(
@@ -827,7 +946,7 @@ class _LeftPaneState extends State<_LeftPane> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _PreviewPane  (unchanged)
+// _PreviewPane
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _PreviewPane extends StatelessWidget {
@@ -956,7 +1075,7 @@ class _PreviewPane extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Empty State  (unchanged)
+// Empty State
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _EmptyState extends StatelessWidget {
@@ -991,7 +1110,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Shared badge widgets  (unchanged)
+// Shared badge widgets
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _MonthBadge extends StatelessWidget {
