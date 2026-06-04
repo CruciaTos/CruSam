@@ -19,8 +19,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   int _month = DateTime.now().month;
   final int _year = DateTime.now().year;
 
-  final Map<int, TextEditingController> _daysCtrls     = {};
-  final Map<int, FocusNode>             _daysFocusNodes = {};
+  final Map<int, FocusNode> _daysFocusNodes = {};
 
   static const _months = [
     'January','February','March','April','May','June',
@@ -34,47 +33,33 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   @override
   void initState() {
     super.initState();
-    _ctrl.addListener(_syncControllers);
+    _ctrl.addListener(_syncFocusNodes);
     _ctrl.loadEmployees();
     SalaryDataNotifier.instance.setMonthYear(_month, _year);
   }
 
   @override
   void dispose() {
-    _ctrl.removeListener(_syncControllers);
-    for (final c in _daysCtrls.values) {
-      c.dispose();
-    }
+    _ctrl.removeListener(_syncFocusNodes);
     for (final f in _daysFocusNodes.values) {
       f.dispose();
     }
     super.dispose();
   }
 
-  void _syncControllers() {
+  void _syncFocusNodes() {
     if (!mounted) return;
-
     final liveIds = _ctrl.employees
         .where((e) => e.id != null)
         .map((e) => e.id!)
         .toSet();
 
-    final staleIds = _daysCtrls.keys.where((id) => !liveIds.contains(id)).toList();
+    final staleIds = _daysFocusNodes.keys.where((id) => !liveIds.contains(id)).toList();
     for (final id in staleIds) {
-      _daysCtrls.remove(id)?.dispose();
       _daysFocusNodes.remove(id)?.dispose();
     }
 
     for (final id in liveIds) {
-      if (!_daysCtrls.containsKey(id)) {
-        final c = TextEditingController();
-        c.addListener(() {
-          final d = int.tryParse(c.text) ?? 0;
-          SalaryDataNotifier.instance.setDays(id, d);
-          SalaryStateController.instance.notifyDaysChanged();
-        });
-        _daysCtrls[id] = c;
-      }
       _daysFocusNodes[id] ??= FocusNode();
     }
 
@@ -85,7 +70,12 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     final newTotal = DateTime(_year, month + 1, 0).day;
     setState(() {
       _month = month;
-      for (final c in _daysCtrls.values) {
+      final liveIds = _ctrl.employees
+          .where((e) => e.id != null)
+          .map((e) => e.id!)
+          .toSet();
+      for (final id in liveIds) {
+        final c = SalaryDataNotifier.instance.getOrCreateController(id);
         final v = int.tryParse(c.text) ?? 0;
         if (v > newTotal) c.text = newTotal.toString();
       }
@@ -102,6 +92,12 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
       final employees = _displayEmployees;
       final code = _ctrl.selectedCompanyCode;
       final title = code == 'All' ? 'Employee Salary' : 'Employee Salary - $code';
+
+      final daysCtrls = {
+        for (final e in employees)
+          if (e.id != null)
+            e.id!: SalaryDataNotifier.instance.getOrCreateController(e.id!),
+      };
 
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
@@ -146,7 +142,7 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
                   totalDays:      _totalDays,
                   isMsw:          _isMsw,
                   isFeb:          _isFeb,
-                  daysCtrls:      _daysCtrls,
+                  daysCtrls:      daysCtrls,
                   daysFocusNodes: _daysFocusNodes,
                   onDaysChanged:  () => setState(() {}),
                   monthName:      _months[_month - 1],
@@ -324,3 +320,4 @@ class _Toolbar extends StatelessWidget {
     child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
   );
 }
+
