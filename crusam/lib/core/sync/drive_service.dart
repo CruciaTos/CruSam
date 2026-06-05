@@ -772,7 +772,7 @@ class SyncManager {
     final empRows = await (await _db.database).query(
       'employees',
       columns: ['id'],
-      where: 'cloud_id IS NULL OR cloud_id = ""',
+      where: "cloud_id IS NULL OR cloud_id = ''",
     );
     for (final row in empRows) {
       final id = row['id'] as int;
@@ -784,7 +784,7 @@ class SyncManager {
     final vRows = await (await _db.database).query(
       'vouchers',
       columns: ['id'],
-      where: '(cloud_id IS NULL OR cloud_id = "") AND (is_deleted = 0 OR is_deleted IS NULL)',
+      where: "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
     );
     for (final row in vRows) {
       final id = row['id'] as int;

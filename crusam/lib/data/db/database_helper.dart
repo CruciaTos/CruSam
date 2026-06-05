@@ -478,7 +478,7 @@ class DatabaseHelper {
         'created_at': now, // safe: only runs when created_at may be null
         'synced_at': now,
       },
-      where: 'id = ? AND (cloud_id IS NULL OR cloud_id = "")',
+      where: "id = ? AND (cloud_id IS NULL OR cloud_id = '')",   // ← FIXED: single quotes
       whereArgs: [localId],
     );
   }
@@ -565,14 +565,14 @@ class DatabaseHelper {
       (await database).query(
         'employees',
         where:
-            '(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ""',
+            "(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ''",
         orderBy: 'sr_no ASC',
       );
 
   Future<List<Map<String, dynamic>>> getDeletedSyncedEmployees() async =>
       (await database).query(
         'employees',
-        where: 'is_deleted = 1 AND cloud_id IS NOT NULL AND cloud_id != ""',
+        where: "is_deleted = 1 AND cloud_id IS NOT NULL AND cloud_id != ''",
         orderBy: 'updated_at ASC',
       );
 
@@ -709,7 +709,7 @@ class DatabaseHelper {
       (await database).query(
         'vouchers',
         where:
-            '(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ""',
+            "(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ''",
         orderBy: 'id DESC',
       );
 
