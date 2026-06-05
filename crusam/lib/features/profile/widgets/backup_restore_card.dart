@@ -220,10 +220,12 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
       setState(() {
         _cloudSyncing = false;
         if (syncResult.success) {
+          // FIX (Bug 2): use actual upload counts from syncResult,
+          // not the SQLite import summary counts.
           _statusMessage =
               'Restore & cloud sync complete — '
-              '${summary!['employees']} employees, '
-              '${summary['vouchers']} invoices imported and uploaded to Drive.';
+              '${syncResult.employeesPushed} employees, '
+              '${syncResult.vouchersPushed} invoices uploaded to Drive.';
           _statusIsError = false;
         } else {
           _statusMessage =

@@ -345,17 +345,36 @@ class DriveService {
 
   // ── Employee file helpers ─────────────────────────────────────────────────
 
+  /// Uploads an employee file. Adds a retry for eventual consistency:
+  /// after creation, tries to confirm the file is visible via a name search.
   Future<String?> uploadEmployee(SyncEmployee employee) async {
     final folderId = await ensureEmployeesFolder();
     if (folderId == null) return null;
     final fileName = '${employee.cloudId}.json';
     final existingId = await findFileId(fileName, folderId);
-    return uploadJson(
+
+    final uploadedId = await uploadJson(
       fileName: fileName,
       data: employee.toJson(),
       parentFolderId: folderId,
       existingFileId: existingId,
     );
+    if (uploadedId == null) return null;
+
+    // If the file was newly created, wait and retry to confirm visibility
+    if (existingId == null) {
+      const maxRetries = 3;
+      for (int i = 0; i < maxRetries; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        final found = await findFileId(fileName, folderId);
+        if (found != null) {
+          debugPrint('DriveService.uploadEmployee: confirmed file $fileName visible after retry $i');
+          return found;
+        }
+      }
+      debugPrint('DriveService.uploadEmployee: file $fileName not yet visible after $maxRetries retries, using returned id');
+    }
+    return uploadedId;
   }
 
   Future<SyncEmployee?> downloadEmployee(String cloudId) async {
@@ -375,17 +394,30 @@ class DriveService {
 
   // ── Voucher file helpers ──────────────────────────────────────────────────
 
+  /// Uploads a voucher file. Same eventual-consistency retry as for employees.
   Future<String?> uploadVoucher(SyncVoucher voucher) async {
     final folderId = await ensureVouchersFolder();
     if (folderId == null) return null;
     final fileName = '${voucher.cloudId}.json';
     final existingId = await findFileId(fileName, folderId);
-    return uploadJson(
+
+    final uploadedId = await uploadJson(
       fileName: fileName,
       data: voucher.toJson(),
       parentFolderId: folderId,
       existingFileId: existingId,
     );
+    if (uploadedId == null) return null;
+
+    if (existingId == null) {
+      const maxRetries = 3;
+      for (int i = 0; i < maxRetries; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        final found = await findFileId(fileName, folderId);
+        if (found != null) return found;
+      }
+    }
+    return uploadedId;
   }
 
   Future<SyncVoucher?> downloadVoucher(String cloudId) async {
@@ -768,11 +800,11 @@ class SyncManager {
   Future<void> _bootstrapCloudIds() async {
     final now = DateTime.now().toUtc().toIso8601String();
 
-    // Employees
+    // Employees – FIX: exclude soft-deleted rows (Bug 3)
     final empRows = await (await _db.database).query(
       'employees',
       columns: ['id'],
-      where: "cloud_id IS NULL OR cloud_id = ''",
+      where: "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
     );
     for (final row in empRows) {
       final id = row['id'] as int;
@@ -910,27 +942,34 @@ class SyncManager {
 
   // ── Push (drain queue) ────────────────────────────────────────────────────
 
-  /// Drains the sync_pending table, uploading each record and updating the
-  /// corresponding Drive index.  Returns counts of successfully pushed items.
+  /// Uploads all pending entries, then updates the Drive indexes once per
+  /// entity type to avoid per‑record index clobbering and race conditions.
   Future<(int, int)> _drainPendingQueue() async {
-    int empPushed = 0;
-    int vPushed = 0;
-
     final pendingRows = await _db.getPendingSyncs();
     if (pendingRows.isEmpty) return (0, 0);
+
+    // Collect successfully uploaded employee/voucher data
+    final List<SyncEmployee> uploadedEmployees = [];
+    final List<SyncVoucher> uploadedVouchers = [];
+    int empPushed = 0;
+    int vPushed = 0;
 
     for (final row in pendingRows) {
       final entry = SyncPendingEntry.fromDbMap(row);
       try {
         if (entry.entityType == 'employee') {
-          final ok = await _pushEmployee(entry);
-          if (ok) {
+          final syncEmp = SyncEmployee.fromJson(entry.payload);
+          final fileId = await _drive.uploadEmployee(syncEmp);
+          if (fileId != null) {
+            uploadedEmployees.add(syncEmp);
             empPushed++;
             if (entry.id != null) await _db.removePendingSync(entry.id!);
           }
         } else if (entry.entityType == 'invoice') {
-          final ok = await _pushVoucher(entry);
-          if (ok) {
+          final syncVoucher = SyncVoucher.fromJson(entry.payload);
+          final fileId = await _drive.uploadVoucher(syncVoucher);
+          if (fileId != null) {
+            uploadedVouchers.add(syncVoucher);
             vPushed++;
             if (entry.id != null) await _db.removePendingSync(entry.id!);
           }
@@ -943,52 +982,55 @@ class SyncManager {
       }
     }
 
+    // ── Batch index update for employees ──────────────────────────────────
+    if (uploadedEmployees.isNotEmpty) {
+      try {
+        final index = await _drive.readEmployeesIndex();
+        final updatedEntries = List<SyncIndexEntry>.from(index.entries);
+        // Remove all entries for the uploaded cloudIds, then add the new ones
+        final uploadedCloudIds = uploadedEmployees.map((e) => e.cloudId).toSet();
+        updatedEntries.removeWhere((entry) => uploadedCloudIds.contains(entry.cloudId));
+        updatedEntries.addAll(uploadedEmployees.map((e) => SyncIndexEntry(
+              cloudId: e.cloudId,
+              updatedAt: e.updatedAt,
+              isDeleted: e.isDeleted,
+            )));
+        await _drive.writeEmployeesIndex(SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          entries: updatedEntries,
+        ));
+      } catch (e) {
+        debugPrint('SyncManager._drainPendingQueue: failed to update employees index: $e');
+      }
+    }
+
+    // ── Batch index update for vouchers ───────────────────────────────────
+    if (uploadedVouchers.isNotEmpty) {
+      try {
+        final index = await _drive.readVouchersIndex();
+        final updatedEntries = List<SyncIndexEntry>.from(index.entries);
+        final uploadedCloudIds = uploadedVouchers.map((v) => v.cloudId).toSet();
+        updatedEntries.removeWhere((entry) => uploadedCloudIds.contains(entry.cloudId));
+        updatedEntries.addAll(uploadedVouchers.map((v) => SyncIndexEntry(
+              cloudId: v.cloudId,
+              updatedAt: v.updatedAt,
+              isDeleted: v.isDeleted,
+            )));
+        await _drive.writeVouchersIndex(SyncIndex(
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          entries: updatedEntries,
+        ));
+      } catch (e) {
+        debugPrint('SyncManager._drainPendingQueue: failed to update vouchers index: $e');
+      }
+    }
+
     debugPrint('SyncManager._drainPendingQueue: '
         '$empPushed employees, $vPushed vouchers pushed');
     return (empPushed, vPushed);
   }
 
-  Future<bool> _pushEmployee(SyncPendingEntry entry) async {
-    final syncEmp = SyncEmployee.fromJson(entry.payload);
-    final uploadedId = await _drive.uploadEmployee(syncEmp);
-    if (uploadedId == null) return false;
-
-    final index = await _drive.readEmployeesIndex();
-    final updatedEntries = [
-      ...index.entries.where((e) => e.cloudId != syncEmp.cloudId),
-      SyncIndexEntry(
-        cloudId: syncEmp.cloudId,
-        updatedAt: syncEmp.updatedAt,
-        isDeleted: syncEmp.isDeleted,
-      ),
-    ];
-    await _drive.writeEmployeesIndex(SyncIndex(
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-      entries: updatedEntries,
-    ));
-    return true;
-  }
-
-  Future<bool> _pushVoucher(SyncPendingEntry entry) async {
-    final syncVoucher = SyncVoucher.fromJson(entry.payload);
-    final uploadedId = await _drive.uploadVoucher(syncVoucher);
-    if (uploadedId == null) return false;
-
-    final index = await _drive.readVouchersIndex();
-    final updatedEntries = [
-      ...index.entries.where((e) => e.cloudId != syncVoucher.cloudId),
-      SyncIndexEntry(
-        cloudId: syncVoucher.cloudId,
-        updatedAt: syncVoucher.updatedAt,
-        isDeleted: syncVoucher.isDeleted,
-      ),
-    ];
-    await _drive.writeVouchersIndex(SyncIndex(
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-      entries: updatedEntries,
-    ));
-    return true;
-  }
+  // The old per‑record index writers are removed (no longer called).
 
   // ── Fire-and-forget push ──────────────────────────────────────────────────
 

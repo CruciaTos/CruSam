@@ -321,7 +321,7 @@ class AttachmentAPreview extends StatelessWidget {
                 child: Column(
                   children: [
                     _multilineTotalRow(
-                      firstLine: 'P.F : 13.61 %',
+                      firstLine: 'P.F : 13 %',
                       secondLine: '(Total Basic Salary)',
                       value: pfAmount.toStringAsFixed(2),
                     ),

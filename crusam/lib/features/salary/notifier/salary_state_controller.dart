@@ -52,7 +52,15 @@ class SalaryStateController extends ChangeNotifier {
     return codes;
   }
 
-  int get employeeCount => filteredEmployees.length;
+  List<EmployeeModel> get activeEmployees {
+    final n = SalaryDataNotifier.instance;
+    return filteredEmployees
+        .where((e) => n.getDays(e.id ?? 0) > 0)
+        .toList();
+  }
+
+  /// Only counts employees who actually worked >= 1 day.
+  int get employeeCount => activeEmployees.length;
 
   // ── Full (non-day-prorated) totals — used for Attachment A billing ─────────
   double get totalBasicFull =>
@@ -83,12 +91,21 @@ class SalaryStateController extends ChangeNotifier {
         s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
   }
 
-  // ── Attachment A calculations (use full, non-earned values) ───────────────
-  /// PF = 13.61% of Total Basic Salary (full, not earned)
-  double get attachmentAPf       => totalBasicFull * 0.1361;
-  /// ESIC = 3.25% of Total Gross Salary of ESIC-eligible employees (gross <= 21000)
-  double get attachmentAEsic     => totalEsicEligibleGrossFull * 0.0325;
-  double get attachmentASubtotal => totalGrossFull + attachmentAPf + attachmentAEsic;
+  double get totalEarnedEsicEligibleGross {
+    final n = SalaryDataNotifier.instance;
+    if (n.totalDays == 0) return 0;
+    return filteredEmployees
+        .where((e) => e.grossSalary <= 21000)
+        .fold(0.0, (s, e) =>
+            s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
+  }
+
+  // ── Attachment A calculations (earned/prorated values) ────────────────────
+  /// PF = 13.61% of Total Earned Basic Salary
+  double get attachmentAPf       => (totalEarnedBasic * 0.1361).roundToDouble();
+  /// ESIC = 3.25% of Total Earned Gross of ESIC-eligible employees (gross <= 21000)
+  double get attachmentAEsic     => (totalEarnedEsicEligibleGross * 0.0325).roundToDouble();
+  double get attachmentASubtotal => totalEarnedGross + attachmentAPf + attachmentAEsic;
   double get attachmentATotal    => attachmentASubtotal.ceilToDouble();
   double get attachmentARoundOff => attachmentATotal - attachmentASubtotal;
 
