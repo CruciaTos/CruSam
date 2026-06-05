@@ -119,14 +119,13 @@ class SyncEmployee {
       );
 
   /// Build from a raw SQLite row (includes sync columns).
-  /// Assumes the map keys match the local database column names.
   factory SyncEmployee.fromDbMap(Map<String, dynamic> m) => SyncEmployee(
         cloudId: (m['cloud_id'] as String?) ?? '',
         name: (m['name'] as String?) ?? '',
-        mobile: (m['mobile'] as String?) ?? '',                         // <-- FIXED: now reads the mobile column
-        charge: (m['charge'] as num?)?.toDouble()                      // <-- Attempts 'charge' first, then falls back to 'basic_charges'
-            ?? (m['basic_charges'] as num?)?.toDouble()
-            ?? 0,
+        mobile: (m['mobile'] as String?) ?? '',
+        charge: (m['charge'] as num?)?.toDouble() ??
+            (m['basic_charges'] as num?)?.toDouble() ??
+            0,
         createdAt: (m['created_at'] as String?) ??
             DateTime.now().toUtc().toIso8601String(),
         updatedAt: (m['updated_at'] as String?) ??
@@ -148,6 +147,203 @@ class SyncEmployee {
         basicCharges: (m['basic_charges'] as num?)?.toDouble() ?? 0,
         otherCharges: (m['other_charges'] as num?)?.toDouble() ?? 0,
         gender: (m['gender'] as String?) ?? 'M',
+      );
+}
+
+// ── SyncVoucher ───────────────────────────────────────────────────────────────
+// Full voucher record as stored in Drive: vouchers/{cloud_id}.json
+// Contains the voucher header + all its rows embedded as a list.
+
+class SyncVoucher {
+  final String cloudId;
+  final String title;
+  final String description;
+  final String deptCode;
+  final String billNo;
+  final String poNo;
+  final String itemDescription;
+  final String clientName;
+  final String clientAddress;
+  final String clientGstin;
+  final double baseTotal;
+  final double cgst;
+  final double sgst;
+  final double totalTax;
+  final double rawTotal;
+  final double roundOff;
+  final double finalTotal;
+  final String totalInWords;
+  final String status;
+  final String createdBy;
+  final String updatedBy;
+  final bool isDeleted;
+  final String? deletedAt;
+  final String createdAt;
+  final String updatedAt;
+
+  // Embedded rows (not stored as separate SQLite rows when syncing)
+  final List<Map<String, dynamic>> rows;
+
+  const SyncVoucher({
+    required this.cloudId,
+    this.title = '',
+    this.description = '',
+    this.deptCode = '',
+    this.billNo = '',
+    this.poNo = '',
+    this.itemDescription = '',
+    this.clientName = '',
+    this.clientAddress = '',
+    this.clientGstin = '',
+    this.baseTotal = 0,
+    this.cgst = 0,
+    this.sgst = 0,
+    this.totalTax = 0,
+    this.rawTotal = 0,
+    this.roundOff = 0,
+    this.finalTotal = 0,
+    this.totalInWords = '',
+    this.status = 'draft',
+    this.createdBy = '',
+    this.updatedBy = '',
+    this.isDeleted = false,
+    this.deletedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    this.rows = const [],
+  });
+
+  Map<String, dynamic> toJson() => {
+        'cloud_id': cloudId,
+        'title': title,
+        'description': description,
+        'dept_code': deptCode,
+        'bill_no': billNo,
+        'po_no': poNo,
+        'item_description': itemDescription,
+        'client_name': clientName,
+        'client_address': clientAddress,
+        'client_gstin': clientGstin,
+        'base_total': baseTotal,
+        'cgst': cgst,
+        'sgst': sgst,
+        'total_tax': totalTax,
+        'raw_total': rawTotal,
+        'round_off': roundOff,
+        'final_total': finalTotal,
+        'total_in_words': totalInWords,
+        'status': status,
+        'created_by': createdBy,
+        'updated_by': updatedBy,
+        'is_deleted': isDeleted,
+        'deleted_at': deletedAt,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'rows': rows,
+      };
+
+  factory SyncVoucher.fromJson(Map<String, dynamic> json) {
+    final rawRows = json['rows'];
+    final rowList = (rawRows is List)
+        ? rawRows.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
+
+    return SyncVoucher(
+      cloudId: (json['cloud_id'] as String?) ?? '',
+      title: (json['title'] as String?) ?? '',
+      description: (json['description'] as String?) ?? '',
+      deptCode: (json['dept_code'] as String?) ?? '',
+      billNo: (json['bill_no'] as String?) ?? '',
+      poNo: (json['po_no'] as String?) ?? '',
+      itemDescription: (json['item_description'] as String?) ?? '',
+      clientName: (json['client_name'] as String?) ?? '',
+      clientAddress: (json['client_address'] as String?) ?? '',
+      clientGstin: (json['client_gstin'] as String?) ?? '',
+      baseTotal: (json['base_total'] as num?)?.toDouble() ?? 0,
+      cgst: (json['cgst'] as num?)?.toDouble() ?? 0,
+      sgst: (json['sgst'] as num?)?.toDouble() ?? 0,
+      totalTax: (json['total_tax'] as num?)?.toDouble() ?? 0,
+      rawTotal: (json['raw_total'] as num?)?.toDouble() ?? 0,
+      roundOff: (json['round_off'] as num?)?.toDouble() ?? 0,
+      finalTotal: (json['final_total'] as num?)?.toDouble() ?? 0,
+      totalInWords: (json['total_in_words'] as String?) ?? '',
+      status: (json['status'] as String?) ?? 'draft',
+      createdBy: (json['created_by'] as String?) ?? '',
+      updatedBy: (json['updated_by'] as String?) ?? '',
+      isDeleted: _parseBool(json['is_deleted']),
+      deletedAt: json['deleted_at'] as String?,
+      createdAt: (json['created_at'] as String?) ?? '',
+      updatedAt: (json['updated_at'] as String?) ?? '',
+      rows: rowList,
+    );
+  }
+
+  /// Converts this object into the format expected by
+  /// [DatabaseHelper.upsertVoucherFromCloud] — i.e., a header map with
+  /// rows nested under the 'rows' key.
+  Map<String, dynamic> toDbMap() => {
+        'cloud_id': cloudId,
+        'title': title,
+        'description': description,
+        'dept_code': deptCode,
+        'bill_no': billNo,
+        'po_no': poNo,
+        'item_description': itemDescription,
+        'client_name': clientName,
+        'client_address': clientAddress,
+        'client_gstin': clientGstin,
+        'base_total': baseTotal,
+        'cgst': cgst,
+        'sgst': sgst,
+        'total_tax': totalTax,
+        'raw_total': rawTotal,
+        'round_off': roundOff,
+        'final_total': finalTotal,
+        'total_in_words': totalInWords,
+        'status': status,
+        'created_by': createdBy,
+        'updated_by': updatedBy,
+        'is_deleted': isDeleted ? 1 : 0,
+        'deleted_at': deletedAt,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'rows': rows,
+      };
+
+  /// Build from a SQLite voucher row + its child rows list.
+  factory SyncVoucher.fromDbMap(
+    Map<String, dynamic> m,
+    List<Map<String, dynamic>> voucherRows,
+  ) =>
+      SyncVoucher(
+        cloudId: (m['cloud_id'] as String?) ?? '',
+        title: (m['title'] as String?) ?? '',
+        description: (m['description'] as String?) ?? '',
+        deptCode: (m['dept_code'] as String?) ?? '',
+        billNo: (m['bill_no'] as String?) ?? '',
+        poNo: (m['po_no'] as String?) ?? '',
+        itemDescription: (m['item_description'] as String?) ?? '',
+        clientName: (m['client_name'] as String?) ?? '',
+        clientAddress: (m['client_address'] as String?) ?? '',
+        clientGstin: (m['client_gstin'] as String?) ?? '',
+        baseTotal: (m['base_total'] as num?)?.toDouble() ?? 0,
+        cgst: (m['cgst'] as num?)?.toDouble() ?? 0,
+        sgst: (m['sgst'] as num?)?.toDouble() ?? 0,
+        totalTax: (m['total_tax'] as num?)?.toDouble() ?? 0,
+        rawTotal: (m['raw_total'] as num?)?.toDouble() ?? 0,
+        roundOff: (m['round_off'] as num?)?.toDouble() ?? 0,
+        finalTotal: (m['final_total'] as num?)?.toDouble() ?? 0,
+        totalInWords: (m['total_in_words'] as String?) ?? '',
+        status: (m['status'] as String?) ?? 'draft',
+        createdBy: (m['created_by'] as String?) ?? '',
+        updatedBy: (m['updated_by'] as String?) ?? '',
+        isDeleted: _parseBool(m['is_deleted']),
+        deletedAt: m['deleted_at'] as String?,
+        createdAt: (m['created_at'] as String?) ??
+            DateTime.now().toUtc().toIso8601String(),
+        updatedAt: (m['updated_at'] as String?) ??
+            DateTime.now().toUtc().toIso8601String(),
+        rows: voucherRows,
       );
 }
 
@@ -179,7 +375,7 @@ class SyncIndexEntry {
 }
 
 // ── SyncIndex ─────────────────────────────────────────────────────────────────
-// Root of employees/index.json
+// Root of employees/index.json or vouchers/index.json
 
 class SyncIndex {
   final String updatedAt;
@@ -205,9 +401,9 @@ class SyncIndex {
 
 class SyncPendingEntry {
   final int? id;
-  final String entityType; // 'employee'
+  final String entityType; // 'employee' | 'invoice'
   final String cloudId;
-  final String operation; // 'create' | 'update' | 'delete'
+  final String operation; // 'create' | 'update' | 'delete' | 'upsert'
   final Map<String, dynamic> payload; // full JSON of the entity
   final String localUpdatedAt;
   final String? createdAt;
@@ -236,6 +432,7 @@ class SyncPendingEntry {
 }
 
 // ── DriveDevice ───────────────────────────────────────────────────────────────
+
 class DriveDevice {
   final String deviceId;
   final String deviceName;
@@ -273,6 +470,7 @@ class DriveDevice {
 }
 
 // ── DriveMetadata ─────────────────────────────────────────────────────────────
+
 class DriveMetadata {
   final int schemaVersion;
   final String updatedAt;
@@ -299,9 +497,7 @@ class DriveMetadata {
   factory DriveMetadata.fromJson(Map json) {
     final rawIndex = (json['index_hashes'] as Map?) ?? {};
     final idx = <String, dynamic>{};
-    rawIndex.forEach((k, v) {
-      idx[k.toString()] = v;
-    });
+    rawIndex.forEach((k, v) => idx[k.toString()] = v);
 
     return DriveMetadata(
       schemaVersion: (json['schema_version'] as num?)?.toInt() ?? 4,

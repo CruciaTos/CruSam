@@ -1,29 +1,31 @@
 // lib/features/profile/widgets/backup_restore_card.dart
 //
-// Local save-file backup & restore.
+// Local save-file backup & restore — with automatic cloud sync after import.
 //
 // Backup  → exports employees, vouchers, voucher_rows, company_config and
 //           item_descriptions as a single JSON file the user saves to disk.
 //
 // Restore → user picks a previously-saved .json backup; the app upserts all
-//           rows back into SQLite, then refreshes the EmployeeNotifier /
-//           VoucherNotifier so the UI updates immediately.
-//
-// Uses file_picker (already a dependency) for both save-path selection and
-// file-open.  Works on Windows desktop (primary target).
+//           rows back into SQLite, then:
+//             1. Refreshes EmployeeNotifier / VoucherNotifier so the UI
+//                updates immediately.
+//             2. If Google Drive is connected, calls
+//                SyncManager.pushAllToCloud() so the imported data becomes
+//                the new cloud source-of-truth.
 
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../../../core/sync/drive_service.dart';
+import '../../../core/sync/google_auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/db/database_helper.dart';
 import '../../../data/db/backup_repository.dart';
+import '../../../data/db/database_helper.dart';
 import '../../master_data/notifiers/employee_notifier.dart';
 import '../../vouchers/notifiers/voucher_notifier.dart';
 
@@ -37,6 +39,7 @@ class BackupRestoreCard extends StatefulWidget {
 class _BackupRestoreCardState extends State<BackupRestoreCard> {
   bool _backingUp = false;
   bool _restoring = false;
+  bool _cloudSyncing = false;
   String? _lastBackupPath;
   String? _statusMessage;
   bool _statusIsError = false;
@@ -54,23 +57,19 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
       final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
       final bytes = utf8.encode(jsonStr);
 
-      // Suggest a timestamped filename
       final now = DateTime.now();
       final stamp =
           '${now.year}${_p(now.month)}${_p(now.day)}_${_p(now.hour)}${_p(now.minute)}';
       final suggestedName = 'crusam_backup_$stamp.json';
 
-      // Let the user choose where to save
       String? savePath = await FilePicker.platform.saveFile(
         dialogTitle: 'Save CruSam Backup',
         fileName: suggestedName,
         type: FileType.custom,
         allowedExtensions: ['json'],
-        bytes: bytes, // flutter_file_picker ≥8 accepts bytes directly on desktop
+        bytes: bytes,
       );
 
-      // On some desktop builds saveFile with bytes writes the file and returns
-      // the path; on others it only returns the path and we must write manually.
       if (savePath != null) {
         final outFile = File(savePath);
         if (!outFile.existsSync() || outFile.lengthSync() == 0) {
@@ -82,10 +81,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
           _statusIsError = false;
         });
       } else {
-        // User cancelled
-        setState(() {
-          _statusMessage = null;
-        });
+        setState(() => _statusMessage = null);
       }
     } catch (e) {
       setState(() {
@@ -140,7 +136,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
       return;
     }
 
-    // Quick sanity check
+    // Sanity check
     if (!backup.containsKey('meta') && !backup.containsKey('employees')) {
       setState(() {
         _statusMessage = 'File does not look like a CruSam backup.';
@@ -151,6 +147,8 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
 
     // Step 3: confirm
     final fileName = result.files.first.name;
+    final isGoogleConnected = GoogleAuthService.instance.isSignedIn;
+
     final confirmed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -161,6 +159,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
           'the current database.\n\n'
           'Existing records with the same ID will be updated. '
           'New records will be added. Nothing will be deleted.\n\n'
+          '${isGoogleConnected ? '☁️  After import, all data will be automatically uploaded to Google Drive so it becomes the new cloud source-of-truth.\n\n' : ''}'
           'Proceed?',
         ),
         actions: [
@@ -178,38 +177,72 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
 
     if (confirmed != true || !mounted) return;
 
-    // Step 4: import
+    // Step 4: import into SQLite
     setState(() {
       _restoring = true;
       _statusMessage = null;
     });
 
+    Map<String, int>? summary;
     try {
-      final summary =
-          await DatabaseHelper.instance.importBackupData(backup);
+      summary = await DatabaseHelper.instance.importBackupData(backup);
 
-      // Refresh notifiers so the UI reflects restored data
+      // Refresh UI notifiers immediately
       await EmployeeNotifier.instance.load();
       await VoucherNotifier.instance.loadDependencies();
-
-      if (mounted) {
-        setState(() {
-          _statusMessage =
-              'Restore complete — ${summary['employees']} employees, '
-              '${summary['vouchers']} invoices, '
-              '${summary['voucher_rows']} invoice rows restored.';
-          _statusIsError = false;
-        });
-      }
     } catch (e) {
       if (mounted) {
         setState(() {
           _statusMessage = 'Restore failed: $e';
           _statusIsError = true;
+          _restoring = false;
         });
       }
-    } finally {
-      if (mounted) setState(() => _restoring = false);
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _restoring = false);
+
+    // Step 5: push imported data to Google Drive (if connected)
+    if (isGoogleConnected) {
+      setState(() {
+        _cloudSyncing = true;
+        _statusMessage =
+            'Import complete — uploading to Google Drive…';
+        _statusIsError = false;
+      });
+
+      final syncResult =
+          await SyncManager.instance.pushAllToCloud();
+
+      if (!mounted) return;
+      setState(() {
+        _cloudSyncing = false;
+        if (syncResult.success) {
+          _statusMessage =
+              'Restore & cloud sync complete — '
+              '${summary!['employees']} employees, '
+              '${summary['vouchers']} invoices imported and uploaded to Drive.';
+          _statusIsError = false;
+        } else {
+          _statusMessage =
+              'Data restored locally, but cloud upload failed: '
+              '${syncResult.errorMessage}. '
+              'It will retry on the next app launch.';
+          _statusIsError = true;
+        }
+      });
+    } else {
+      // Not connected to Google Drive — local-only restore
+      setState(() {
+        _statusMessage =
+            'Restore complete — ${summary!['employees']} employees, '
+            '${summary['vouchers']} invoices, '
+            '${summary['voucher_rows']} invoice rows restored. '
+            '(Connect Google Drive in settings to sync to the cloud.)';
+        _statusIsError = false;
+      });
     }
   }
 
@@ -217,7 +250,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
 
   String _p(int n) => n.toString().padLeft(2, '0');
 
-  bool get _busy => _backingUp || _restoring;
+  bool get _busy => _backingUp || _restoring || _cloudSyncing;
 
   // ── Build ────────────────────────────────────────────────────────────────
 
@@ -233,7 +266,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ───────────────────────────────────────────────────────
+          // ── Header ────────────────────────────────────────────────────────
           Row(children: [
             const Icon(Icons.save_outlined,
                 size: 18, color: AppColors.slate500),
@@ -241,22 +274,34 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
             Text('Local Backup & Restore', style: AppTextStyles.h4),
           ]),
           const SizedBox(height: 4),
-          Text(
-            'Save all your employee and invoice data to a single file on disk. '
-            'Load it back any time if data is lost or reset.',
-            style:
-                AppTextStyles.small.copyWith(color: AppColors.slate500),
+          ListenableBuilder(
+            listenable: GoogleAuthService.instance,
+            builder: (ctx, _) {
+              final connected = GoogleAuthService.instance.isSignedIn;
+              return Text(
+                connected
+                    ? 'Save all data to a file on disk, or load a saved file '
+                        'back in. Imported data is automatically synced to '
+                        'Google Drive.'
+                    : 'Save all data to a file on disk, or load a saved file '
+                        'back in. Connect Google Drive to enable automatic '
+                        'cloud sync after import.',
+                style: AppTextStyles.small
+                    .copyWith(color: AppColors.slate500),
+              );
+            },
           ),
 
           const SizedBox(height: 20),
 
-          // ── Backup row ───────────────────────────────────────────────────
+          // ── Backup row ────────────────────────────────────────────────────
           _ActionRow(
             icon: Icons.download_outlined,
             iconColor: AppColors.indigo600,
             iconBg: AppColors.indigo50,
             title: 'Save Backup',
-            subtitle: 'Exports employees, invoices and settings to a .json file.',
+            subtitle:
+                'Exports employees, invoices and settings to a .json file.',
             buttonLabel: _backingUp ? 'Saving…' : 'Save Now',
             busy: _backingUp,
             disabled: _busy,
@@ -284,15 +329,20 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
 
           const Divider(height: 28),
 
-          // ── Restore row ──────────────────────────────────────────────────
+          // ── Restore row ───────────────────────────────────────────────────
           _ActionRow(
             icon: Icons.upload_outlined,
             iconColor: const Color(0xFF059669),
             iconBg: const Color(0xFFECFDF5),
             title: 'Load Backup',
-            subtitle: 'Pick a previously saved .json file and merge it back in.',
-            buttonLabel: _restoring ? 'Restoring…' : 'Load File',
-            busy: _restoring,
+            subtitle:
+                'Pick a previously saved .json file and merge it back in.',
+            buttonLabel: _restoring
+                ? 'Restoring…'
+                : _cloudSyncing
+                    ? 'Syncing to Drive…'
+                    : 'Load File',
+            busy: _restoring || _cloudSyncing,
             disabled: _busy,
             onTap: _doRestore,
           ),
@@ -313,20 +363,31 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
                       ? const Color(0xFFFECACA)
                       : AppColors.emerald100,
                 ),
-                borderRadius: BorderRadius.circular(AppSpacing.radius),
+                borderRadius:
+                    BorderRadius.circular(AppSpacing.radius),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    _statusIsError
-                        ? Icons.error_outline
-                        : Icons.check_circle_outline,
-                    size: 15,
-                    color: _statusIsError
-                        ? const Color(0xFFDC2626)
-                        : AppColors.emerald700,
-                  ),
+                  // Spinner while cloud syncing, icon otherwise
+                  if (_cloudSyncing)
+                    const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.indigo600),
+                    )
+                  else
+                    Icon(
+                      _statusIsError
+                          ? Icons.error_outline
+                          : Icons.check_circle_outline,
+                      size: 15,
+                      color: _statusIsError
+                          ? const Color(0xFFDC2626)
+                          : AppColors.emerald700,
+                    ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -334,19 +395,23 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
                       style: AppTextStyles.small.copyWith(
                         color: _statusIsError
                             ? const Color(0xFFDC2626)
-                            : AppColors.emerald700,
+                            : _cloudSyncing
+                                ? AppColors.indigo600
+                                : AppColors.emerald700,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => setState(() => _statusMessage = null),
-                    child: Icon(Icons.close,
-                        size: 14,
-                        color: _statusIsError
-                            ? const Color(0xFFDC2626)
-                            : AppColors.emerald700),
-                  ),
+                  if (!_cloudSyncing)
+                    GestureDetector(
+                      onTap: () =>
+                          setState(() => _statusMessage = null),
+                      child: Icon(Icons.close,
+                          size: 14,
+                          color: _statusIsError
+                              ? const Color(0xFFDC2626)
+                              : AppColors.emerald700),
+                    ),
                 ],
               ),
             ),
@@ -387,7 +452,6 @@ class _ActionRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Icon badge
         Container(
           width: 40,
           height: 40,
@@ -398,7 +462,6 @@ class _ActionRow extends StatelessWidget {
           child: Icon(icon, size: 20, color: iconColor),
         ),
         const SizedBox(width: 14),
-        // Labels
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -414,14 +477,12 @@ class _ActionRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Button
         SizedBox(
           height: 36,
           child: ElevatedButton(
             onPressed: disabled ? null : onTap,
             style: ElevatedButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               textStyle: const TextStyle(fontSize: 13),
             ),
             child: busy

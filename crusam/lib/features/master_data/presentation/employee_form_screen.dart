@@ -58,7 +58,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   String? _selectedZone;
   static const _zoneOptions = ['North', 'South', 'East', 'West'];
 
-  final _customBankCtrl = TextEditingController(); // ← added
+  final _customBankCtrl = TextEditingController();
 
   late final _ctrl = <String, TextEditingController>{
     'srNo': TextEditingController(),
@@ -106,7 +106,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           m.otherCharges == 0 ? '' : m.otherCharges.toStringAsFixed(2);
       _gender = m.gender;
 
-      // Initialise bank dropdown from saved values – updated logic
       if (_bankOptions.contains(m.bankDetails)) {
         _selectedBank = m.bankDetails;
       } else if (m.bankDetails.isNotEmpty) {
@@ -119,7 +118,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
 
   @override
   void dispose() {
-    _customBankCtrl.dispose(); // ← added
+    _customBankCtrl.dispose();
     for (final c in _ctrl.values) {
       c.dispose();
     }
@@ -168,7 +167,6 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         accountNumber: _ctrl['accountNumber']!.text.trim(),
         aartiAcNo: _ctrl['aartiAcNo']!.text.trim(),
         sbCode: _ctrl['sbCode']!.text.trim(),
-        // Use dropdown value if selected, otherwise fall back to controller text
         bankDetails: _ctrl['bankDetails']!.text.trim(),
         branch: _ctrl['branch']!.text.trim(),
         zone: _ctrl['zone']!.text.trim(),
@@ -192,29 +190,21 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           widget.employee!['id'] as int,
           employeeData,
         );
-        await DatabaseHelper.instance.addPendingSync(
-          SyncPendingEntry(
-            entityType: 'employee',
-            cloudId: cloudId,
-            operation: 'update',
-            payload: employeeData,
-            localUpdatedAt: now,
-          ),
+        // Use the new pushEmployeeChange method – it adds the pending entry
+        // and starts the background upload automatically.
+        await SyncManager.instance.pushEmployeeChange(
+          cloudId: cloudId,
+          operation: 'update',
+          employeeDbRow: employeeData,
         );
       } else {
         await DatabaseHelper.instance.insertEmployee(employeeData);
-        await DatabaseHelper.instance.addPendingSync(
-          SyncPendingEntry(
-            entityType: 'employee',
-            cloudId: cloudId,
-            operation: 'create',
-            payload: employeeData,
-            localUpdatedAt: now,
-          ),
+        await SyncManager.instance.pushEmployeeChange(
+          cloudId: cloudId,
+          operation: 'create',
+          employeeDbRow: employeeData,
         );
       }
-
-      unawaited(SyncManager.instance.processPendingUploads());
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -267,17 +257,11 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         'updated_at': now,
       });
 
-      await DatabaseHelper.instance.addPendingSync(
-        SyncPendingEntry(
-          entityType: 'employee',
-          cloudId: cloudId,
-          operation: 'delete',
-          payload: deletePayload,
-          localUpdatedAt: now,
-        ),
+      await SyncManager.instance.pushEmployeeChange(
+        cloudId: cloudId,
+        operation: 'delete',
+        employeeDbRow: deletePayload,
       );
-
-      unawaited(SyncManager.instance.processPendingUploads());
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -490,11 +474,9 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
                           type: TextInputType.number),
                       _field('sbCode', 'S/b Code',
                           type: TextInputType.number),
-                      // ── Bank dropdown (with optional custom input) ──────
                       _bankDropdown(),
                       _field('branch', 'Branch',
                           cap: TextCapitalization.words),
-                      // ── Zone dropdown ───────────────────────────────────
                       _zoneDropdown(),
                       _field('dateOfJoining', 'Date of Joining',
                           readOnly: true, onTap: _pickDate),
