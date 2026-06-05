@@ -1,3 +1,15 @@
+// ═══════════════════════════════════════════════════════════════════════
+// CHANGES TO: crusam/lib/features/profile/presentation/profile_screen.dart
+// Two surgical edits only — do not touch anything else.
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── EDIT 1: add import near the other widget imports (e.g. after export_paths_card.dart) ──
+
+import 'package:crusam/features/profile/widgets/backup_restore_card.dart';
+
+// ── EDIT 2: insert BackupRestoreCard above UpdateCard in the Column ──
+
+
 // lib/features/profile/screens/profile_screen.dart
 import 'dart:io';
 
@@ -359,7 +371,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             const SizedBox(height: 20),
                             const ExportPathsCard(),
                             const SizedBox(height: 20),
-                            const _PdfMethodCard(),   // ← insert here
+                            const _PdfMethodCard(),
+                            const SizedBox(height: 20),
+                            const BackupRestoreCard(),       // ← inserted
                             const SizedBox(height: 20),
                             const UpdateCard(),
                           ],

@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import '../../core/sync/sync_models.dart';
 import '../../core/sync/google_auth_service.dart';
@@ -8,6 +10,7 @@ import '../models/voucher_column_widths_model.dart';
 import '../models/bank_column_widths_model.dart';
 import '../seeds/employee_seed_data.dart';
 import "package:crusam/core/sync/drive_service.dart";
+import 'package:path/path.dart' as p;
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -398,7 +401,71 @@ class DatabaseHelper {
     await _ensureSeedEmployees(db);
   }
 
-  // ── New sync helpers ──────────────────────────────────────────────────────
+  // ── Sync helpers ──────────────────────────────────────────────────────────
+
+  /// Returns true if there is at least one un-pushed local change for
+  /// [cloudId] sitting in the sync_pending queue.
+  ///
+  /// Used by [upsertEmployeeFromCloud] and [upsertVoucherFromCloud] to prevent
+  /// a stale Drive pull from overwriting a newer local edit that hasn't been
+  /// uploaded yet. If pending entries exist, the local version wins — the
+  /// queued push will correct Drive shortly after.
+  Future<bool> hasPendingSync(String cloudId) async {
+    final rows = await (await database).query(
+      'sync_pending',
+      columns: ['id'],
+      where: 'cloud_id = ?',
+      whereArgs: [cloudId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Copies the live SQLite file to a timestamped backup in the same directory
+  /// before any sync pull runs.
+  ///
+  /// Call this once per app startup, from [SyncManager.syncOnStartup], BEFORE
+  /// [initializeDriveStructure] or any upsert. Keeps the 3 most recent
+  /// backups; older ones are silently pruned. Errors are non-fatal — a failure
+  /// here must never block the app from starting.
+  Future<void> createPreSyncBackup() async {
+    try {
+      final dbPath = '${await getDatabasesPath()}/aarti.db';
+      final src = File(dbPath);
+      if (!src.existsSync()) return;
+
+      final backupDir = src.parent;
+
+      // Timestamp format: 2025-06-05T08-30-00  (colons replaced so it's a
+      // valid filename on Windows and Linux)
+      final ts = DateTime.now()
+          .toUtc()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-')
+          .substring(0, 19);
+
+      final dest = File('${backupDir.path}${Platform.pathSeparator}aarti_backup_$ts.db');
+      await src.copy(dest.path);
+      debugPrint('DatabaseHelper.createPreSyncBackup: wrote ${dest.path}');
+
+      // Prune: keep only the 3 most recent backups (newest first by filename)
+      final backups = backupDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => p.basename(f.path).startsWith('aarti_backup_'))
+          .toList()
+        ..sort((a, b) => b.path.compareTo(a.path));
+
+      for (final old in backups.skip(3)) {
+        old.deleteSync();
+        debugPrint('DatabaseHelper.createPreSyncBackup: pruned ${old.path}');
+      }
+    } catch (e) {
+      // Non-fatal: log and continue. A backup failure must never crash startup.
+      debugPrint('DatabaseHelper.createPreSyncBackup error (non-fatal): $e');
+    }
+  }
 
   /// Called by SyncManager bootstrap to stamp a cloud_id onto a local employee
   /// that was created before sync was set up.
@@ -962,6 +1029,14 @@ class DatabaseHelper {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Applies a Drive-pulled employee record to the local database.
+  ///
+  /// Merge rules (in priority order):
+  /// 1. If the record doesn't exist locally → insert it.
+  /// 2. If a pending local change exists for this cloud_id → **local wins**,
+  ///    skip the cloud version entirely. The queued push will reconcile Drive.
+  /// 3. If Drive's updated_at is strictly newer than local → overwrite local.
+  /// 4. Otherwise → no-op (local is already at least as recent).
   Future<int> upsertEmployeeFromCloud(Map<String, dynamic> data) async {
     final db = await database;
     final cloudId = data['cloud_id'] as String?;
@@ -983,6 +1058,16 @@ class DatabaseHelper {
 
     final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
     if (cloudUpdatedAt.isAfter(localUpdatedAt)) {
+      // Guard: if there is a queued but un-pushed local change, local wins.
+      // The pending upload will overwrite Drive with the correct data shortly.
+      if (await hasPendingSync(cloudId)) {
+        debugPrint(
+          'upsertEmployeeFromCloud: skipping cloud overwrite — '
+          'pending local change exists for $cloudId',
+        );
+        return 0;
+      }
+
       final normalized = _normalizeEmployeeData(insertData);
       normalized['updated_at'] = cloudUpdatedAt.toIso8601String();
       normalized['created_at'] =
@@ -1000,6 +1085,15 @@ class DatabaseHelper {
     return 0;
   }
 
+  /// Applies a Drive-pulled voucher record to the local database.
+  ///
+  /// Merge rules (in priority order):
+  /// 1. If the record doesn't exist locally → insert it (with rows).
+  /// 2. If a pending local change exists for this cloud_id → **local wins**,
+  ///    skip the cloud version entirely. The queued push will reconcile Drive.
+  /// 3. If Drive's updated_at is strictly newer than local → replace header
+  ///    and rows.
+  /// 4. Otherwise → no-op.
   Future<int> upsertVoucherFromCloud(Map<String, dynamic> data) async {
     final db = await database;
     final cloudId = data['cloud_id'] as String?;
@@ -1030,6 +1124,15 @@ class DatabaseHelper {
 
     final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
     if (!cloudUpdatedAt.isAfter(localUpdatedAt)) return 0;
+
+    // Guard: if there is a queued but un-pushed local change, local wins.
+    if (await hasPendingSync(cloudId)) {
+      debugPrint(
+        'upsertVoucherFromCloud: skipping cloud overwrite — '
+        'pending local change exists for $cloudId',
+      );
+      return 0;
+    }
 
     final localId = existing['id'] as int;
     return await db.transaction((txn) async {
