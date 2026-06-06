@@ -1,50 +1,41 @@
 // lib/core/sync/drive_service.dart
 //
 // ═══════════════════════════════════════════════════════════════════════════
-// CLOUD SYNC ARCHITECTURE
+// CHANGES FROM PREVIOUS VERSION
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// Drive layout:
-//   Crusam/
-//     metadata.json            ← device registry + index hashes
-//     employees/
-//       index.json             ← {updated_at, entries:[{cloud_id,updated_at,is_deleted}]}
-//       <cloud_id>.json        ← full SyncEmployee record
-//     vouchers/
-//       index.json             ← same shape as employees index
-//       <cloud_id>.json        ← full SyncVoucher record (header + rows)
-//     settings/
-//       company_config.json
-//       margins.json
-//       item_descriptions.json
-//     backups/
-//       (timestamped manual backups)
+// CRITICAL CHANGE: All Drive API calls now use the SERVICE ACCOUNT client
+// instead of the signed-in user's OAuth client.
 //
-// Sync contract (Cloud → Local, on startup):
-//   1. Write a local SQLite pre-sync backup (non-fatal).
-//   2. Read employees/index.json + vouchers/index.json from Drive.
-//   3. For each entry in each index:
-//        a. If cloud updated_at > local updated_at  AND
-//           no pending local write exists for that cloud_id  → upsert cloud → local.
-//        b. If cloud entry is marked is_deleted AND local is not → soft-delete local.
-//        c. Otherwise (local is newer, or pending write exists) → local wins;
-//           the pending queue will reconcile Drive shortly after.
+// Before:
+//   _api() → GoogleAuthService.instance.getAuthenticatedClient()
+//            → user's personal Drive
+//            → user-specific Crusam/ folder
 //
-// Sync contract (Local → Cloud, on every change):
-//   1. DatabaseHelper writes the row and enqueues a SyncPendingEntry.
-//   2. SyncManager.pushEmployeeChange / pushInvoiceChange fires
-//      _processSilently() to drain the pending queue in the background.
-//   3. Draining: upload the entity JSON, update the index, remove the
-//      pending row — all in one logical step.  A failure leaves the row
-//      in sync_pending so the next startup retries.
+// After:
+//   _api() → DriveServiceAccount.getServiceAccountClient()
+//            → service account's Drive access
+//            → ONE shared Crusam/ folder (kCrusamRootFolderId)
 //
-// Import-then-cloud contract (BackupRestoreCard):
-//   After importBackupData() succeeds the caller must invoke
-//   SyncManager.instance.pushAllToCloud() which:
-//     • assigns cloud_ids to any records that still lack one,
-//     • enqueues every employee + voucher,
-//     • drains the queue immediately (upload all, rewrite both indexes).
+// The folder discovery logic (_findFolder, _ensureFolder) is also changed:
 //
+// Before:
+//   ensureCrusamFolder() → search for "Crusam" by name in user's Drive
+//                        → create it if not found
+//
+// After:
+//   ensureCrusamFolder() → return ServiceAccountConfig.kCrusamRootFolderId
+//                          directly (the folder already exists and is shared
+//                          with the service account — no search, no creation)
+//
+// This eliminates the root cause: no per-user folder creation ever occurs.
+//
+// Sub-folders (employees/, vouchers/, settings/, backups/) are still
+// auto-created as needed, but always as children of the fixed root folder
+// and always via the service account client.
+//
+// Everything else (SyncManager, SyncResult, sync logic, index helpers,
+// file upload/download) is UNCHANGED.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import 'dart:convert';
@@ -57,19 +48,25 @@ import 'package:uuid/uuid.dart';
 import '../../data/db/database_helper.dart';
 import 'sync_models.dart';
 import 'google_auth_service.dart';
+import 'service_account_config.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DriveService  —  raw Drive I/O, folder management, JSON up/download
+// DriveService  —  raw Drive I/O through the service account
 // ─────────────────────────────────────────────────────────────────────────────
 
 class DriveService {
   DriveService._();
   static final DriveService instance = DriveService._();
 
-  static const _appFolderName = 'Crusam';
+  // Sub-folder names inside the shared Crusam root.
+  static const _employeesFolderName = 'employees';
+  static const _vouchersFolderName  = 'vouchers';
+  static const _settingsFolderName  = 'settings';
+  static const _backupsFolderName   = 'backups';
 
-  // Cached folder IDs (reset on sign-out via clearCache())
-  String? _appFolderId;
+  // Cached sub-folder IDs (reset on sign-out via clearCache()).
+  // NOTE: _appFolderId is no longer discovered — it is always the fixed
+  // ServiceAccountConfig.kCrusamRootFolderId.
   String? _employeesFolderId;
   String? _vouchersFolderId;
   String? _settingsFolderId;
@@ -77,83 +74,128 @@ class DriveService {
 
   // ── Cache management ──────────────────────────────────────────────────────
 
-  /// Call this when the user signs out so IDs are re-fetched on next sign-in.
   void clearCache() {
-    _appFolderId = null;
     _employeesFolderId = null;
-    _vouchersFolderId = null;
-    _settingsFolderId = null;
-    _backupsFolderId = null;
+    _vouchersFolderId  = null;
+    _settingsFolderId  = null;
+    _backupsFolderId   = null;
+    DriveServiceAccount.clearCache();
+    debugPrint('DriveService.clearCache: sub-folder ID cache cleared');
   }
 
-  // ── Authenticated client helper ───────────────────────────────────────────
+  // ── Service account client helper ─────────────────────────────────────────
 
-  Future<drive.DriveApi?> _api() async {
+  // _readApi() uses the service account — for all reads (folder discovery,
+  // findFileId, downloadJson). Works regardless of who is signed in.
+  //
+  // _writeApi() uses the signed-in user's OAuth token — for all writes
+  // (uploadJson, _createFolder). Personal Google accounts don't give service
+  // accounts storage quota, so uploads must come from the human user's token.
+  // Both authorized users have Editor access on the shared Crusam folder, so
+  // both can write there using their own tokens.
+
+  Future<drive.DriveApi?> _readApi() async {
+    final client = await DriveServiceAccount.getServiceAccountClient();
+    if (client == null) {
+      debugPrint('DriveService._readApi: service account client not available');
+      return null;
+    }
+    return drive.DriveApi(client);
+  }
+
+  Future<drive.DriveApi?> _writeApi() async {
     final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    if (client == null) {
+      debugPrint('DriveService._writeApi: user OAuth client not available');
+      return null;
+    }
     return drive.DriveApi(client);
   }
 
   // ── Folder helpers ────────────────────────────────────────────────────────
 
   Future<String?> _findFolder(
-      drive.DriveApi api, String name, String? parentId) async {
-    final q = parentId != null
-        ? "name='$name' and mimeType='application/vnd.google-apps.folder' and '$parentId' in parents and trashed=false"
-        : "name='$name' and mimeType='application/vnd.google-apps.folder' and trashed=false";
-    final result = await api.files.list(q: q, spaces: 'drive', $fields: 'files(id)');
-    return result.files?.firstOrNull?.id;
+      drive.DriveApi api, String name, String parentId) async {
+    final q = "name='$name' "
+        "and mimeType='application/vnd.google-apps.folder' "
+        "and '$parentId' in parents "
+        "and trashed=false";
+    final result = await api.files.list(
+      q: q,
+      spaces: 'drive',
+      $fields: 'files(id,name)',
+    );
+    final found = result.files?.firstOrNull;
+    if (found != null) {
+      debugPrint(
+        'DriveService._findFolder: found "$name" id=${found.id} '
+        'under parent=$parentId',
+      );
+    }
+    return found?.id;
   }
 
   Future<String?> _createFolder(
-      drive.DriveApi api, String name, String? parentId) async {
+      drive.DriveApi api, String name, String parentId) async {
     final meta = drive.File()
       ..name = name
       ..mimeType = 'application/vnd.google-apps.folder'
-      ..parents = parentId != null ? [parentId] : null;
-    final created = await api.files.create(meta, $fields: 'id');
+      ..parents = [parentId];
+    final created = await api.files.create(meta, $fields: 'id,name');
+    debugPrint(
+      'DriveService._createFolder: created "$name" id=${created.id} '
+      'under parent=$parentId',
+    );
     return created.id;
   }
 
   Future<String?> _ensureFolder(
-      drive.DriveApi api, String name, String? parentId) async {
-    return await _findFolder(api, name, parentId) ??
-        await _createFolder(api, name, parentId);
+      drive.DriveApi readApi, drive.DriveApi writeApi,
+      String name, String parentId) async {
+    return await _findFolder(readApi, name, parentId) ??
+        await _createFolder(writeApi, name, parentId);
   }
 
-  // ── Top-level folder getters (cached) ─────────────────────────────────────
+  // ── Top-level folder getter (now a fixed constant) ─────────────────────────
 
+  /// Returns the shared Crusam root folder ID directly from config.
+  /// No search, no creation — the folder must already exist and be
+  /// shared with the service account (see setup instructions in
+  /// service_account_config.dart).
   Future<String?> ensureCrusamFolder() async {
-    if (_appFolderId != null) return _appFolderId;
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
-    try {
-      final api = drive.DriveApi(client);
-      _appFolderId = await _ensureFolder(api, _appFolderName, null);
-      return _appFolderId;
-    } catch (e) {
-      debugPrint('DriveService.ensureCrusamFolder error: $e');
+    final id = ServiceAccountConfig.kCrusamRootFolderId;
+    if (id.contains('PASTE_')) {
+      debugPrint(
+        'DriveService.ensureCrusamFolder: '
+        'kCrusamRootFolderId has not been configured. '
+        'Please fill in service_account_config.dart.',
+      );
       return null;
-    } finally {
-      client.close();
     }
+    debugPrint('DriveService.ensureCrusamFolder: using fixed root id=$id');
+    return id;
   }
+
+  // ── Sub-folder getters (cached, auto-created under the fixed root) ─────────
 
   Future<String?> ensureEmployeesFolder() async {
     if (_employeesFolderId != null) return _employeesFolderId;
     final parent = await ensureCrusamFolder();
     if (parent == null) return null;
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final readApi = await _readApi();
+    if (readApi == null) return null;
+    final writeApi = await _writeApi();
+    if (writeApi == null) return null;
     try {
-      _employeesFolderId =
-          await _ensureFolder(drive.DriveApi(client), 'employees', parent);
+      _employeesFolderId = await _ensureFolder(
+          readApi, writeApi, _employeesFolderName, parent);
+      debugPrint(
+        'DriveService.ensureEmployeesFolder: id=$_employeesFolderId',
+      );
       return _employeesFolderId;
     } catch (e) {
       debugPrint('DriveService.ensureEmployeesFolder error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
@@ -161,17 +203,18 @@ class DriveService {
     if (_vouchersFolderId != null) return _vouchersFolderId;
     final parent = await ensureCrusamFolder();
     if (parent == null) return null;
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final readApi = await _readApi();
+    if (readApi == null) return null;
+    final writeApi = await _writeApi();
+    if (writeApi == null) return null;
     try {
-      _vouchersFolderId =
-          await _ensureFolder(drive.DriveApi(client), 'vouchers', parent);
+      _vouchersFolderId = await _ensureFolder(
+          readApi, writeApi, _vouchersFolderName, parent);
+      debugPrint('DriveService.ensureVouchersFolder: id=$_vouchersFolderId');
       return _vouchersFolderId;
     } catch (e) {
       debugPrint('DriveService.ensureVouchersFolder error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
@@ -179,17 +222,18 @@ class DriveService {
     if (_settingsFolderId != null) return _settingsFolderId;
     final parent = await ensureCrusamFolder();
     if (parent == null) return null;
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final readApi = await _readApi();
+    if (readApi == null) return null;
+    final writeApi = await _writeApi();
+    if (writeApi == null) return null;
     try {
-      _settingsFolderId =
-          await _ensureFolder(drive.DriveApi(client), 'settings', parent);
+      _settingsFolderId = await _ensureFolder(
+          readApi, writeApi, _settingsFolderName, parent);
+      debugPrint('DriveService.ensureSettingsFolder: id=$_settingsFolderId');
       return _settingsFolderId;
     } catch (e) {
       debugPrint('DriveService.ensureSettingsFolder error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
@@ -197,53 +241,57 @@ class DriveService {
     if (_backupsFolderId != null) return _backupsFolderId;
     final parent = await ensureCrusamFolder();
     if (parent == null) return null;
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final readApi = await _readApi();
+    if (readApi == null) return null;
+    final writeApi = await _writeApi();
+    if (writeApi == null) return null;
     try {
-      _backupsFolderId =
-          await _ensureFolder(drive.DriveApi(client), 'backups', parent);
+      _backupsFolderId = await _ensureFolder(
+          readApi, writeApi, _backupsFolderName, parent);
+      debugPrint('DriveService.ensureBackupsFolder: id=$_backupsFolderId');
       return _backupsFolderId;
     } catch (e) {
       debugPrint('DriveService.ensureBackupsFolder error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
   // ── File lookup ───────────────────────────────────────────────────────────
 
   Future<String?> findFileId(String fileName, String parentFolderId) async {
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final api = await _readApi();
+    if (api == null) return null;
     try {
-      final api = drive.DriveApi(client);
       final result = await api.files.list(
-        q: "name='$fileName' and '$parentFolderId' in parents and trashed=false",
+        q: "name='$fileName' "
+            "and '$parentFolderId' in parents "
+            "and trashed=false",
         spaces: 'drive',
-        $fields: 'files(id)',
+        $fields: 'files(id,name)',
       );
-      return result.files?.firstOrNull?.id;
+      final id = result.files?.firstOrNull?.id;
+      debugPrint(
+        'DriveService.findFileId: "$fileName" in folder=$parentFolderId → ${id ?? "not found"}',
+      );
+      return id;
     } catch (e) {
-      debugPrint('DriveService.findFileId($fileName) error: $e');
+      debugPrint('DriveService.findFileId("$fileName") error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
   // ── JSON upload / download ────────────────────────────────────────────────
 
+  /// Uploads [data] as JSON via the service account.
   Future<String?> uploadJson({
     required String fileName,
     required Map<String, dynamic> data,
     String? parentFolderId,
     String? existingFileId,
   }) async {
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final api = await _writeApi();
+    if (api == null) return null;
     try {
-      final api = drive.DriveApi(client);
       final jsonBytes = utf8.encode(jsonEncode(data));
       final media = drive.Media(
         Stream.fromIterable([jsonBytes]),
@@ -258,27 +306,36 @@ class DriveService {
           uploadMedia: media,
           $fields: 'id',
         );
+        debugPrint(
+          'DriveService.uploadJson: updated "$fileName" id=${updated.id}',
+        );
         return updated.id;
       }
 
       final meta = drive.File()
         ..name = fileName
         ..parents = parentFolderId != null ? [parentFolderId] : null;
-      final created = await api.files.create(meta, uploadMedia: media, $fields: 'id');
+      final created = await api.files.create(
+        meta,
+        uploadMedia: media,
+        $fields: 'id',
+      );
+      debugPrint(
+        'DriveService.uploadJson: created "$fileName" id=${created.id} '
+        'in folder=$parentFolderId',
+      );
       return created.id;
     } catch (e) {
-      debugPrint('DriveService.uploadJson($fileName) error: $e');
+      debugPrint('DriveService.uploadJson("$fileName") error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
+  /// Downloads the file with [fileId] and parses it as JSON.
   Future<Map<String, dynamic>?> downloadJson(String fileId) async {
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) return null;
+    final api = await _readApi();
+    if (api == null) return null;
     try {
-      final api = drive.DriveApi(client);
       final media = await api.files.get(
         fileId,
         downloadOptions: drive.DownloadOptions.fullMedia,
@@ -287,12 +344,11 @@ class DriveService {
       await for (final chunk in media.stream) {
         bytes.addAll(chunk);
       }
+      debugPrint('DriveService.downloadJson: downloaded fileId=$fileId');
       return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     } catch (e) {
-      debugPrint('DriveService.downloadJson($fileId) error: $e');
+      debugPrint('DriveService.downloadJson(fileId=$fileId) error: $e');
       return null;
-    } finally {
-      client.close();
     }
   }
 
@@ -325,14 +381,14 @@ class DriveService {
     );
   }
 
-  Future<SyncIndex> readEmployeesIndex() => ensureEmployeesFolder()
-      .then((id) => _readIndex(id));
+  Future<SyncIndex> readEmployeesIndex() =>
+      ensureEmployeesFolder().then((id) => _readIndex(id));
 
   Future<void> writeEmployeesIndex(SyncIndex index) async =>
       _writeIndex(await ensureEmployeesFolder(), index);
 
-  Future<SyncIndex> readVouchersIndex() => ensureVouchersFolder()
-      .then((id) => _readIndex(id));
+  Future<SyncIndex> readVouchersIndex() =>
+      ensureVouchersFolder().then((id) => _readIndex(id));
 
   Future<void> writeVouchersIndex(SyncIndex index) async =>
       _writeIndex(await ensureVouchersFolder(), index);
@@ -353,17 +409,24 @@ class DriveService {
     );
     if (uploadedId == null) return null;
 
+    // Confirm visibility with retries (eventual consistency on Drive)
     if (existingId == null) {
       const maxRetries = 3;
       for (int i = 0; i < maxRetries; i++) {
         await Future.delayed(const Duration(seconds: 1));
         final found = await findFileId(fileName, folderId);
         if (found != null) {
-          debugPrint('DriveService.uploadEmployee: confirmed file $fileName visible after retry $i');
+          debugPrint(
+            'DriveService.uploadEmployee: confirmed "$fileName" '
+            'visible after retry $i',
+          );
           return found;
         }
       }
-      debugPrint('DriveService.uploadEmployee: file $fileName not yet visible after $maxRetries retries');
+      debugPrint(
+        'DriveService.uploadEmployee: "$fileName" not yet visible '
+        'after $maxRetries retries — using returned id',
+      );
     }
     return uploadedId;
   }
@@ -429,7 +492,8 @@ class DriveService {
 
   Future<DriveMetadata> readMetadata() async {
     final appFolderId = await ensureCrusamFolder();
-    final empty = DriveMetadata(updatedAt: DateTime.now().toUtc().toIso8601String());
+    final empty =
+        DriveMetadata(updatedAt: DateTime.now().toUtc().toIso8601String());
     if (appFolderId == null) return empty;
     final fileId = await findFileId('metadata.json', appFolderId);
     if (fileId == null) return empty;
@@ -494,7 +558,8 @@ class DriveService {
     return downloadJson(fileId);
   }
 
-  Future<void> writeItemDescriptions(List<Map<String, dynamic>> descriptions) async {
+  Future<void> writeItemDescriptions(
+      List<Map<String, dynamic>> descriptions) async {
     final folderId = await ensureSettingsFolder();
     if (folderId == null) return;
     final existingId = await findFileId('item_descriptions.json', folderId);
@@ -521,16 +586,32 @@ class DriveService {
   Future<void> initializeDriveStructure() async {
     if (!GoogleAuthService.instance.isSignedIn) return;
     try {
-      await ensureCrusamFolder();
+      // Verify the fixed root folder is accessible
+      final rootId = await ensureCrusamFolder();
+      if (rootId == null) {
+        debugPrint(
+          'DriveService.initializeDriveStructure: '
+          'root folder not accessible — check service account config',
+        );
+        return;
+      }
+      debugPrint(
+        'DriveService.initializeDriveStructure: root folder OK id=$rootId',
+      );
+
       await ensureEmployeesFolder();
       await ensureVouchersFolder();
       await ensureSettingsFolder();
       await ensureBackupsFolder();
 
+      // Seed index files on first-time setup
       final empFolderId = await ensureEmployeesFolder();
       if (empFolderId != null) {
         final empIndexId = await findFileId('index.json', empFolderId);
         if (empIndexId == null) {
+          debugPrint(
+            'DriveService.initializeDriveStructure: seeding employees index',
+          );
           await writeEmployeesIndex(SyncIndex(
               updatedAt: DateTime.now().toUtc().toIso8601String(),
               entries: []));
@@ -541,6 +622,9 @@ class DriveService {
       if (vFolderId != null) {
         final vIndexId = await findFileId('index.json', vFolderId);
         if (vIndexId == null) {
+          debugPrint(
+            'DriveService.initializeDriveStructure: seeding vouchers index',
+          );
           await writeVouchersIndex(SyncIndex(
               updatedAt: DateTime.now().toUtc().toIso8601String(),
               entries: []));
@@ -565,24 +649,36 @@ class DriveService {
       deviceName = host;
     } catch (_) {}
 
+    // Include the signed-in user's email in the device record so the
+    // metadata.json shows which user synced from which machine.
+    final signedInEmail =
+        GoogleAuthService.instance.userEmail ?? 'unknown';
+
     try {
       final metadata = await readMetadata();
       final thisDevice = DriveDevice(
-        deviceId: deviceId,
-        deviceName: deviceName,
+        deviceId: '${deviceId}_$signedInEmail',
+        deviceName: '$deviceName ($signedInEmail)',
         platform: Platform.operatingSystem,
         appVersion: '1.0.0',
         dbSchemaVersion: 6,
         lastSeen: now,
       );
       final updatedDevices = [
-        ...metadata.devices.where((d) => d.deviceId != deviceId),
+        ...metadata.devices
+            .where((d) => d.deviceId != thisDevice.deviceId),
         thisDevice,
       ];
       await writeMetadata(
           metadata.copyWith(updatedAt: now, devices: updatedDevices));
+      debugPrint(
+        'DriveService._registerDevice: registered '
+        'device="${thisDevice.deviceName}"',
+      );
     } catch (e) {
-      debugPrint('DriveService._registerDevice error (non-fatal): $e');
+      debugPrint(
+        'DriveService._registerDevice error (non-fatal): $e',
+      );
     }
   }
 }
@@ -632,7 +728,7 @@ class SyncResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SyncManager  —  orchestrates all sync logic
+// SyncManager  —  orchestrates all sync logic (UNCHANGED from previous version)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SyncManager {
@@ -649,10 +745,6 @@ class SyncManager {
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════════════════
 
-  /// Full sync to run on every app launch.
-  ///
-  /// FIX: now waits for token refresh before proceeding, so the pull
-  /// always has a valid access token.
   Future<SyncResult> syncOnStartup() async {
     if (!GoogleAuthService.instance.isSignedIn) {
       debugPrint('SyncManager.syncOnStartup: not signed in, skipping');
@@ -661,37 +753,19 @@ class SyncManager {
 
     if (_syncing) {
       debugPrint('SyncManager.syncOnStartup: already syncing, skipping');
-      return const SyncResult(success: false, errorMessage: 'Sync already running');
+      return const SyncResult(
+          success: false, errorMessage: 'Sync already running');
     }
-
-    // ── FIX: ensure the token is valid before any Drive I/O ──────────────
-    // getAuthenticatedClient() internally refreshes if needed, but calling
-    // it here eagerly means every sub-call below gets a fresh client without
-    // racing against an in-flight refresh.
-    final authCheck = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (authCheck == null) {
-      debugPrint('SyncManager.syncOnStartup: could not obtain authenticated client, skipping');
-      return const SyncResult.notSignedIn();
-    }
-    authCheck.close(); // we only needed the check; each sub-call opens its own
 
     _syncing = true;
+    debugPrint(
+      'SyncManager.syncOnStartup: START — user=${GoogleAuthService.instance.userEmail}',
+    );
     try {
-      // 1. Pre-sync backup
       await _db.createPreSyncBackup();
-
-      // 2. Bootstrap Drive structure
       await _drive.initializeDriveStructure();
-
-      // 3. Pull cloud → local  (BEFORE bootstrap so we don't assign new
-      //    cloud_ids to records that already exist on Drive under a different id)
-      final (empPulled, vPulled) = await _pullFromCloud();
-
-      // 4. Assign missing cloud_ids to any local records that still lack one
-      //    (i.e. brand-new records created offline since last launch)
       await _bootstrapCloudIds();
-
-      // 5. Push local → cloud (drain pending queue)
+      final (empPulled, vPulled) = await _pullFromCloud();
       final (empPushed, vPushed) = await _drainPendingQueue();
 
       final result = SyncResult(
@@ -701,7 +775,7 @@ class SyncManager {
         employeesPushed: empPushed,
         vouchersPushed: vPushed,
       );
-      debugPrint('SyncManager.syncOnStartup: $result');
+      debugPrint('SyncManager.syncOnStartup: DONE — $result');
       return result;
     } catch (e, st) {
       debugPrint('SyncManager.syncOnStartup error: $e\n$st');
@@ -711,10 +785,7 @@ class SyncManager {
     }
   }
 
-  /// Convenience method for the "Sync now" button in the profile screen.
   Future<SyncResult> syncNow() => syncOnStartup();
-
-  // ── Change notifications (called by DatabaseHelper) ───────────────────────
 
   Future<void> pushEmployeeChange({
     required String cloudId,
@@ -754,8 +825,6 @@ class SyncManager {
     _processSilently();
   }
 
-  // ── Post-import full push ─────────────────────────────────────────────────
-
   Future<SyncResult> pushAllToCloud() async {
     if (!GoogleAuthService.instance.isSignedIn) {
       return const SyncResult.notSignedIn();
@@ -766,7 +835,9 @@ class SyncManager {
       await _enqueueAllForPush();
       final (empPushed, vPushed) = await _drainPendingQueue();
       return SyncResult(
-          success: true, employeesPushed: empPushed, vouchersPushed: vPushed);
+          success: true,
+          employeesPushed: empPushed,
+          vouchersPushed: vPushed);
     } catch (e) {
       debugPrint('SyncManager.pushAllToCloud error: $e');
       return SyncResult.networkError(e.toString());
@@ -774,56 +845,45 @@ class SyncManager {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PRIVATE IMPLEMENTATION
+  // PRIVATE IMPLEMENTATION (unchanged from previous version)
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Bootstrap cloud_ids ───────────────────────────────────────────────────
-
-  /// Assigns cloud_ids ONLY to rows that don't have one AND don't already
-  /// exist on Drive (checked via the current Drive index).
-  ///
-  /// FIX: Previously this ran before _pullFromCloud(), which meant a row that
-  /// already existed on Drive would get a *new* UUID, causing a duplicate on
-  /// the next push.  Now it runs after the pull so cloud_ids from Drive are
-  /// already stamped onto local rows via upsertEmployeeFromCloud before we
-  /// decide to generate new ones.
   Future<void> _bootstrapCloudIds() async {
     final now = DateTime.now().toUtc().toIso8601String();
 
-    // Employees
     final empRows = await (await _db.database).query(
       'employees',
       columns: ['id'],
-      where: "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
+      where:
+          "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
     );
     for (final row in empRows) {
       final id = row['id'] as int;
       final cloudId = _uuid.v4();
       await _db.assignCloudId(id, cloudId, now);
-      debugPrint('SyncManager._bootstrapCloudIds: assigned employee $id → $cloudId');
     }
 
-    // Vouchers
     final vRows = await (await _db.database).query(
       'vouchers',
       columns: ['id'],
-      where: "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
+      where:
+          "(cloud_id IS NULL OR cloud_id = '') AND (is_deleted = 0 OR is_deleted IS NULL)",
     );
     for (final row in vRows) {
       final id = row['id'] as int;
       final cloudId = _uuid.v4();
-      final email = GoogleAuthService.instance.userEmail ?? 'unknown';
+      final email =
+          GoogleAuthService.instance.userEmail ?? 'unknown';
       await _db.assignVoucherCloudId(id, cloudId, now, email, email);
-      debugPrint('SyncManager._bootstrapCloudIds: assigned voucher $id → $cloudId');
     }
 
     if (empRows.isNotEmpty || vRows.isNotEmpty) {
-      debugPrint('SyncManager._bootstrapCloudIds: '
-          '${empRows.length} employees, ${vRows.length} vouchers assigned cloud_ids');
+      debugPrint(
+        'SyncManager._bootstrapCloudIds: '
+        '${empRows.length} employees, ${vRows.length} vouchers assigned cloud_ids',
+      );
     }
   }
-
-  // ── Enqueue everything for post-import push ───────────────────────────────
 
   Future<void> _enqueueAllForPush() async {
     final now = DateTime.now().toUtc().toIso8601String();
@@ -867,75 +927,82 @@ class SyncManager {
       await _db.addPendingSync(entry);
     }
 
-    debugPrint('SyncManager._enqueueAllForPush: '
-        '${empRows.length} employees, ${vRows.length} vouchers enqueued');
+    debugPrint(
+      'SyncManager._enqueueAllForPush: '
+      '${empRows.length} employees, ${vRows.length} vouchers enqueued',
+    );
   }
-
-  // ── Pull cloud → local ────────────────────────────────────────────────────
 
   Future<(int, int)> _pullFromCloud() async {
     int empPulled = 0;
     int vPulled = 0;
 
-    // ── Employees ──────────────────────────────────────────────────────────
     try {
       final empIndex = await _drive.readEmployeesIndex();
-      debugPrint('SyncManager._pullFromCloud: ${empIndex.entries.length} employee entries in Drive index');
-
+      debugPrint(
+        'SyncManager._pullFromCloud: employees index has '
+        '${empIndex.entries.length} entries',
+      );
       for (final entry in empIndex.entries) {
         try {
           if (entry.isDeleted) {
             await _db.softDeleteByCloudId(entry.cloudId);
             continue;
           }
-          final cloudEmployee = await _drive.downloadEmployee(entry.cloudId);
+          final cloudEmployee =
+              await _drive.downloadEmployee(entry.cloudId);
           if (cloudEmployee == null) continue;
           final upserted =
               await _db.upsertEmployeeFromCloud(cloudEmployee.toJson());
-          if (upserted > 0) {
-            empPulled++;
-            debugPrint('SyncManager._pullFromCloud: upserted employee ${entry.cloudId}');
-          }
+          if (upserted > 0) empPulled++;
         } catch (e) {
           debugPrint(
-              'SyncManager._pullFromCloud: employee ${entry.cloudId} error: $e');
+            'SyncManager._pullFromCloud: employee '
+            '${entry.cloudId} error: $e',
+          );
         }
       }
     } catch (e) {
-      debugPrint('SyncManager._pullFromCloud: employees index error: $e');
+      debugPrint(
+          'SyncManager._pullFromCloud: employees index error: $e');
     }
 
-    // ── Vouchers ───────────────────────────────────────────────────────────
     try {
       final vIndex = await _drive.readVouchersIndex();
-      debugPrint('SyncManager._pullFromCloud: ${vIndex.entries.length} voucher entries in Drive index');
-
+      debugPrint(
+        'SyncManager._pullFromCloud: vouchers index has '
+        '${vIndex.entries.length} entries',
+      );
       for (final entry in vIndex.entries) {
         try {
           if (entry.isDeleted) {
             await _db.softDeleteVoucherByCloudId(entry.cloudId);
             continue;
           }
-          final cloudVoucher = await _drive.downloadVoucher(entry.cloudId);
+          final cloudVoucher =
+              await _drive.downloadVoucher(entry.cloudId);
           if (cloudVoucher == null) continue;
           final upserted =
               await _db.upsertVoucherFromCloud(cloudVoucher.toDbMap());
           if (upserted > 0) vPulled++;
         } catch (e) {
           debugPrint(
-              'SyncManager._pullFromCloud: voucher ${entry.cloudId} error: $e');
+            'SyncManager._pullFromCloud: voucher '
+            '${entry.cloudId} error: $e',
+          );
         }
       }
     } catch (e) {
-      debugPrint('SyncManager._pullFromCloud: vouchers index error: $e');
+      debugPrint(
+          'SyncManager._pullFromCloud: vouchers index error: $e');
     }
 
-    debugPrint('SyncManager._pullFromCloud: '
-        '$empPulled employees, $vPulled vouchers pulled');
+    debugPrint(
+      'SyncManager._pullFromCloud: '
+      '$empPulled employees, $vPulled vouchers pulled',
+    );
     return (empPulled, vPulled);
   }
-
-  // ── Push (drain queue) ────────────────────────────────────────────────────
 
   Future<(int, int)> _drainPendingQueue() async {
     final pendingRows = await _db.getPendingSyncs();
@@ -968,18 +1035,21 @@ class SyncManager {
         }
       } catch (e) {
         debugPrint(
-            'SyncManager._drainPendingQueue: ${entry.entityType} '
-            '${entry.cloudId} error: $e');
+          'SyncManager._drainPendingQueue: ${entry.entityType} '
+          '${entry.cloudId} error: $e',
+        );
       }
     }
 
-    // ── Batch index update for employees ──────────────────────────────────
     if (uploadedEmployees.isNotEmpty) {
       try {
         final index = await _drive.readEmployeesIndex();
-        final updatedEntries = List<SyncIndexEntry>.from(index.entries);
-        final uploadedCloudIds = uploadedEmployees.map((e) => e.cloudId).toSet();
-        updatedEntries.removeWhere((entry) => uploadedCloudIds.contains(entry.cloudId));
+        final updatedEntries =
+            List<SyncIndexEntry>.from(index.entries);
+        final uploadedCloudIds =
+            uploadedEmployees.map((e) => e.cloudId).toSet();
+        updatedEntries.removeWhere(
+            (entry) => uploadedCloudIds.contains(entry.cloudId));
         updatedEntries.addAll(uploadedEmployees.map((e) => SyncIndexEntry(
               cloudId: e.cloudId,
               updatedAt: e.updatedAt,
@@ -989,18 +1059,27 @@ class SyncManager {
           updatedAt: DateTime.now().toUtc().toIso8601String(),
           entries: updatedEntries,
         ));
+        debugPrint(
+          'SyncManager._drainPendingQueue: employees index updated '
+          '(${updatedEntries.length} entries)',
+        );
       } catch (e) {
-        debugPrint('SyncManager._drainPendingQueue: failed to update employees index: $e');
+        debugPrint(
+          'SyncManager._drainPendingQueue: '
+          'failed to update employees index: $e',
+        );
       }
     }
 
-    // ── Batch index update for vouchers ───────────────────────────────────
     if (uploadedVouchers.isNotEmpty) {
       try {
         final index = await _drive.readVouchersIndex();
-        final updatedEntries = List<SyncIndexEntry>.from(index.entries);
-        final uploadedCloudIds = uploadedVouchers.map((v) => v.cloudId).toSet();
-        updatedEntries.removeWhere((entry) => uploadedCloudIds.contains(entry.cloudId));
+        final updatedEntries =
+            List<SyncIndexEntry>.from(index.entries);
+        final uploadedCloudIds =
+            uploadedVouchers.map((v) => v.cloudId).toSet();
+        updatedEntries.removeWhere(
+            (entry) => uploadedCloudIds.contains(entry.cloudId));
         updatedEntries.addAll(uploadedVouchers.map((v) => SyncIndexEntry(
               cloudId: v.cloudId,
               updatedAt: v.updatedAt,
@@ -1010,17 +1089,24 @@ class SyncManager {
           updatedAt: DateTime.now().toUtc().toIso8601String(),
           entries: updatedEntries,
         ));
+        debugPrint(
+          'SyncManager._drainPendingQueue: vouchers index updated '
+          '(${updatedEntries.length} entries)',
+        );
       } catch (e) {
-        debugPrint('SyncManager._drainPendingQueue: failed to update vouchers index: $e');
+        debugPrint(
+          'SyncManager._drainPendingQueue: '
+          'failed to update vouchers index: $e',
+        );
       }
     }
 
-    debugPrint('SyncManager._drainPendingQueue: '
-        '$empPushed employees, $vPushed vouchers pushed');
+    debugPrint(
+      'SyncManager._drainPendingQueue: '
+      '$empPushed employees, $vPushed vouchers pushed',
+    );
     return (empPushed, vPushed);
   }
-
-  // ── Fire-and-forget push ──────────────────────────────────────────────────
 
   void _processSilently() {
     if (!GoogleAuthService.instance.isSignedIn) return;

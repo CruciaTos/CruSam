@@ -3,3 +3,4 @@ crusam/fix_prompts.py
 crusam/lib/core/sync/google_auth_service.dart
 crusam/lib/Salary-Comparison.xlsx
 crusam/lib/~$Salary-Comparison.xlsx
+crusam/lib/core/sync/service_account_config.dart

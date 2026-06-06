@@ -1094,6 +1094,7 @@ class DatabaseHelper {
     // The local integer id is device-specific.  Using it on a different
     // device causes silent row-clobbering (replacing the wrong employee).
     final insertData = Map<String, dynamic>.from(data)..remove('id');
+    insertData['is_deleted'] = _boolToInt(insertData['is_deleted']);
     insertData['created_at'] = (insertData['created_at'] as String?) ??
         DateTime.now().toUtc().toIso8601String();
     insertData['updated_at'] = (insertData['updated_at'] as String?) ??
