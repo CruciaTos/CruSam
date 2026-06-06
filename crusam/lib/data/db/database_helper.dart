@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';                     // <-- added for immediate cloud_id generation
 import '../../core/sync/sync_models.dart';
 import '../../core/sync/google_auth_service.dart';
 import '../models/employee_model.dart';
@@ -641,6 +642,12 @@ class DatabaseHelper {
   String get _currentGoogleEmail =>
       GoogleAuthService.instance.userEmail?.trim().toLowerCase() ?? 'unknown';
 
+  /// Inserts a new voucher into the database.
+  ///
+  /// Immediately assigns a UUID as `cloud_id` and pushes the record to Drive
+  /// so that it is visible to other devices without waiting for a full launch
+  /// cycle. This prevents two devices from creating competing local records
+  /// with the same missing `cloud_id`.
   Future<int> insertVoucher(Map<String, dynamic> data) async {
     final db = await database;
     final now = DateTime.now().toUtc().toIso8601String();
@@ -650,7 +657,30 @@ class DatabaseHelper {
     payload['created_by'] ??= _currentGoogleEmail;
     payload['updated_by'] ??= _currentGoogleEmail;
     payload['is_deleted'] ??= 0;
-    return db.insert('vouchers', payload);
+
+    // ── Immediate cloud_id assignment ───────────────────────────────────────
+    // Without this the record is invisible to other devices until the next
+    // app startup, leading to divergence when two devices create a record
+    // that would otherwise have the same natural key.
+    if (payload['cloud_id'] == null || (payload['cloud_id'] as String).isEmpty) {
+      payload['cloud_id'] = const Uuid().v4();
+    }
+
+    final id = await db.insert('vouchers', payload);
+
+    // Push immediately — don't wait for next launch
+    final cloudId = payload['cloud_id'] as String;
+    final inserted = await getVoucherById(id);
+    if (inserted != null) {
+      // Rows are not yet attached at insert time; send an empty list.
+      await SyncManager.instance.pushInvoiceChange(
+        cloudId: cloudId,
+        operation: 'create',
+        invoiceDbRow: Map<String, dynamic>.from(inserted)..['rows'] = [],
+      );
+    }
+
+    return id;
   }
 
   Future<Map<String, dynamic>?> getVoucherById(int id) async {
@@ -663,6 +693,8 @@ class DatabaseHelper {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Updates an existing voucher and its rows, then immediately pushes the
+  /// change to Drive so that other devices receive the update.
   Future<void> updateVoucherWithRows(
     int voucherId,
     Map<String, dynamic> voucherData,
@@ -696,6 +728,21 @@ class DatabaseHelper {
         await txn.insert('voucher_rows', row);
       }
     });
+
+    // ── Push immediately after successful local update ──────────────────────
+    final cloudId = voucherData['cloud_id'] as String?;
+    if (cloudId != null && cloudId.isNotEmpty) {
+      final updatedRows = await getRowsByVoucherId(voucherId);
+      final updatedHeader = await getVoucherById(voucherId);
+      if (updatedHeader != null) {
+        await SyncManager.instance.pushInvoiceChange(
+          cloudId: cloudId,
+          operation: 'update',
+          invoiceDbRow: Map<String, dynamic>.from(updatedHeader)
+            ..['rows'] = updatedRows,
+        );
+      }
+    }
   }
 
   Future<List<Map<String, dynamic>>> getAllVouchers() async =>
@@ -1032,34 +1079,37 @@ class DatabaseHelper {
   /// Applies a Drive-pulled employee record to the local database.
   ///
   /// Merge rules (in priority order):
-  /// 1. If the record doesn't exist locally → insert it.
-  /// 2. If a pending local change exists for this cloud_id → **local wins**,
-  ///    skip the cloud version entirely. The queued push will reconcile Drive.
-  /// 3. If Drive's updated_at is strictly newer than local → overwrite local.
-  /// 4. Otherwise → no-op (local is already at least as recent).
+  /// 1. Strip the integer primary key from the payload so we never collide
+  ///    with a different local row that happens to share the same id integer.
+  /// 2. If the record doesn't exist locally → insert it.
+  /// 3. If a pending local change exists for this cloud_id → local wins.
+  /// 4. If Drive's updated_at is strictly newer than local → overwrite local.
+  /// 5. Otherwise → no-op.
   Future<int> upsertEmployeeFromCloud(Map<String, dynamic> data) async {
     final db = await database;
     final cloudId = data['cloud_id'] as String?;
-    if (cloudId == null || cloudId.isEmpty) {
-      return 0;
-    }
+    if (cloudId == null || cloudId.isEmpty) return 0;
 
-    final existing = await getEmployeeByCloudId(cloudId);
-    final cloudUpdatedAt = _parseUtcDateTime(data['updated_at'] as String?);
-    final insertData = Map<String, dynamic>.from(data);
+    // ── FIX: always strip the integer id from the Drive payload ──────────
+    // The local integer id is device-specific.  Using it on a different
+    // device causes silent row-clobbering (replacing the wrong employee).
+    final insertData = Map<String, dynamic>.from(data)..remove('id');
     insertData['created_at'] = (insertData['created_at'] as String?) ??
         DateTime.now().toUtc().toIso8601String();
     insertData['updated_at'] = (insertData['updated_at'] as String?) ??
         DateTime.now().toUtc().toIso8601String();
 
+    final existing = await getEmployeeByCloudId(cloudId);
+    final cloudUpdatedAt = _parseUtcDateTime(insertData['updated_at'] as String?);
+
     if (existing == null) {
-      return await db.insert('employees', insertData);
+      // New record: insert without an id so autoincrement assigns one
+      return await db.insert('employees', insertData,
+          conflictAlgorithm: ConflictAlgorithm.ignore);
     }
 
     final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
     if (cloudUpdatedAt.isAfter(localUpdatedAt)) {
-      // Guard: if there is a queued but un-pushed local change, local wins.
-      // The pending upload will overwrite Drive with the correct data shortly.
       if (await hasPendingSync(cloudId)) {
         debugPrint(
           'upsertEmployeeFromCloud: skipping cloud overwrite — '
@@ -1074,10 +1124,12 @@ class DatabaseHelper {
           (normalized['created_at'] as String?) ??
               (existing['created_at'] as String?) ??
               DateTime.now().toUtc().toIso8601String();
+
+      // Update by cloud_id, never by integer id
       return await db.update(
         'employees',
         normalized,
-        where: 'cloud_id=?',
+        where: 'cloud_id = ?',
         whereArgs: [cloudId],
       );
     }
@@ -1087,13 +1139,7 @@ class DatabaseHelper {
 
   /// Applies a Drive-pulled voucher record to the local database.
   ///
-  /// Merge rules (in priority order):
-  /// 1. If the record doesn't exist locally → insert it (with rows).
-  /// 2. If a pending local change exists for this cloud_id → **local wins**,
-  ///    skip the cloud version entirely. The queued push will reconcile Drive.
-  /// 3. If Drive's updated_at is strictly newer than local → replace header
-  ///    and rows.
-  /// 4. Otherwise → no-op.
+  /// Merge rules match upsertEmployeeFromCloud above.
   Future<int> upsertVoucherFromCloud(Map<String, dynamic> data) async {
     final db = await database;
     final cloudId = data['cloud_id'] as String?;
@@ -1102,7 +1148,11 @@ class DatabaseHelper {
     final rows = ((data['rows'] as List<dynamic>?) ?? [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
-    final header = Map<String, dynamic>.from(data)..remove('rows');
+
+    // ── FIX: strip integer id from header ────────────────────────────────
+    final header = Map<String, dynamic>.from(data)
+      ..remove('rows')
+      ..remove('id');
     header['is_deleted'] = _boolToInt(header['is_deleted']);
     header['created_at'] = (header['created_at'] as String?) ??
         DateTime.now().toUtc().toIso8601String();
@@ -1114,18 +1164,18 @@ class DatabaseHelper {
 
     if (existing == null) {
       return await db.transaction((txn) async {
-        final id = await txn.insert('vouchers', header);
+        final localId = await txn.insert('vouchers', header,
+            conflictAlgorithm: ConflictAlgorithm.ignore);
         for (final row in rows) {
-          await txn.insert('voucher_rows', _invoiceRowToDb(row, id));
+          await txn.insert('voucher_rows', _invoiceRowToDb(row, localId));
         }
-        return id;
+        return localId;
       });
     }
 
     final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
     if (!cloudUpdatedAt.isAfter(localUpdatedAt)) return 0;
 
-    // Guard: if there is a queued but un-pushed local change, local wins.
     if (await hasPendingSync(cloudId)) {
       debugPrint(
         'upsertVoucherFromCloud: skipping cloud overwrite — '
@@ -1138,11 +1188,11 @@ class DatabaseHelper {
     return await db.transaction((txn) async {
       await txn.update(
         'vouchers',
-        header..remove('id'),
-        where: 'cloud_id=?',
+        header, // id already stripped above
+        where: 'cloud_id = ?',
         whereArgs: [cloudId],
       );
-      await txn.delete('voucher_rows', where: 'voucher_id=?', whereArgs: [localId]);
+      await txn.delete('voucher_rows', where: 'voucher_id = ?', whereArgs: [localId]);
       for (final row in rows) {
         await txn.insert('voucher_rows', _invoiceRowToDb(row, localId));
       }

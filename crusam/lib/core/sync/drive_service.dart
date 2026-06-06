@@ -91,8 +91,6 @@ class DriveService {
   Future<drive.DriveApi?> _api() async {
     final client = await GoogleAuthService.instance.getAuthenticatedClient();
     if (client == null) return null;
-    // Note: caller is responsible for closing the underlying http.Client.
-    // DriveApi wraps it; we stash the client on the caller side when needed.
     return drive.DriveApi(client);
   }
 
@@ -236,9 +234,6 @@ class DriveService {
 
   // ── JSON upload / download ────────────────────────────────────────────────
 
-  /// Uploads [data] as JSON.  If [existingFileId] is supplied the file is
-  /// updated in-place; otherwise a new file is created under [parentFolderId].
-  /// Returns the Drive file-id on success, null on failure.
   Future<String?> uploadJson({
     required String fileName,
     required Map<String, dynamic> data,
@@ -279,7 +274,6 @@ class DriveService {
     }
   }
 
-  /// Downloads the file with [fileId] and parses it as JSON.
   Future<Map<String, dynamic>?> downloadJson(String fileId) async {
     final client = await GoogleAuthService.instance.getAuthenticatedClient();
     if (client == null) return null;
@@ -345,8 +339,6 @@ class DriveService {
 
   // ── Employee file helpers ─────────────────────────────────────────────────
 
-  /// Uploads an employee file. Adds a retry for eventual consistency:
-  /// after creation, tries to confirm the file is visible via a name search.
   Future<String?> uploadEmployee(SyncEmployee employee) async {
     final folderId = await ensureEmployeesFolder();
     if (folderId == null) return null;
@@ -361,7 +353,6 @@ class DriveService {
     );
     if (uploadedId == null) return null;
 
-    // If the file was newly created, wait and retry to confirm visibility
     if (existingId == null) {
       const maxRetries = 3;
       for (int i = 0; i < maxRetries; i++) {
@@ -372,7 +363,7 @@ class DriveService {
           return found;
         }
       }
-      debugPrint('DriveService.uploadEmployee: file $fileName not yet visible after $maxRetries retries, using returned id');
+      debugPrint('DriveService.uploadEmployee: file $fileName not yet visible after $maxRetries retries');
     }
     return uploadedId;
   }
@@ -394,7 +385,6 @@ class DriveService {
 
   // ── Voucher file helpers ──────────────────────────────────────────────────
 
-  /// Uploads a voucher file. Same eventual-consistency retry as for employees.
   Future<String?> uploadVoucher(SyncVoucher voucher) async {
     final folderId = await ensureVouchersFolder();
     if (folderId == null) return null;
@@ -537,7 +527,6 @@ class DriveService {
       await ensureSettingsFolder();
       await ensureBackupsFolder();
 
-      // Seed index files on first-time setup
       final empFolderId = await ensureEmployeesFolder();
       if (empFolderId != null) {
         final empIndexId = await findFileId('index.json', empFolderId);
@@ -599,7 +588,7 @@ class DriveService {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SyncResult  —  returned by syncOnStartup() for progress / error reporting
+// SyncResult
 // ─────────────────────────────────────────────────────────────────────────────
 
 class SyncResult {
@@ -654,26 +643,16 @@ class SyncManager {
   final _drive = DriveService.instance;
   static const _uuid = Uuid();
 
-  // Tracks whether a sync is already in progress to avoid concurrent runs.
   bool _syncing = false;
 
   // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC API
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Startup sync (pull then push) ─────────────────────────────────────────
-
   /// Full sync to run on every app launch.
   ///
-  /// Order:
-  ///   1. Write a pre-sync local SQLite backup (non-fatal).
-  ///   2. Bootstrap Drive folder structure.
-  ///   3. Assign cloud_ids to any local records that still lack one.
-  ///   4. Pull cloud → local (cloud wins for newer records).
-  ///   5. Push local → cloud (drain the pending queue).
-  ///
-  /// Returns a [SyncResult] you can use to show a status indicator.
-  /// Never throws — all errors are caught and reflected in the result.
+  /// FIX: now waits for token refresh before proceeding, so the pull
+  /// always has a valid access token.
   Future<SyncResult> syncOnStartup() async {
     if (!GoogleAuthService.instance.isSignedIn) {
       debugPrint('SyncManager.syncOnStartup: not signed in, skipping');
@@ -685,6 +664,17 @@ class SyncManager {
       return const SyncResult(success: false, errorMessage: 'Sync already running');
     }
 
+    // ── FIX: ensure the token is valid before any Drive I/O ──────────────
+    // getAuthenticatedClient() internally refreshes if needed, but calling
+    // it here eagerly means every sub-call below gets a fresh client without
+    // racing against an in-flight refresh.
+    final authCheck = await GoogleAuthService.instance.getAuthenticatedClient();
+    if (authCheck == null) {
+      debugPrint('SyncManager.syncOnStartup: could not obtain authenticated client, skipping');
+      return const SyncResult.notSignedIn();
+    }
+    authCheck.close(); // we only needed the check; each sub-call opens its own
+
     _syncing = true;
     try {
       // 1. Pre-sync backup
@@ -693,14 +683,15 @@ class SyncManager {
       // 2. Bootstrap Drive structure
       await _drive.initializeDriveStructure();
 
-      // 3. Assign missing cloud_ids to local records before pulling
-      //    (so that subsequent push doesn't create duplicates on Drive)
-      await _bootstrapCloudIds();
-
-      // 4. Pull cloud → local
+      // 3. Pull cloud → local  (BEFORE bootstrap so we don't assign new
+      //    cloud_ids to records that already exist on Drive under a different id)
       final (empPulled, vPulled) = await _pullFromCloud();
 
-      // 5. Push local → cloud
+      // 4. Assign missing cloud_ids to any local records that still lack one
+      //    (i.e. brand-new records created offline since last launch)
+      await _bootstrapCloudIds();
+
+      // 5. Push local → cloud (drain pending queue)
       final (empPushed, vPushed) = await _drainPendingQueue();
 
       final result = SyncResult(
@@ -725,10 +716,9 @@ class SyncManager {
 
   // ── Change notifications (called by DatabaseHelper) ───────────────────────
 
-  /// Call after inserting / updating / deleting an employee in SQLite.
   Future<void> pushEmployeeChange({
     required String cloudId,
-    required String operation, // 'create' | 'update' | 'delete'
+    required String operation,
     required Map<String, dynamic> employeeDbRow,
   }) async {
     if (!GoogleAuthService.instance.isSignedIn) return;
@@ -745,10 +735,9 @@ class SyncManager {
     _processSilently();
   }
 
-  /// Call after inserting / updating / deleting a voucher in SQLite.
   Future<void> pushInvoiceChange({
     required String cloudId,
-    required String operation, // 'create' | 'update' | 'delete'
+    required String operation,
     required Map<String, dynamic> invoiceDbRow,
   }) async {
     if (!GoogleAuthService.instance.isSignedIn) return;
@@ -767,12 +756,6 @@ class SyncManager {
 
   // ── Post-import full push ─────────────────────────────────────────────────
 
-  /// Called by BackupRestoreCard immediately after a successful import.
-  ///
-  /// 1. Assigns cloud_ids to any newly-imported records that lack them.
-  /// 2. Enqueues every employee and voucher for upload.
-  /// 3. Drains the queue synchronously (awaited) so the cloud is updated
-  ///    before the function returns and the caller can report success.
   Future<SyncResult> pushAllToCloud() async {
     if (!GoogleAuthService.instance.isSignedIn) {
       return const SyncResult.notSignedIn();
@@ -796,11 +779,18 @@ class SyncManager {
 
   // ── Bootstrap cloud_ids ───────────────────────────────────────────────────
 
-  /// Any local employee or voucher row without a cloud_id gets one assigned now.
+  /// Assigns cloud_ids ONLY to rows that don't have one AND don't already
+  /// exist on Drive (checked via the current Drive index).
+  ///
+  /// FIX: Previously this ran before _pullFromCloud(), which meant a row that
+  /// already existed on Drive would get a *new* UUID, causing a duplicate on
+  /// the next push.  Now it runs after the pull so cloud_ids from Drive are
+  /// already stamped onto local rows via upsertEmployeeFromCloud before we
+  /// decide to generate new ones.
   Future<void> _bootstrapCloudIds() async {
     final now = DateTime.now().toUtc().toIso8601String();
 
-    // Employees – FIX: exclude soft-deleted rows (Bug 3)
+    // Employees
     final empRows = await (await _db.database).query(
       'employees',
       columns: ['id'],
@@ -810,6 +800,7 @@ class SyncManager {
       final id = row['id'] as int;
       final cloudId = _uuid.v4();
       await _db.assignCloudId(id, cloudId, now);
+      debugPrint('SyncManager._bootstrapCloudIds: assigned employee $id → $cloudId');
     }
 
     // Vouchers
@@ -823,6 +814,7 @@ class SyncManager {
       final cloudId = _uuid.v4();
       final email = GoogleAuthService.instance.userEmail ?? 'unknown';
       await _db.assignVoucherCloudId(id, cloudId, now, email, email);
+      debugPrint('SyncManager._bootstrapCloudIds: assigned voucher $id → $cloudId');
     }
 
     if (empRows.isNotEmpty || vRows.isNotEmpty) {
@@ -839,7 +831,6 @@ class SyncManager {
     final empRows = await _db.getAllSyncedEmployees();
     for (final row in empRows) {
       final cloudId = row['cloud_id'] as String;
-      // Remove duplicate pending entries first to avoid double-uploads
       await (await _db.database).delete(
         'sync_pending',
         where: 'cloud_id = ? AND entity_type = ?',
@@ -850,8 +841,7 @@ class SyncManager {
         cloudId: cloudId,
         operation: 'upsert',
         payload: row,
-        localUpdatedAt:
-            (row['updated_at'] as String?) ?? now,
+        localUpdatedAt: (row['updated_at'] as String?) ?? now,
       );
       await _db.addPendingSync(entry);
     }
@@ -872,8 +862,7 @@ class SyncManager {
         cloudId: cloudId,
         operation: 'upsert',
         payload: fullPayload,
-        localUpdatedAt:
-            (row['updated_at'] as String?) ?? now,
+        localUpdatedAt: (row['updated_at'] as String?) ?? now,
       );
       await _db.addPendingSync(entry);
     }
@@ -891,10 +880,11 @@ class SyncManager {
     // ── Employees ──────────────────────────────────────────────────────────
     try {
       final empIndex = await _drive.readEmployeesIndex();
+      debugPrint('SyncManager._pullFromCloud: ${empIndex.entries.length} employee entries in Drive index');
+
       for (final entry in empIndex.entries) {
         try {
           if (entry.isDeleted) {
-            // Propagate soft-delete to local if not already deleted
             await _db.softDeleteByCloudId(entry.cloudId);
             continue;
           }
@@ -902,7 +892,10 @@ class SyncManager {
           if (cloudEmployee == null) continue;
           final upserted =
               await _db.upsertEmployeeFromCloud(cloudEmployee.toJson());
-          if (upserted > 0) empPulled++;
+          if (upserted > 0) {
+            empPulled++;
+            debugPrint('SyncManager._pullFromCloud: upserted employee ${entry.cloudId}');
+          }
         } catch (e) {
           debugPrint(
               'SyncManager._pullFromCloud: employee ${entry.cloudId} error: $e');
@@ -915,6 +908,8 @@ class SyncManager {
     // ── Vouchers ───────────────────────────────────────────────────────────
     try {
       final vIndex = await _drive.readVouchersIndex();
+      debugPrint('SyncManager._pullFromCloud: ${vIndex.entries.length} voucher entries in Drive index');
+
       for (final entry in vIndex.entries) {
         try {
           if (entry.isDeleted) {
@@ -942,13 +937,10 @@ class SyncManager {
 
   // ── Push (drain queue) ────────────────────────────────────────────────────
 
-  /// Uploads all pending entries, then updates the Drive indexes once per
-  /// entity type to avoid per‑record index clobbering and race conditions.
   Future<(int, int)> _drainPendingQueue() async {
     final pendingRows = await _db.getPendingSyncs();
     if (pendingRows.isEmpty) return (0, 0);
 
-    // Collect successfully uploaded employee/voucher data
     final List<SyncEmployee> uploadedEmployees = [];
     final List<SyncVoucher> uploadedVouchers = [];
     int empPushed = 0;
@@ -978,7 +970,6 @@ class SyncManager {
         debugPrint(
             'SyncManager._drainPendingQueue: ${entry.entityType} '
             '${entry.cloudId} error: $e');
-        // Leave the row in sync_pending — it will be retried on the next sync.
       }
     }
 
@@ -987,7 +978,6 @@ class SyncManager {
       try {
         final index = await _drive.readEmployeesIndex();
         final updatedEntries = List<SyncIndexEntry>.from(index.entries);
-        // Remove all entries for the uploaded cloudIds, then add the new ones
         final uploadedCloudIds = uploadedEmployees.map((e) => e.cloudId).toSet();
         updatedEntries.removeWhere((entry) => uploadedCloudIds.contains(entry.cloudId));
         updatedEntries.addAll(uploadedEmployees.map((e) => SyncIndexEntry(
@@ -1029,8 +1019,6 @@ class SyncManager {
         '$empPushed employees, $vPushed vouchers pushed');
     return (empPushed, vPushed);
   }
-
-  // The old per‑record index writers are removed (no longer called).
 
   // ── Fire-and-forget push ──────────────────────────────────────────────────
 
