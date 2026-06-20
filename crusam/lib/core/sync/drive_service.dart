@@ -85,14 +85,12 @@ class DriveService {
 
   // ── Service account client helper ─────────────────────────────────────────
 
-  // _readApi() uses the service account — for all reads (folder discovery,
-  // findFileId, downloadJson). Works regardless of who is signed in.
+  // ── Now only one API method — service account for everything ──────────────
   //
-  // _writeApi() uses the signed-in user's OAuth token — for all writes
-  // (uploadJson, _createFolder). Personal Google accounts don't give service
-  // accounts storage quota, so uploads must come from the human user's token.
-  // Both authorized users have Editor access on the shared Crusam folder, so
-  // both can write there using their own tokens.
+  // Previously there were separate _readApi() and _writeApi() using different
+  // credentials.  That caused write failures when a non-owner user tried to
+  // write to the shared folder.  Now all operations go through the service
+  // account client.
 
   Future<drive.DriveApi?> _readApi() async {
     final client = await DriveServiceAccount.getServiceAccountClient();
@@ -103,14 +101,7 @@ class DriveService {
     return drive.DriveApi(client);
   }
 
-  Future<drive.DriveApi?> _writeApi() async {
-    final client = await GoogleAuthService.instance.getAuthenticatedClient();
-    if (client == null) {
-      debugPrint('DriveService._writeApi: user OAuth client not available');
-      return null;
-    }
-    return drive.DriveApi(client);
-  }
+  // _writeApi() REMOVED — writes also use _readApi().
 
   // ── Folder helpers ────────────────────────────────────────────────────────
 
@@ -184,11 +175,9 @@ class DriveService {
     if (parent == null) return null;
     final readApi = await _readApi();
     if (readApi == null) return null;
-    final writeApi = await _writeApi();
-    if (writeApi == null) return null;
     try {
       _employeesFolderId = await _ensureFolder(
-          readApi, writeApi, _employeesFolderName, parent);
+          readApi, readApi, _employeesFolderName, parent);  // readApi twice
       debugPrint(
         'DriveService.ensureEmployeesFolder: id=$_employeesFolderId',
       );
@@ -205,11 +194,9 @@ class DriveService {
     if (parent == null) return null;
     final readApi = await _readApi();
     if (readApi == null) return null;
-    final writeApi = await _writeApi();
-    if (writeApi == null) return null;
     try {
       _vouchersFolderId = await _ensureFolder(
-          readApi, writeApi, _vouchersFolderName, parent);
+          readApi, readApi, _vouchersFolderName, parent);
       debugPrint('DriveService.ensureVouchersFolder: id=$_vouchersFolderId');
       return _vouchersFolderId;
     } catch (e) {
@@ -224,11 +211,9 @@ class DriveService {
     if (parent == null) return null;
     final readApi = await _readApi();
     if (readApi == null) return null;
-    final writeApi = await _writeApi();
-    if (writeApi == null) return null;
     try {
       _settingsFolderId = await _ensureFolder(
-          readApi, writeApi, _settingsFolderName, parent);
+          readApi, readApi, _settingsFolderName, parent);
       debugPrint('DriveService.ensureSettingsFolder: id=$_settingsFolderId');
       return _settingsFolderId;
     } catch (e) {
@@ -243,11 +228,9 @@ class DriveService {
     if (parent == null) return null;
     final readApi = await _readApi();
     if (readApi == null) return null;
-    final writeApi = await _writeApi();
-    if (writeApi == null) return null;
     try {
       _backupsFolderId = await _ensureFolder(
-          readApi, writeApi, _backupsFolderName, parent);
+          readApi, readApi, _backupsFolderName, parent);
       debugPrint('DriveService.ensureBackupsFolder: id=$_backupsFolderId');
       return _backupsFolderId;
     } catch (e) {
@@ -289,7 +272,7 @@ class DriveService {
     String? parentFolderId,
     String? existingFileId,
   }) async {
-    final api = await _writeApi();
+    final api = await _readApi();   // ← was _writeApi()
     if (api == null) return null;
     try {
       final jsonBytes = utf8.encode(jsonEncode(data));
