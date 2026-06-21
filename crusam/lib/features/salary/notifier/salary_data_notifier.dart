@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -10,39 +9,55 @@ class SalaryDataNotifier extends ChangeNotifier {
   bool _disposed = false;
 
   int _month = DateTime.now().month;
-  int _year  = DateTime.now().year;
-  String _dateIso      = _todayIso();
-  String _poNo         = '-';
-  String _billNo       = 'AE/-/25-26';
-  String _clientName   = AppConstants.defaultClientName;
-  String _clientAddr   = AppConstants.defaultClientAddress;
-  String _clientGstin  = AppConstants.defaultClientGstin;
-  String _deptCode    = '';
+  int _year = DateTime.now().year;
+  String _dateIso = _todayIso();
+  String _poNo = '-';
+  String _billNo = 'AE/-/25-26';
+  String _clientName = AppConstants.defaultClientName;
+  String _clientAddr = AppConstants.defaultClientAddress;
+  String _clientGstin = AppConstants.defaultClientGstin;
+  String _deptCode = '';
 
   final Map<int, int> _days = {};
   final Map<int, TextEditingController> _controllers = {};
 
-  int    get month     => _month;
-  int    get year      => _year;
-  int    get totalDays => DateTime(_year, _month + 1, 0).day;
-  bool   get isMsw     => _month == 6 || _month == 12;
-  bool   get isFeb     => _month == 2;
-  String get dateIso   => _dateIso;
+  int get month => _month;
+  int get year => _year;
+  int get totalDays => DateTime(_year, _month + 1, 0).day;
+  bool get isMsw => _month == 6 || _month == 12;
+  bool get isFeb => _month == 2;
+  String get dateIso => _dateIso;
   String get dateDisplay => _formatDisplayDate(_dateIso);
-  String get poNo      => _poNo;
-  String get billNo    => _billNo;
-  String get clientName  => _clientName;
-  String get clientAddr  => _clientAddr;
+  String get poNo => _poNo;
+  String get billNo => _billNo;
+  String get clientName => _clientName;
+  String get clientAddr => _clientAddr;
   String get clientGstin => _clientGstin;
-  String get deptCode    => _deptCode;
+  String get deptCode => _deptCode;
 
   static const _monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
   String get monthName => _monthNames[_month - 1];
 
-  static String _todayIso() => DateTime.now().toIso8601String().split('T').first;
+  /// "June 2026"-style label for the currently active salary period. Reused
+  /// by the Saved Salary list and the "Viewing Saved Salary" indicator so
+  /// period formatting stays consistent across the module.
+  String get periodLabel => '$monthName $year';
+
+  static String _todayIso() =>
+      DateTime.now().toIso8601String().split('T').first;
 
   static String _formatDisplayDate(String iso) {
     final dt = DateTime.tryParse(iso);
@@ -117,12 +132,13 @@ class SalaryDataNotifier extends ChangeNotifier {
   void setMonthYear(int month, int year) {
     if (_month == month && _year == year) return;
     _month = month;
-    _year  = year;
+    _year = year;
     _safeNotify();
   }
 
   void setDateIso(String value) {
-    final normalized = DateTime.tryParse(value)?.toIso8601String().split('T').first;
+    final normalized =
+        DateTime.tryParse(value)?.toIso8601String().split('T').first;
     if (normalized == null || _dateIso == normalized) return;
     _dateIso = normalized;
     _safeNotify();

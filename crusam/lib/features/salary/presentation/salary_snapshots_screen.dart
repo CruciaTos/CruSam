@@ -1,11 +1,11 @@
 // crusam/lib/features/salary/presentation/salary_snapshots_screen.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../models/salary_snapshot_model.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 
@@ -48,20 +48,24 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     if (name == null) return;
     final ok = await _notifier.saveCurrentMonth(name: name);
     _showSnack(
-      ok ? 'Snapshot saved.' : 'Save failed: ${_notifier.error}',
+      ok
+          ? 'Saved Salary recorded for ${n.periodLabel}.'
+          : 'Save failed: ${_notifier.error}',
       isError: !ok,
     );
   }
 
-  Future<void> _onLoad(SalaryMonthSnapshotModel snapshot) async {
+  Future<void> _onLoad(SavedSalarySummary summary) async {
+    final snapshot = summary.snapshot;
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Load Month'),
+            title: const Text('Load Saved Salary'),
             content: Text(
-              'Loading "${snapshot.snapshotName}" will replace the current '
-              'salary screen state. Continue?',
+              'Switching to "${summary.periodLabel}" will make it your active '
+              'salary period — the Employee Salary screen and all calculations '
+              'will reflect this data. Continue?',
             ),
             actions: [
               TextButton(
@@ -89,9 +93,10 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     }
   }
 
-  Future<void> _onRename(SalaryMonthSnapshotModel snapshot) async {
+  Future<void> _onRename(SavedSalarySummary summary) async {
+    final snapshot = summary.snapshot;
     final name = await _promptForName(
-      title: 'Rename Snapshot',
+      title: 'Rename Saved Salary',
       initialValue: snapshot.snapshotName,
       confirmLabel: 'Rename',
     );
@@ -99,14 +104,16 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     await _notifier.renameSnapshot(snapshot.id!, name);
   }
 
-  Future<void> _onDelete(SalaryMonthSnapshotModel snapshot) async {
+  Future<void> _onDelete(SavedSalarySummary summary) async {
+    final snapshot = summary.snapshot;
     final confirmed = await showDialog<bool>(
       context: context,
       builder:
           (ctx) => AlertDialog(
-            title: const Text('Delete Snapshot'),
+            title: const Text('Delete Saved Salary'),
             content: Text(
-              'Delete "${snapshot.snapshotName}"? This cannot be undone.',
+              'Delete the saved salary for "${summary.periodLabel}"? '
+              'This cannot be undone.',
             ),
             actions: [
               TextButton(
@@ -141,7 +148,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
               autofocus: true,
               decoration: const InputDecoration(
                 isDense: true,
-                labelText: 'Snapshot name',
+                labelText: 'Saved Salary name',
               ),
               onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
             ),
@@ -164,14 +171,14 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('Salary Snapshots'),
+        title: const Text('Saved Salary'),
         backgroundColor: AppColors.slate900,
         foregroundColor: Colors.white,
       ),
       body: ListenableBuilder(
         listenable: _notifier,
         builder: (context, _) {
-          final snapshots = _notifier.snapshots;
+          final summaries = _notifier.summaries;
           return Padding(
             padding: const EdgeInsets.all(AppSpacing.pagePadding),
             child: Column(
@@ -179,7 +186,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
               children: [
                 Row(
                   children: [
-                    Text('Saved Months', style: AppTextStyles.h3),
+                    Text('All Saved Periods', style: AppTextStyles.h3),
                     const Spacer(),
                     IconButton(
                       icon: const Icon(
@@ -230,18 +237,21 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                   child:
                       _notifier.isLoading
                           ? const Center(child: CircularProgressIndicator())
-                          : snapshots.isEmpty
+                          : summaries.isEmpty
                           ? _EmptyState(onSave: _onSaveCurrentMonth)
                           : ListView.separated(
-                            itemCount: snapshots.length,
+                            itemCount: summaries.length,
                             separatorBuilder:
                                 (_, __) => const SizedBox(height: 8),
                             itemBuilder:
-                                (ctx, i) => _SnapshotCard(
-                                  snapshot: snapshots[i],
-                                  onLoad: () => _onLoad(snapshots[i]),
-                                  onRename: () => _onRename(snapshots[i]),
-                                  onDelete: () => _onDelete(snapshots[i]),
+                                (ctx, i) => _SavedSalaryCard(
+                                  summary: summaries[i],
+                                  isActive:
+                                      _notifier.activeSnapshot?.id ==
+                                      summaries[i].snapshot.id,
+                                  onLoad: () => _onLoad(summaries[i]),
+                                  onRename: () => _onRename(summaries[i]),
+                                  onDelete: () => _onDelete(summaries[i]),
                                 ),
                           ),
                 ),
@@ -254,87 +264,161 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
   }
 }
 
-class _SnapshotCard extends StatelessWidget {
-  final SalaryMonthSnapshotModel snapshot;
+class _SavedSalaryCard extends StatelessWidget {
+  final SavedSalarySummary summary;
+  final bool isActive;
   final VoidCallback onLoad;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
-  const _SnapshotCard({
-    required this.snapshot,
+  const _SavedSalaryCard({
+    required this.summary,
+    required this.isActive,
     required this.onLoad,
     required this.onRename,
     required this.onDelete,
   });
 
+  static final _savedAtFormat = DateFormat('MMM d, yyyy · h:mm a');
+  static final _payrollFormat = NumberFormat('#,##0');
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      border: Border.all(color: AppColors.slate200),
-    ),
-    child: Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: AppColors.indigo50,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.calendar_month_outlined,
-            size: 18,
-            color: AppColors.indigo600,
-          ),
+  Widget build(BuildContext context) {
+    final snapshot = summary.snapshot;
+    final periodLabel = summary.periodLabel;
+    final hasCustomName =
+        snapshot.snapshotName.trim().isNotEmpty &&
+        snapshot.snapshotName.trim() != periodLabel;
+    final savedAt = DateTime.tryParse(snapshot.updatedAt);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(
+          color: isActive ? AppColors.indigo400 : AppColors.slate200,
+          width: isActive ? 1.4 : 1,
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                snapshot.snapshotName,
-                style: AppTextStyles.bodySemi.copyWith(fontSize: 14),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${snapshot.monthName} ${snapshot.year}  ·  Updated '
-                '${snapshot.updatedAt.split('T').first}',
-                style: AppTextStyles.small.copyWith(color: AppColors.slate500),
-              ),
-            ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.indigo50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.calendar_month_outlined,
+              size: 18,
+              color: AppColors.indigo600,
+            ),
           ),
-        ),
-        IconButton(
-          icon: const Icon(
-            Icons.file_open_outlined,
-            size: 18,
-            color: AppColors.indigo600,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      periodLabel,
+                      style: AppTextStyles.bodySemi.copyWith(fontSize: 14),
+                    ),
+                    if (isActive)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.indigo600,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'ACTIVE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    if (hasCustomName)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.slate100,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          snapshot.snapshotName,
+                          style: AppTextStyles.small.copyWith(
+                            color: AppColors.slate600,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  savedAt != null
+                      ? 'Saved ${_savedAtFormat.format(savedAt)}'
+                      : 'Save time unknown',
+                  style: AppTextStyles.small.copyWith(
+                    color: AppColors.slate500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${summary.employeeCount} employee'
+                  '${summary.employeeCount == 1 ? '' : 's'}  ·  '
+                  '₹${_payrollFormat.format(summary.totalPayroll)} total payroll',
+                  style: AppTextStyles.small.copyWith(
+                    color: AppColors.slate600,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
-          tooltip: 'Load Month',
-          onPressed: onLoad,
-        ),
-        IconButton(
-          icon: const Icon(
-            Icons.edit_outlined,
-            size: 18,
-            color: AppColors.slate500,
+          IconButton(
+            icon: const Icon(
+              Icons.file_open_outlined,
+              size: 18,
+              color: AppColors.indigo600,
+            ),
+            tooltip: 'Load Saved Salary',
+            onPressed: onLoad,
           ),
-          tooltip: 'Rename',
-          onPressed: onRename,
-        ),
-        IconButton(
-          icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-          tooltip: 'Delete',
-          onPressed: onDelete,
-        ),
-      ],
-    ),
-  );
+          IconButton(
+            icon: const Icon(
+              Icons.edit_outlined,
+              size: 18,
+              color: AppColors.slate500,
+            ),
+            tooltip: 'Rename',
+            onPressed: onRename,
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+            tooltip: 'Delete',
+            onPressed: onDelete,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _EmptyState extends StatelessWidget {
@@ -352,7 +436,7 @@ class _EmptyState extends StatelessWidget {
           color: AppColors.slate300,
         ),
         const SizedBox(height: 12),
-        Text('No saved months yet.', style: AppTextStyles.small),
+        Text('No saved salary periods yet.', style: AppTextStyles.small),
         const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: onSave,

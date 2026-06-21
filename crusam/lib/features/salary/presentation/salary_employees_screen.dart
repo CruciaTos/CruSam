@@ -6,7 +6,9 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
+import 'package:crusam/features/salary/notifier/salary_snapshot_notifier.dart';
 import '../widgets/salary_entry_table.dart';
+import '../widgets/shared_salary_widget.dart'; // ✅ corrected import (singular)
 import 'salary_snapshots_screen.dart';
 
 class SalaryEmployeesScreen extends StatefulWidget {
@@ -17,12 +19,7 @@ class SalaryEmployeesScreen extends StatefulWidget {
 
 class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
   final _ctrl = SalaryStateController.instance;
-
-  // ── Read month/year from the notifier so the selection persists
-  // ── when navigating between tabs. Only fall back to now() if the
-  // ── notifier has never been set (i.e. first ever launch).
-  late int _month = SalaryDataNotifier.instance.month;
-  final int _year = SalaryDataNotifier.instance.year;
+  final _snapshotNotifier = SalarySnapshotNotifier.instance;
 
   final Map<int, FocusNode> _daysFocusNodes = {};
 
@@ -41,18 +38,11 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     'December',
   ];
 
-  bool get _isMsw => _month == 6 || _month == 12;
-  bool get _isFeb => _month == 2;
-  int get _totalDays => DateTime(_year, _month + 1, 0).day;
-
   @override
   void initState() {
     super.initState();
     _ctrl.addListener(_syncFocusNodes);
     _ctrl.loadEmployees();
-    // Do NOT call setMonthYear here — the notifier already holds the
-    // correct value. Only sync local _month from it in case it differs.
-    _month = SalaryDataNotifier.instance.month;
   }
 
   @override
@@ -82,19 +72,19 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     setState(() {});
   }
 
+  // ── Month change ─────────────────────────────────────────────────────────
   void _onMonthChange(int month) {
-    final newTotal = DateTime(_year, month + 1, 0).day;
-    setState(() {
-      _month = month;
-      final liveIds =
-          _ctrl.employees.where((e) => e.id != null).map((e) => e.id!).toSet();
-      for (final id in liveIds) {
-        final c = SalaryDataNotifier.instance.getOrCreateController(id);
-        final v = int.tryParse(c.text) ?? 0;
-        if (v > newTotal) c.text = newTotal.toString();
-      }
-    });
-    SalaryDataNotifier.instance.setMonthYear(month, _year);
+    final n = SalaryDataNotifier.instance;
+    final year = n.year;
+    final newTotal = DateTime(year, month + 1, 0).day;
+    final liveIds =
+        _ctrl.employees.where((e) => e.id != null).map((e) => e.id!).toSet();
+    for (final id in liveIds) {
+      final c = n.getOrCreateController(id);
+      final v = int.tryParse(c.text) ?? 0;
+      if (v > newTotal) c.text = newTotal.toString();
+    }
+    n.setMonthYear(month, year);
   }
 
   void _openSnapshots() {
@@ -107,8 +97,13 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: _ctrl,
+    listenable: Listenable.merge([
+      _ctrl,
+      SalaryDataNotifier.instance,
+      _snapshotNotifier,
+    ]),
     builder: (context, _) {
+      final n = SalaryDataNotifier.instance;
       final employees = _displayEmployees;
       final code = _ctrl.selectedCompanyCode;
       final title =
@@ -116,20 +111,27 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
 
       final daysCtrls = {
         for (final e in employees)
-          if (e.id != null)
-            e.id!: SalaryDataNotifier.instance.getOrCreateController(e.id!),
+          if (e.id != null) e.id!: n.getOrCreateController(e.id!),
       };
+
+      final isViewingSavedSalary = _snapshotNotifier.isViewingSavedSalary;
 
       return Padding(
         padding: const EdgeInsets.all(AppSpacing.pagePadding),
         child: Column(
           children: [
+            if (isViewingSavedSalary) ...[
+              SavedSalaryIndicatorBanner(
+                periodLabel: _snapshotNotifier.activeSavedSalaryLabel,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+            ],
             _Toolbar(
               title: title,
-              month: _month,
+              month: n.month,
               months: _months,
-              isMsw: _isMsw,
-              isFeb: _isFeb,
+              isMsw: n.isMsw,
+              isFeb: n.isFeb,
               codes: const ['F&B', 'I&L', 'P&S', 'A&P'],
               selectedCode: _ctrl.selectedCompanyCode,
               onMonthChanged: _onMonthChange,
@@ -167,15 +169,15 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
               Expanded(
                 child: SalaryEntryTable(
                   employees: employees,
-                  month: _month,
-                  year: _year,
-                  totalDays: _totalDays,
-                  isMsw: _isMsw,
-                  isFeb: _isFeb,
+                  month: n.month,
+                  year: n.year,
+                  totalDays: n.totalDays,
+                  isMsw: n.isMsw,
+                  isFeb: n.isFeb,
                   daysCtrls: daysCtrls,
                   daysFocusNodes: _daysFocusNodes,
                   onDaysChanged: () => setState(() {}),
-                  monthName: _months[_month - 1],
+                  monthName: n.monthName,
                 ),
               ),
           ],
@@ -291,7 +293,6 @@ class _Toolbar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Row 1: title + snapshots button + month dropdown
         Row(
           children: [
             Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
@@ -304,7 +305,7 @@ class _Toolbar extends StatelessWidget {
                 color: AppColors.slate400,
               ),
               label: Text(
-                'Snapshots',
+                'Saved Salary',
                 style: AppTextStyles.input.copyWith(color: AppColors.slate400),
               ),
               style: OutlinedButton.styleFrom(
@@ -322,10 +323,8 @@ class _Toolbar extends StatelessWidget {
             ),
           ],
         ),
-
-        // Row 2: MSW / February badges (only if any are active)
         if (isMsw || isFeb) ...[
-          const SizedBox(height: 6), // gap between dropdown and badges
+          const SizedBox(height: 6),
           Row(
             children: [
               const Spacer(),
@@ -335,8 +334,7 @@ class _Toolbar extends StatelessWidget {
                   AppColors.amber100,
                   AppColors.amber700,
                 ),
-              if (isMsw && isFeb)
-                const SizedBox(width: 8), // horizontal gap between two badges
+              if (isMsw && isFeb) const SizedBox(width: 8),
               if (isFeb)
                 _badge(
                   'February — PT ₹300 for eligible',
@@ -346,8 +344,6 @@ class _Toolbar extends StatelessWidget {
             ],
           ),
         ],
-
-        // Company code chips
         if (codes.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.sm),
           SingleChildScrollView(
