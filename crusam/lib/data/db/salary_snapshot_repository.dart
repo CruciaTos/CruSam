@@ -56,8 +56,38 @@ class SalarySnapshotRepository {
       'ON $tableEmployees (snapshot_id)',
     );
 
+    await _migrateAnalyticsColumns(db);   // ← added migration call
+
     _tablesReady = true;
   }
+
+  /// Adds the pf/esic/msw/pt breakdown columns used by Salary Analytics.
+  /// Wrapped in a single transaction; verifies schema before committing,
+  /// throws (→ rollback) on failure. No backfill — existing rows default
+  /// to 0 (accepted v1 historical-data tradeoff).
+  Future<void> _migrateAnalyticsColumns(Database db) async {
+    final existing = await db.rawQuery('PRAGMA table_info($tableEmployees)');
+    final existingNames = existing.map((c) => c['name'] as String).toSet();
+    const required = ['pf', 'esic', 'msw', 'pt'];
+    final missing = required.where((c) => !existingNames.contains(c)).toList();
+    if (missing.isEmpty) return;
+
+    await db.transaction((txn) async {
+      for (final col in missing) {
+        await txn.execute('ALTER TABLE $tableEmployees ADD COLUMN $col INTEGER DEFAULT 0');
+      }
+      final verify = await txn.rawQuery('PRAGMA table_info($tableEmployees)');
+      final verifyNames = verify.map((c) => c['name'] as String).toSet();
+      final stillMissing = required.where((c) => !verifyNames.contains(c)).toList();
+      if (stillMissing.isNotEmpty) {
+        throw StateError('Salary analytics migration failed — missing columns: $stillMissing');
+      }
+    });
+  }
+
+  /// Lets other repositories (SalaryAnalyticsRepository) ensure the fact
+  /// table + analytics columns exist before querying.
+  Future<void> ensureTablesReady() => _ensureTables();
 
   static String _nowIso() => DateTime.now().toIso8601String();
 
@@ -131,6 +161,10 @@ class SalarySnapshotRepository {
         'deductions': emp.totalDeduction.toDouble(),
         'bonus': emp.bonus,
         'net_salary': emp.netSalary,
+        'pf': emp.pf,        // ← added
+        'esic': emp.esic,    // ← added
+        'msw': emp.msw,      // ← added
+        'pt': emp.pt,        // ← added
         'created_at': now,
       });
     }

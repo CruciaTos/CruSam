@@ -75,6 +75,9 @@ const _kNav = <_NavItem>[
     ]),
     _Route('/salary-statement',    Icons.summarize_outlined,        'Salary Statement'),
   ]),
+  _Group(Icons.bar_chart_outlined, 'Salary Reports', [
+    _Route('/salary-analytics', Icons.insights_outlined, 'Salary Analytics'),
+  ]),
 ];
 
 String? _findActiveStatic(List<_NavItem> items, String loc) {

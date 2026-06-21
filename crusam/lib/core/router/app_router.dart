@@ -17,6 +17,7 @@ import '../../features/salary/presentation/salary_disbursements_screen.dart';
 import '../../features/salary/presentation/salary_preview_screen.dart';
 import '../../features/salary/presentation/salary_attachment_a_screen.dart';
 import '../../features/salary/presentation/salary_attachment_b_screen.dart';
+import '../../features/salary/presentation/salary_analytics_screen.dart';
 import '../../features/landing/presentation/landing_screen.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/notifiers/auth_notifier.dart';
@@ -158,6 +159,10 @@ class AppRouter {
             path: '/salary-attachment-b',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const SalaryAttachmentBScreen()),
+          ),
+          GoRoute(
+            path: '/salary-analytics',
+            builder: (context, state) => const SalaryAnalyticsScreen(),
           ),
         ],
       ),
