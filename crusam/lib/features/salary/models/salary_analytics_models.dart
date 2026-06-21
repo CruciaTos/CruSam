@@ -15,7 +15,18 @@ class EmployeeAnalyticsRecord {
   final int month;
   final int year;
   final int attendance;
+
+  // ── Master (full, non-prorated) values ──────────────────────────────────
+  final double masterBasic;
+  final double masterOther;
+  final double masterGross;
+
+  // ── Earned (prorated) values ────────────────────────────────────────────
+  final double earnedBasic;
+  final double earnedOther;
   final double grossSalary; // earned gross for that month
+
+  // ── Deductions ───────────────────────────────────────────────────────────
   final int pf;
   final int esic;
   final int msw;
@@ -32,6 +43,11 @@ class EmployeeAnalyticsRecord {
     required this.month,
     required this.year,
     required this.attendance,
+    this.masterBasic = 0,
+    this.masterOther = 0,
+    this.masterGross = 0,
+    this.earnedBasic = 0,
+    this.earnedOther = 0,
     required this.grossSalary,
     required this.pf,
     required this.esic,
@@ -62,6 +78,11 @@ class EmployeeAnalyticsRecord {
         month: month,
         year: year,
         attendance: 0,
+        masterBasic: 0,
+        masterOther: 0,
+        masterGross: 0,
+        earnedBasic: 0,
+        earnedOther: 0,
         grossSalary: 0,
         pf: 0,
         esic: 0,
@@ -81,6 +102,11 @@ class EmployeeAnalyticsRecord {
         month: (m['month'] as int?) ?? 1,
         year: (m['year'] as int?) ?? DateTime.now().year,
         attendance: (m['attendance'] as int?) ?? 0,
+        masterBasic: (m['basic_charges'] as num?)?.toDouble() ?? 0.0,
+        masterOther: (m['other_charges'] as num?)?.toDouble() ?? 0.0,
+        masterGross: (m['master_gross'] as num?)?.toDouble() ?? 0.0,
+        earnedBasic: (m['earned_basic'] as num?)?.toDouble() ?? 0.0,
+        earnedOther: (m['earned_other'] as num?)?.toDouble() ?? 0.0,
         grossSalary: (m['gross_salary'] as num?)?.toDouble() ?? 0.0,
         pf: (m['pf'] as int?) ?? 0,
         esic: (m['esic'] as int?) ?? 0,
@@ -109,7 +135,12 @@ class EmployeeAnalyticsSummary {
     required this.monthlyRecords,
   });
 
-  double get totalGross => monthlyRecords.fold(0.0, (s, r) => s + r.grossSalary);
+  double get totalMasterBasic => monthlyRecords.fold(0.0, (s, r) => s + r.masterBasic);
+  double get totalMasterOther => monthlyRecords.fold(0.0, (s, r) => s + r.masterOther);
+  double get totalMasterGross => monthlyRecords.fold(0.0, (s, r) => s + r.masterGross);
+  double get totalEarnedBasic => monthlyRecords.fold(0.0, (s, r) => s + r.earnedBasic);
+  double get totalEarnedOther => monthlyRecords.fold(0.0, (s, r) => s + r.earnedOther);
+  double get totalGross => monthlyRecords.fold(0.0, (s, r) => s + r.grossSalary); // earned gross
   double get totalDeductions => monthlyRecords.fold(0.0, (s, r) => s + r.totalDeduction);
   double get totalNet => monthlyRecords.fold(0.0, (s, r) => s + r.netSalary);
   int get totalPf => monthlyRecords.fold(0, (s, r) => s + r.pf);
@@ -140,12 +171,18 @@ class PayrollAnalyticsSnapshot {
 
   int get employeeCount => employeeSummaries.where((e) => e.hasActivity).length;
 
-  double get totalPayroll => employeeSummaries.fold(0.0, (s, e) => s + e.totalGross);
+  double get totalMasterBasic => employeeSummaries.fold(0.0, (s, e) => s + e.totalMasterBasic);
+  double get totalMasterOther => employeeSummaries.fold(0.0, (s, e) => s + e.totalMasterOther);
+  double get totalMasterGross => employeeSummaries.fold(0.0, (s, e) => s + e.totalMasterGross);
+  double get totalEarnedBasic => employeeSummaries.fold(0.0, (s, e) => s + e.totalEarnedBasic);
+  double get totalEarnedOther => employeeSummaries.fold(0.0, (s, e) => s + e.totalEarnedOther);
+  double get totalPayroll => employeeSummaries.fold(0.0, (s, e) => s + e.totalGross); // earned gross
   double get totalNetSalaryPaid => employeeSummaries.fold(0.0, (s, e) => s + e.totalNet);
   int get totalPf => employeeSummaries.fold(0, (s, e) => s + e.totalPf);
   int get totalEsic => employeeSummaries.fold(0, (s, e) => s + e.totalEsic);
   int get totalMsw => employeeSummaries.fold(0, (s, e) => s + e.totalMsw);
   int get totalPt => employeeSummaries.fold(0, (s, e) => s + e.totalPt);
+  double get totalDeductions => employeeSummaries.fold(0.0, (s, e) => s + e.totalDeductions);
 
   double get averageMonthlyPayroll =>
       selectedMonths.isEmpty ? 0 : totalPayroll / selectedMonths.length;

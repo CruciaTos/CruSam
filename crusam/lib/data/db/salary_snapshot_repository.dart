@@ -61,24 +61,40 @@ class SalarySnapshotRepository {
     _tablesReady = true;
   }
 
-  /// Adds the pf/esic/msw/pt breakdown columns used by Salary Analytics.
+  /// Adds the pf/esic/msw/pt breakdown columns used by Salary Analytics,
+  /// plus the full earnings breakdown (master basic/other/gross, earned
+  /// basic/other) so every Salary Statement parameter is available for
+  /// reporting — not just gross/deductions/net.
   /// Wrapped in a single transaction; verifies schema before committing,
   /// throws (→ rollback) on failure. No backfill — existing rows default
   /// to 0 (accepted v1 historical-data tradeoff).
   Future<void> _migrateAnalyticsColumns(Database db) async {
     final existing = await db.rawQuery('PRAGMA table_info($tableEmployees)');
     final existingNames = existing.map((c) => c['name'] as String).toSet();
-    const required = ['pf', 'esic', 'msw', 'pt'];
-    final missing = required.where((c) => !existingNames.contains(c)).toList();
-    if (missing.isEmpty) return;
+    const intCols = ['pf', 'esic', 'msw', 'pt'];
+    const realCols = [
+      'basic_charges',   // master basic (full, non-prorated)
+      'other_charges',   // master other (full, non-prorated)
+      'master_gross',    // master gross (full, non-prorated)
+      'earned_basic',    // prorated basic
+      'earned_other',    // prorated other
+    ];
+    final missingInt = intCols.where((c) => !existingNames.contains(c)).toList();
+    final missingReal = realCols.where((c) => !existingNames.contains(c)).toList();
+    if (missingInt.isEmpty && missingReal.isEmpty) return;
 
     await db.transaction((txn) async {
-      for (final col in missing) {
+      for (final col in missingInt) {
         await txn.execute('ALTER TABLE $tableEmployees ADD COLUMN $col INTEGER DEFAULT 0');
+      }
+      for (final col in missingReal) {
+        await txn.execute('ALTER TABLE $tableEmployees ADD COLUMN $col REAL DEFAULT 0');
       }
       final verify = await txn.rawQuery('PRAGMA table_info($tableEmployees)');
       final verifyNames = verify.map((c) => c['name'] as String).toSet();
-      final stillMissing = required.where((c) => !verifyNames.contains(c)).toList();
+      final stillMissing = [...intCols, ...realCols]
+          .where((c) => !verifyNames.contains(c))
+          .toList();
       if (stillMissing.isNotEmpty) {
         throw StateError('Salary analytics migration failed — missing columns: $stillMissing');
       }
@@ -161,10 +177,16 @@ class SalarySnapshotRepository {
         'deductions': emp.totalDeduction.toDouble(),
         'bonus': emp.bonus,
         'net_salary': emp.netSalary,
-        'pf': emp.pf,        // ← added
-        'esic': emp.esic,    // ← added
-        'msw': emp.msw,      // ← added
-        'pt': emp.pt,        // ← added
+        'pf': emp.pf,
+        'esic': emp.esic,
+        'msw': emp.msw,
+        'pt': emp.pt,
+        // ── full earnings breakdown (new) ──────────────────────────────
+        'basic_charges': emp.basicCharges,   // master basic
+        'other_charges': emp.otherCharges,   // master other
+        'master_gross': emp.grossSalary,     // master gross
+        'earned_basic': emp.earnedBasic,
+        'earned_other': emp.earnedOther,
         'created_at': now,
       });
     }

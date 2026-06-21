@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ai_provider.dart';
-import 'ollama_service.dart';
 import 'gemini_service.dart';
 
 /// Provider‑agnostic AI facade that routes requests to the selected provider.
@@ -35,8 +34,6 @@ class AiService {
 
   Future<List<AiModelInfo>> getAvailableModels(AiProvider provider) async {
     switch (provider) {
-      case AiProvider.ollama:
-        return OllamaService.instance.fetchModels();
       case AiProvider.gemini:
         return GeminiService.instance.fetchModels();
     }
@@ -49,12 +46,6 @@ class AiService {
     String? systemPrompt,
   }) async {
     switch (provider) {
-      case AiProvider.ollama:
-        return OllamaService.instance.sendMessages(
-          messages: messages,
-          model: model,
-          systemPrompt: systemPrompt,
-        );
       case AiProvider.gemini:
         final contents = _toGeminiContents(messages);
         return GeminiService.instance.sendMessages(
@@ -72,12 +63,7 @@ class AiService {
     String? systemPrompt,
   }) {
     switch (provider) {
-      case AiProvider.ollama:
-        return OllamaService.instance.sendMessagesStream(
-          messages: messages,
-          model: model,
-          systemPrompt: systemPrompt,
-        );
+      
       case AiProvider.gemini:
         final contents = _toGeminiContents(messages);
         return GeminiService.instance.sendMessagesStream(
@@ -124,9 +110,7 @@ class AiService {
   /// Cancels any in‑flight request for the given [provider].
   void cancelCurrentRequest(AiProvider provider) {
     switch (provider) {
-      case AiProvider.ollama:
-        OllamaService.instance.cancelCurrentRequest();
-        break;
+      
       case AiProvider.gemini:
         GeminiService.instance.cancelCurrentRequest();
         break;

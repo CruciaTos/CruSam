@@ -20,6 +20,10 @@ class SalaryAnalyticsSummaryCards extends StatelessWidget {
     final cards = <_SummaryCardData>[
       _SummaryCardData(Icons.account_balance_wallet_outlined, 'Total Payroll',
           _money(snapshot.totalPayroll), AppColors.indigo400, const Color(0xFF1E1B4B)),
+      _SummaryCardData(Icons.bar_chart_outlined, 'Master Gross',
+          _money(snapshot.totalMasterGross), AppColors.indigo400, const Color(0xFF1E1B4B)),
+      _SummaryCardData(Icons.account_balance_outlined, 'Earned Basic',
+          _money(snapshot.totalEarnedBasic), AppColors.indigo400, const Color(0xFF1E1B4B)),
       _SummaryCardData(Icons.payments_outlined, 'Net Salary Paid',
           _money(snapshot.totalNetSalaryPaid), AppColors.emerald600, const Color(0xFF064E3B)),
       _SummaryCardData(Icons.savings_outlined, 'Total PF',

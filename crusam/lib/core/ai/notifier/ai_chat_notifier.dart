@@ -13,7 +13,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:crusam/core/ai/models/ai_image_settings.dart';
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/models/app_context.dart';
 import 'package:crusam/core/ai/presentation/ai_context_builder.dart';
@@ -22,10 +21,10 @@ import 'package:crusam/core/ai/services/autonomous_sync_service.dart';   // NEW
 import 'package:crusam/core/ai/services/batch_sync_manager.dart';
 import 'package:crusam/core/ai/services/file_extraction_service.dart';
 import 'package:crusam/core/ai/services/employee_verification_service.dart';
-import 'package:crusam/core/ai/services/voucher_image_processing_service.dart';   // NEW: voucher image parsing
+ // NEW: voucher image parsing
 import 'package:crusam/core/ai/services/parsers/name_resolver.dart';             // NEW
 import 'package:crusam/core/ai/services/gemini_service.dart';
-import 'package:crusam/core/ai/services/ollama_service.dart';
+
 import 'package:crusam/core/ai/services/structured_voucher_creation_service.dart'; // NEW: markdown table → voucher
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
