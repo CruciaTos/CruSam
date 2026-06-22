@@ -1,5 +1,5 @@
 // ============================================================
-// ai_chat_panel.dart – final file with batch sync & file context
+// ai_chat_panel.dart – cleaned version (OllamaService & image settings removed)
 // ============================================================
 
 import 'dart:async';
@@ -10,11 +10,11 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:crusam/core/ai/services/file_extraction_service.dart';
-import 'package:crusam/core/ai/services/batch_sync_manager.dart'; // ADDED
+import 'package:crusam/core/ai/services/batch_sync_manager.dart';
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
-import 'package:crusam/core/ai/services/ollama_service.dart';
+
 import 'package:crusam/core/ai/services/gemini_service.dart';
 
 // =============================================================================
@@ -144,22 +144,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _inputController.addListener(_onInputChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _inputFocus.requestFocus();
-      _applyHardcodedModels();
     });
-  }
-
-  // ---------------------------------------------------------------
-  // Hardcode the models for Local (Ollama) provider
-  // ---------------------------------------------------------------
-  void _applyHardcodedModels() {
-    final notifier = AiChatNotifier.instance;
-    if (notifier.selectedProvider == AiProvider.ollama) {
-      notifier.selectModel('qwen2.3'); // main chat model
-      notifier.setImageProcessingModel(
-          'minicpm-v:8b'); // vision model for extraction
-      notifier.setAnalysisModel(null); // use the main model for final answer
-    }
-    // Gemini keeps whatever was selected (or default) – no change.
   }
 
   @override
@@ -239,7 +224,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
-  // ── NEW: file picker for PDF / Excel ──────────────────────────────────
   Future<void> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -257,7 +241,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
       final ext = name.split('.').last.toLowerCase();
       final type = ext == 'pdf' ? 'pdf' : 'excel';
 
-      // Clear any pending image when a file is picked
       setState(() {
         _pendingImageBytes = null;
         _pendingImagePath = null;
@@ -283,7 +266,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
-  // ── Updated sendMessage to include file attachments ────────────────────
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
     final imageBytes = _pendingImageBytes;
@@ -430,7 +412,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                         setState(() => _contextExpanded = false),
                   ),
 
-                // ── NEW: file context badge ──────────────────────────────────
                 if (notifier.hasActiveFileContext &&
                     !notifier.hasBatchSyncActive)
                   FileContextBadge(
@@ -438,7 +419,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     onClear: () => notifier.clearFileContext(),
                   ),
 
-                // ── NEW: batch sync progress bar ────────────────────────────
                 if (notifier.hasBatchSyncActive)
                   BatchSyncBar(notifier: notifier),
 
@@ -519,7 +499,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 }
 
 // =============================================================================
-// NEW WIDGET: BATCH SYNC BAR
+// BATCH SYNC BAR
 // =============================================================================
 
 class BatchSyncBar extends StatelessWidget {
@@ -549,10 +529,8 @@ class BatchSyncBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Sync icon
           const Icon(Icons.sync, size: 14, color: _accent),
           const SizedBox(width: 8),
-          // Progress text
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -568,7 +546,6 @@ class BatchSyncBar extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                // Mini progress bar
                 const SizedBox(height: 4),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(2),
@@ -585,7 +562,6 @@ class BatchSyncBar extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          // Stop button
           GestureDetector(
             onTap: () {
               BatchSyncManager.instance.clear();
@@ -616,7 +592,7 @@ class BatchSyncBar extends StatelessWidget {
 }
 
 // =============================================================================
-// NEW WIDGET: FILE CONTEXT BADGE
+// FILE CONTEXT BADGE
 // =============================================================================
 
 class FileContextBadge extends StatelessWidget {
@@ -971,7 +947,7 @@ class _MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<_MessageBubble> {
   bool _hovered = false;
   bool _copied = false;
-  bool _extractedExpanded = false; // toggle for the collapsible section
+  bool _extractedExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -982,7 +958,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
             ? _K.userBubble
             : _K.aiBubble;
 
-    // Check if this assistant message contains extracted text (image or file)
     final hasExtractedText =
         !isUser && widget.message.text.contains('[EXTRACTED_TEXT]');
     final hasExtractedFile =
@@ -996,11 +971,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
       final start = displayText.indexOf('[EXTRACTED_TEXT]');
       final end = displayText.indexOf('[/EXTRACTED_TEXT]');
       if (start != -1 && end != -1 && end > start) {
-        // Extract content and remove the markers for the main display
         extractedContent = displayText
             .substring(start + '[EXTRACTED_TEXT]'.length, end)
             .trim();
-        // Build a clean display line (short summary, e.g. "Extracted text from image")
         displayText = '🔍 **Image text extracted** (tap to view)  \n' +
             '${extractedContent!.split('\n').take(2).join('\n')}${extractedContent!.split('\n').length > 2 ? '…' : ''}';
       }
@@ -1044,11 +1017,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Show extracted file block if present
                   if (hasExtractedFile) ...[
                     _buildExtractedFileBlock(widget.message.text),
                   ] else if (hasExtractedText && extractedContent != null) ...[
-                    // Collapsible extracted text section (image)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1102,10 +1073,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         const SizedBox(height: 8),
                       ],
                     ),
-                    // Show the answer's main text (the AI's response) after the collapsible block
                     if (!widget.message.text
                         .contains('[EXTRACTED_TEXT]')) ...[
-                      // If not an extracted text message, just render normally
                       if (isUser)
                         SelectableText(
                           displayText,
@@ -1117,8 +1086,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
                       else
                         _MarkdownView(text: displayText),
                     ] else ...[
-                      // This is the extracted text message; we already displayed the collapsible block.
-                      // Show a small note below the collapsible that the answer is being processed.
                       const SizedBox(height: 4),
                       const Text(
                         'The extracted data will be analysed by the AI…',
@@ -1210,9 +1177,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
     );
   }
 
-  // ── build extracted file block (PDF/Excel) ───────────────────────
   Widget _buildExtractedFileBlock(String rawText) {
-    // Parse the [EXTRACTED_FILE] block
     final start = rawText.indexOf('[EXTRACTED_FILE]');
     final end = rawText.indexOf('[/EXTRACTED_FILE]');
     if (start == -1 || end == -1) {
@@ -1896,7 +1861,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // =============================================================================
-// INPUT AREA (modified hint to reflect batch sync, using correct getter)
+// INPUT AREA (hint reflects batch sync)
 // =============================================================================
 
 class _InputArea extends StatelessWidget {
@@ -2023,7 +1988,6 @@ class _InputArea extends StatelessWidget {
               ),
             ),
 
-          // ── Image preview ──────────────────────────────────────────────
           if (pendingImageBytes != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -2062,7 +2026,6 @@ class _InputArea extends StatelessWidget {
               ),
             ),
 
-          // ── File preview (PDF / Excel) ─────────────────────────────────
           if (pendingFileType != null && pendingFileName != null)
             Container(
               margin: const EdgeInsets.only(bottom: 8),
@@ -2150,7 +2113,6 @@ class _InputArea extends StatelessWidget {
                         fontSize: 14,
                         height: 1.4),
                     decoration: InputDecoration(
-                      // ✅ FIXED: use `hasBatchSyncActive` instead of undefined `isInBatchSync`
                       hintText: notifier.hasBatchSyncActive
                           ? 'Reply Yes / Skip / Stop…'
                           : 'Message…',
@@ -2319,7 +2281,7 @@ class _SlashCommandsOverlay extends StatelessWidget {
 }
 
 // =============================================================================
-// MODEL PICKER BOTTOM SHEET – simplified (no model selection)
+// MODEL PICKER BOTTOM SHEET – simplified (no Ollama server, no image settings)
 // =============================================================================
 
 class _ModelPickerSheet extends StatefulWidget {
@@ -2331,78 +2293,27 @@ class _ModelPickerSheet extends StatefulWidget {
 }
 
 class _ModelPickerSheetState extends State<_ModelPickerSheet> {
-  // --- Server / Gemini state ---
-  String _serverMode = 'local';
-  final _remoteUrlCtrl = TextEditingController();
-  bool _testing = false;
-  _ConnStatus _connStatus = _ConnStatus.idle;
-
   final _geminiKeyCtrl = TextEditingController();
   bool _geminiKeySaved = false;
   bool _obscureKey = true;
 
-  // --- Image settings state ---
-  bool _imageSettingsExpanded = false;
-  int _extractionTimeout = 30;
-
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadGeminiKey();
   }
 
-  Future<void> _loadSettings() async {
-    final mode = await OllamaService.instance.getServerMode();
-    final remoteUrl = await OllamaService.instance.getRemoteUrl();
-    final geminiKey = await GeminiService.instance.getApiKey() ?? '';
-
-    final imgSettings = widget.notifier.imageSettings;
-    _extractionTimeout = imgSettings.extractionTimeoutSeconds;
-
+  Future<void> _loadGeminiKey() async {
+    final key = await GeminiService.instance.getApiKey() ?? '';
     if (mounted) {
-      setState(() {
-        _serverMode = mode;
-        _remoteUrlCtrl.text = remoteUrl;
-        _geminiKeyCtrl.text = geminiKey;
-      });
+      setState(() => _geminiKeyCtrl.text = key);
     }
   }
 
   @override
   void dispose() {
-    _remoteUrlCtrl.dispose();
     _geminiKeyCtrl.dispose();
     super.dispose();
-  }
-
-  Future<void> _onServerModeChanged(String mode) async {
-    setState(() {
-      _serverMode = mode;
-      _connStatus = _ConnStatus.idle;
-    });
-    await OllamaService.instance.saveServerMode(mode);
-    await widget.notifier.refreshModels();
-  }
-
-  Future<void> _testAndSave() async {
-    final url = _remoteUrlCtrl.text.trim();
-    if (url.isEmpty) return;
-
-    setState(() {
-      _testing = true;
-      _connStatus = _ConnStatus.idle;
-    });
-    final ok = await OllamaService.instance.testConnection(url);
-    if (ok) {
-      await OllamaService.instance.saveRemoteUrl(url);
-      await widget.notifier.refreshModels();
-    }
-    if (mounted) {
-      setState(() {
-        _testing = false;
-        _connStatus = ok ? _ConnStatus.success : _ConnStatus.failure;
-      });
-    }
   }
 
   Future<void> _saveGeminiKey() async {
@@ -2469,117 +2380,43 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                 selected: {widget.notifier.selectedProvider},
                 onSelectionChanged: (s) {
                   widget.notifier.selectProvider(s.first);
-                  // Reapply hardcoded models when switching to Ollama
-                  if (s.first == AiProvider.ollama) {
-                    widget.notifier.selectModel('qwen2.3');
-                    widget.notifier
-                        .setImageProcessingModel('minicpm-v:8b');
-                    widget.notifier.setAnalysisModel(null);
-                  }
-                  // For Gemini, the notifier will load its own models
                 },
               ),
 
-              // ------------------------------------------------------------------
-              // Chat model info (non-editable)
-              // ------------------------------------------------------------------
-              const SizedBox(height: 12),
-              if (widget.notifier.selectedProvider == AiProvider.ollama)
-                _ModelInfoLine(
-                  icon: Icons.chat_outlined,
-                  label: 'Chat model',
-                  value: 'qwen2.3',
-                )
-              else if (widget.notifier.selectedProvider ==
-                  AiProvider.gemini)
-                _ModelInfoLine(
-                  icon: Icons.chat_outlined,
-                  label: 'Chat model',
-                  value: 'Gemini 1.5 Flash', // adjust as needed
-                ),
-
+              // Model selection dropdown
               const SizedBox(height: 16),
-
-              // Ollama server config
-              if (widget.notifier.selectedProvider ==
-                  AiProvider.ollama) ...[
+              if (widget.notifier.availableModels.isNotEmpty) ...[
                 _SectionLabel(
-                    label: 'Ollama Server', icon: Icons.dns_outlined),
+                    label: 'Model', icon: Icons.chat_outlined),
                 const SizedBox(height: 8),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                        value: 'local',
-                        label: Text('Local'),
-                        icon: Icon(Icons.laptop_outlined, size: 16)),
-                    ButtonSegment(
-                        value: 'remote',
-                        label: Text('Remote'),
-                        icon: Icon(Icons.lan_outlined, size: 16)),
-                  ],
-                  selected: {_serverMode},
-                  onSelectionChanged: (s) =>
-                      _onServerModeChanged(s.first),
+                DropdownButtonFormField<String>(
+                  value: widget.notifier.selectedModel,
+                  items: widget.notifier.availableModels
+                      .map((m) => DropdownMenuItem(
+                            value: m.id,
+                            child: Text(m.label,
+                                style: const TextStyle(
+                                    color: _K.textPrimary)),
+                          ))
+                      .toList(),
+                  onChanged: (id) {
+                    if (id != null) widget.notifier.selectModel(id);
+                  },
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                  dropdownColor: _K.surface,
+                  style: const TextStyle(color: _K.textPrimary),
                 ),
-                const SizedBox(height: 10),
-                if (_serverMode == 'remote') ...[
-                  TextField(
-                    controller: _remoteUrlCtrl,
-                    keyboardType: TextInputType.url,
-                    decoration: InputDecoration(
-                      labelText: 'LAN URL',
-                      hintText: 'http://192.168.1.5:11434',
-                      prefixIcon:
-                          const Icon(Icons.link, size: 18),
-                      border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(8)),
-                    ),
-                    onChanged: (_) => setState(
-                        () => _connStatus = _ConnStatus.idle),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _testing ? null : _testAndSave,
-                          icon: _testing
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2))
-                              : const Icon(
-                                  Icons.wifi_find_outlined,
-                                  size: 16),
-                          label: Text(
-                              _testing ? 'Testing…' : 'Connect & Save'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_connStatus == _ConnStatus.success)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Connected!',
-                          style: TextStyle(
-                              color: Colors.green, fontSize: 12)),
-                    ),
-                  if (_connStatus == _ConnStatus.failure)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text('Connection failed. Check URL.',
-                          style: TextStyle(
-                              color: _K.error, fontSize: 12)),
-                    ),
-                ],
-                const SizedBox(height: 16),
               ],
 
-              // Gemini API key
+              // Gemini API key (only when Gemini selected)
               if (widget.notifier.selectedProvider ==
                   AiProvider.gemini) ...[
+                const SizedBox(height: 16),
                 _SectionLabel(
                     label: 'Gemini API Key', icon: Icons.key_outlined),
                 const SizedBox(height: 8),
@@ -2621,85 +2458,6 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // --- Image Processing Section (simplified, no model pickers) ---
-              InkWell(
-                onTap: () => setState(() => _imageSettingsExpanded =
-                    !_imageSettingsExpanded),
-                child: Row(
-                  children: [
-                    const Icon(Icons.image_outlined, size: 18),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Image Processing',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const Spacer(),
-                    Icon(_imageSettingsExpanded
-                        ? Icons.expand_less
-                        : Icons.expand_more),
-                  ],
-                ),
-              ),
-              if (_imageSettingsExpanded) ...[
-                const SizedBox(height: 12),
-                SwitchListTile.adaptive(
-                  title: const Text('Enable image analysis'),
-                  subtitle: const Text(
-                      'Allow images to be processed by a vision model'),
-                  value: widget.notifier.imageSettings.enableImageProcessing,
-                  onChanged: (val) {
-                    widget.notifier.updateImageSettings(
-                      widget.notifier.imageSettings.copyWith(
-                          enableImageProcessing: val),
-                    );
-                  },
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const Divider(),
-
-                // Show fixed models when Ollama is selected
-                if (widget.notifier.selectedProvider ==
-                    AiProvider.ollama) ...[
-                  _ModelInfoLine(
-                    icon: Icons.remove_red_eye_outlined,
-                    label: 'Vision model',
-                    value: 'minicpm-v:8b',
-                  ),
-                  const SizedBox(height: 8),
-                  _ModelInfoLine(
-                    icon: Icons.psychology_outlined,
-                    label: 'Analysis model',
-                    value: 'qwen2.3 (same as chat)',
-                  ),
-                ],
-
-                // Timeout slider
-                ListTile(
-                  title: Text(
-                      'Extraction timeout ($_extractionTimeout s)'),
-                  subtitle: Slider(
-                    value: _extractionTimeout.toDouble(),
-                    min: 5,
-                    max: 60,
-                    divisions: 11,
-                    label: '$_extractionTimeout s',
-                    onChanged: (val) {
-                      setState(
-                          () => _extractionTimeout = val.toInt());
-                      widget.notifier.updateImageSettings(
-                        widget.notifier.imageSettings.copyWith(
-                            extractionTimeoutSeconds: val.toInt()),
-                      );
-                    },
-                  ),
-                  contentPadding: EdgeInsets.zero,
                 ),
               ],
             ],
@@ -2744,8 +2502,6 @@ class _ModelInfoLine extends StatelessWidget {
     );
   }
 }
-
-enum _ConnStatus { idle, success, failure }
 
 // =============================================================================
 // UTILS

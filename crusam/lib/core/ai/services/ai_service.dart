@@ -36,6 +36,8 @@ class AiService {
     switch (provider) {
       case AiProvider.gemini:
         return GeminiService.instance.fetchModels();
+      case AiProvider.ollama:
+        throw UnimplementedError('Ollama support is not yet available.');
     }
   }
 
@@ -53,6 +55,8 @@ class AiService {
           messages: contents,
           systemPrompt: systemPrompt,
         );
+      case AiProvider.ollama:
+        throw UnimplementedError('Ollama support is not yet available.');
     }
   }
 
@@ -63,7 +67,6 @@ class AiService {
     String? systemPrompt,
   }) {
     switch (provider) {
-      
       case AiProvider.gemini:
         final contents = _toGeminiContents(messages);
         return GeminiService.instance.sendMessagesStream(
@@ -71,6 +74,8 @@ class AiService {
           messages: contents,
           systemPrompt: systemPrompt,
         );
+      case AiProvider.ollama:
+        throw UnimplementedError('Ollama support is not yet available.');
     }
   }
 
@@ -110,9 +115,11 @@ class AiService {
   /// Cancels any in‑flight request for the given [provider].
   void cancelCurrentRequest(AiProvider provider) {
     switch (provider) {
-      
       case AiProvider.gemini:
         GeminiService.instance.cancelCurrentRequest();
+        break;
+      case AiProvider.ollama:
+        // No operation – Ollama cancellation not yet implemented.
         break;
     }
   }

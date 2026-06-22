@@ -1,31 +1,30 @@
 ﻿// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
 //
-// Key additions vs. previous version:
+// Features:
 //  1. _activeFileContext         — persists last uploaded file across follow‑ups
 //  2. _lastTaskDescription      — remembers the most recent task
 //  3. _isContinueIntent()       — detects "continue", "next", "resume" etc.
 //  4. BatchSyncManager          — drives one‑by‑one employee sync
 //  5. _buildValidHistory()      — injects file content into the AI context window
 //  6. AutonomousSyncService     — runs all changes automatically when triggered
-//  7. [NEW] StructuredVoucherCreationService — creates vouchers directly from
-//     markdown tables without involving the AI model (deterministic, fast).
+//
+// Removed all undefined services (StructuredVoucherCreationService,
+// VoucherImageProcessingService, OllamaService). Image processing is
+// no longer supported by this notifier.
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/models/app_context.dart';
 import 'package:crusam/core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/core/ai/services/ai_service.dart';
-import 'package:crusam/core/ai/services/autonomous_sync_service.dart';   // NEW
+import 'package:crusam/core/ai/services/autonomous_sync_service.dart';
 import 'package:crusam/core/ai/services/batch_sync_manager.dart';
 import 'package:crusam/core/ai/services/file_extraction_service.dart';
 import 'package:crusam/core/ai/services/employee_verification_service.dart';
- // NEW: voucher image parsing
-import 'package:crusam/core/ai/services/parsers/name_resolver.dart';             // NEW
 import 'package:crusam/core/ai/services/gemini_service.dart';
-
-import 'package:crusam/core/ai/services/structured_voucher_creation_service.dart'; // NEW: markdown table → voucher
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
@@ -86,19 +85,9 @@ class AiChatNotifier extends ChangeNotifier {
   StreamSubscription<String>? _streamSubscription;
   String _lastUserQuery = '';
 
-  // ── Extraction guard ─────────────────────────────────────────────────────
-  bool _isExtracting = false;
-
-  // ── Image settings ───────────────────────────────────────────────────────
-  AiImageSettings _imageSettings = AiImageSettings.defaults;
-
   // ── Pending action (interactive confirmation) ────────────────────────────
   Completer<bool>? _pendingActionCompleter;
   String? _pendingActionDescription;
-
-  // ── Rate limit for image extraction ─────────────────────────────────────
-  DateTime? _lastExtractionTime;
-  static const Duration _extractionCooldown = Duration(seconds: 5);
 
   // ── File context persistence ─────────────────────────────────────────────
   FileExtractionResult? _activeFileContext;
@@ -132,8 +121,6 @@ class AiChatNotifier extends ChangeNotifier {
   bool get isInitializing => _initializing;
   bool get isLoadingModels => _loadingModels;
 
-  AiImageSettings get imageSettings => _imageSettings;
-
   bool get hasActiveFileContext => _activeFileContext != null;
   String? get activeFileName => _activeFileName;
   bool get hasBatchSyncActive => _batchSyncActive;
@@ -145,61 +132,14 @@ class AiChatNotifier extends ChangeNotifier {
 
     try {
       _selectedProvider = await AiService.instance.getSelectedProvider();
-      await _loadImageSettings();
       await refreshModels();
     } catch (_) {
       _availableModels = [];
       _selectedModel = '';
-      _imageSettings = AiImageSettings.defaults;
     } finally {
       _initializing = false;
       notifyListeners();
     }
-  }
-
-  Future<void> _loadImageSettings() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final settingsJson = prefs.getString('ai_image_settings_json') ?? '';
-      if (settingsJson.isNotEmpty) {
-        final decoded = jsonDecode(settingsJson) as Map<String, dynamic>;
-        _imageSettings = AiImageSettings.fromMap(decoded);
-      } else {
-        _imageSettings = AiImageSettings.defaults;
-      }
-    } catch (_) {
-      _imageSettings = AiImageSettings.defaults;
-    }
-  }
-
-  Future<void> _saveImageSettings() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'ai_image_settings_json',
-        jsonEncode(_imageSettings.toMap()),
-      );
-    } catch (_) {
-      debugPrint('Failed to save image settings');
-    }
-  }
-
-  Future<void> setImageProcessingModel(String modelName) async {
-    _imageSettings = _imageSettings.copyWith(imageProcessingModel: modelName);
-    await _saveImageSettings();
-    notifyListeners();
-  }
-
-  Future<void> setAnalysisModel(String? modelName) async {
-    _imageSettings = _imageSettings.copyWith(analysisModel: modelName);
-    await _saveImageSettings();
-    notifyListeners();
-  }
-
-  Future<void> updateImageSettings(AiImageSettings newSettings) async {
-    _imageSettings = newSettings;
-    await _saveImageSettings();
-    notifyListeners();
   }
 
   // ── Provider & model management ──────────────────────────────────────────
@@ -286,12 +226,8 @@ class AiChatNotifier extends ChangeNotifier {
     _streamSubscription?.cancel();
     _streamSubscription = null;
 
+    // Cancel AI provider request (works for both Ollama & Gemini)
     AiService.instance.cancelCurrentRequest(_selectedProvider);
-
-    if (_isExtracting) {
-      OllamaService.instance.cancelCurrentRequest();
-      _isExtracting = false;
-    }
 
     _pendingStreamText = null;
     _chatPhase = ChatPhase.idle;
@@ -330,7 +266,6 @@ class AiChatNotifier extends ChangeNotifier {
             'leave it', 'not this one'].contains(lower);
   }
 
-  /// NEW: detects autonomous "sync all" / "apply all" intent
   bool _isAutonomousSyncQuery(String query) {
     final lower = query.toLowerCase();
     return (lower.contains('sync') && (lower.contains('all') || lower.contains('auto'))) ||
@@ -345,270 +280,7 @@ class AiChatNotifier extends ChangeNotifier {
         lower.contains('run all');
   }
 
-  /// NEW: detects voucher creation intent from images
-  bool _isVoucherCreationRequest(String query) {
-    final lower = query.toLowerCase();
-    return (lower.contains('create') ||
-            lower.contains('add') ||
-            lower.contains('make') ||
-            lower.contains('voucher') ||
-            lower.contains('import') ||
-            lower.contains('enter')) &&
-        (lower.contains('voucher') ||
-            lower.contains('image') ||
-            lower.contains('data') ||
-            lower.contains('employee'));
-  }
-
-  // ── NEW: Structured voucher creation from markdown table ─────────────────
-  //
-  // Detects when the user pastes a markdown payment/schedule table alongside
-  // a voucher-creation prompt. When detected, the table is parsed in pure Dart
-  // (no AI model involved) and the voucher is built deterministically:
-  //   • dept code  — looked up from the first employee in the table
-  //   • date       — today's date
-  //   • title / bill no / PO no — extracted from the surrounding prompt text
-  //   • rows       — one per data row in the table
-  // The voucher is then saved as a draft automatically.
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /// Returns true when [text] contains a markdown table with name+amount
-  /// columns AND some voucher-creation intent keyword.
-  bool _isStructuredVoucherCreation(String text) {
-    // Require at least 2 pipe-lines (header + 1 data row minimum)
-    final pipeLines = text.split('\n').where((l) => l.contains('|')).toList();
-    if (pipeLines.length < 2) return false;
-
-    // At least one pipe-line must have both a name-like header AND amount header
-    final hasNameAndAmount = pipeLines.any((line) {
-      final l = line.toLowerCase();
-      return (l.contains('name') ||
-              l.contains('employee') ||
-              l.contains('technician')) &&
-          (l.contains('amount') || l.contains('salary'));
-    });
-    if (!hasNameAndAmount) return false;
-
-    // Must have voucher / invoice / creation intent (or payment/schedule list)
-    final lower = text.toLowerCase();
-    return lower.contains('voucher') ||
-        lower.contains('invoice') ||
-        lower.contains('create') ||
-        lower.contains('make') ||
-        lower.contains('generate') ||
-        lower.contains('add') ||
-        lower.contains('build') ||
-        lower.contains('payment list') ||
-        lower.contains('schedule list');
-  }
-
-  /// Returns "APR-2026" style label for the current month — used as fallback
-  /// voucher title when the user doesn't specify one.
-  String _currentMonthYearLabel() {
-    final now = DateTime.now();
-    const months = [
-      'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-      'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
-    ];
-    return '${months[now.month - 1]}-${now.year}';
-  }
-
-  /// Formats an ISO date string (YYYY-MM-DD) as DD/MM/YYYY for display in
-  /// chat messages.
-  String _formatDisplayDate(String iso) {
-    if (iso.isEmpty) return '-';
-    try {
-      final parts = iso.split('-');
-      if (parts.length == 3) return '${parts[2]}/${parts[1]}/${parts[0]}';
-    } catch (_) {}
-    return iso;
-  }
-
-  /// Directly creates a voucher from [meta] (pre-parsed structured data)
-  /// without sending anything to the AI model.
-  ///
-  /// Flow:
-  ///   1. Resolve dept code from first employee name via the employee master
-  ///   2. Apply metadata to VoucherNotifier (title, deptCode, date, billNo, poNo)
-  ///   3. Add each row via AiToolExecutor (auto-fills bank details from master)
-  ///   4. Save as draft
-  ///   5. Post a success summary to the chat
-  Future<void> _handleStructuredVoucherCreation(
-      StructuredVoucherMeta meta) async {
-    final employees = EmployeeNotifier.instance.employees;
-    final voucherNotifier = VoucherNotifier.instance;
-
-    _pendingStreamText = '📋 Parsing structured data…';
-    _chatPhase = ChatPhase.thinking;
-    notifyListeners();
-
-    // 1. Resolve department code from the first employee in the list
-    String deptCode = voucherNotifier.current.deptCode;
-    if (meta.rows.isNotEmpty) {
-      final found = StructuredVoucherCreationService.lookupDeptCode(
-        meta.rows.first.rawName,
-        employees,
-      );
-      if (found != null && found.isNotEmpty) deptCode = found;
-    }
-
-    // 2. Today's date as ISO YYYY-MM-DD
-    final today = DateTime.now().toIso8601String().split('T').first;
-
-    // 3. Resolve title — fall back to auto-generated "Exp. MMM-YYYY"
-    final title = (meta.title?.isNotEmpty == true)
-        ? meta.title!
-        : 'Exp. ${_currentMonthYearLabel()}';
-
-    // 4. Apply voucher metadata.
-    //    copyWith(x: null) keeps the current value, so we use ?? to decide.
-    voucherNotifier.update((current) => current.copyWith(
-          title: title,
-          deptCode: deptCode,
-          date: today,
-          billNo: meta.billNo ?? current.billNo,
-          poNo: meta.poNo ?? current.poNo,
-        ));
-
-    // 5. Add each row via AiToolExecutor so bank details are auto-filled
-    //    from the employee master data.
-    int addedCount = 0;
-    final errors = <String>[];
-
-    for (int i = 0; i < meta.rows.length; i++) {
-      final row = meta.rows[i];
-
-      _pendingStreamText =
-          '➕ Adding row ${i + 1}/${meta.rows.length}: ${row.rawName}…';
-      notifyListeners();
-
-      // Yield to the event loop every 3 rows to keep UI responsive
-      if (i % 3 == 0) await Future.delayed(Duration.zero);
-
-      if (row.fromDate.isEmpty || row.toDate.isEmpty || row.amount <= 0) {
-        errors.add('Skipped "${row.rawName}": missing date or invalid amount');
-        continue;
-      }
-
-      // Resolve the employee upfront using our multi-strategy + fuzzy matcher
-      // so the tool executor receives an exact employeeId and bank details
-      // rather than having to re-match a potentially misspelled raw name.
-      final resolvedEmp = StructuredVoucherCreationService.findBestEmployee(
-        row.rawName,
-        employees,
-      );
-
-      final actionJson = jsonEncode({
-        'action': 'add_voucher_row',
-        'employeeName': resolvedEmp?.name ?? row.rawName,
-        if (resolvedEmp?.id != null) 'employeeId': resolvedEmp!.id,
-        'amount': row.amount,
-        'fromDate': row.fromDate,
-        'toDate': row.toDate,
-        if ((resolvedEmp?.ifscCode ?? '').isNotEmpty)
-          'ifscCode': resolvedEmp!.ifscCode,
-        if ((resolvedEmp?.accountNumber ?? '').isNotEmpty)
-          'accountNumber': resolvedEmp!.accountNumber,
-        if ((resolvedEmp?.bankDetails ?? '').isNotEmpty)
-          'bankDetails': resolvedEmp!.bankDetails,
-        if ((resolvedEmp?.branch ?? '').isNotEmpty)
-          'branch': resolvedEmp!.branch,
-        if ((resolvedEmp?.sbCode ?? '').isNotEmpty)
-          'sbCode': resolvedEmp!.sbCode,
-      });
-
-      final result = await AiToolExecutor.instance.executeBatch(
-        [actionJson],
-        employeeNotifier: EmployeeNotifier.instance,
-        voucherNotifier: voucherNotifier,
-      );
-
-      if (result is AiToolSuccess) {
-        addedCount++;
-      } else if (result is AiToolFailure) {
-        errors.add('"${row.rawName}": ${(result as AiToolFailure).reason}');
-      }
-    }
-
-    // 6. Save as draft — always attempt regardless of whether some rows
-    //    had warnings, so the voucher always lands in the Invoices screen.
-    _pendingStreamText = '💾 Saving voucher as draft…';
-    notifyListeners();
-
-    bool saved = false;
-    try {
-      saved = await voucherNotifier.saveVoucher();
-    } catch (e) {
-      debugPrint('VoucherNotifier.saveVoucher() threw: $e');
-    }
-
-    // 7. Reset loading state
-    _pendingStreamText = null;
-    _chatPhase = ChatPhase.idle;
-    _status = ChatStatus.idle;
-
-    // 8. Build summary message for the chat
-    final sb = StringBuffer();
-
-    if (saved && addedCount > 0 && errors.isEmpty) {
-      sb.writeln('✅ **Voucher created and saved as draft successfully!**\n');
-    } else if (saved && addedCount > 0) {
-      sb.writeln('✅ **Voucher saved as draft** (with some warnings — see below).\n');
-    } else if (saved && addedCount == 0) {
-      sb.writeln(
-          '⚠️ **Voucher saved as draft** but no rows were added successfully.\n'
-          'Check the warnings below and verify employee names against master data.\n');
-    } else {
-      sb.writeln(
-          '⚠️ **Rows added to builder** but draft save failed.\n'
-          'Please click **Save as Draft** in the Voucher Builder to persist.\n');
-    }
-
-    sb.writeln('**📄 Voucher Details**');
-    sb.writeln('- **Title:** $title');
-    sb.writeln('- **Dept Code:** $deptCode');
-    sb.writeln('- **Date:** ${_formatDisplayDate(today)}');
-    if ((meta.billNo ?? '').isNotEmpty) {
-      sb.writeln('- **Bill No:** ${meta.billNo}');
-    }
-    if ((meta.poNo ?? '').isNotEmpty) {
-      sb.writeln('- **PO No:** ${meta.poNo}');
-    }
-
-    sb.writeln(
-        '\n**👥 Labour Disbursement Rows ($addedCount/${meta.rows.length} added)**');
-    for (final row in meta.rows) {
-      final dr =
-          '${_formatDisplayDate(row.fromDate)} → ${_formatDisplayDate(row.toDate)}';
-      final resolvedEmp = StructuredVoucherCreationService.findBestEmployee(
-        row.rawName,
-        EmployeeNotifier.instance.employees,
-      );
-      final displayName = resolvedEmp != null && resolvedEmp.name != row.rawName
-          ? '${row.rawName} → _matched as_ **${resolvedEmp.name}**'
-          : '**${row.rawName}**';
-      sb.writeln('- $displayName — ₹${row.amount.toStringAsFixed(0)}  _($dr)_');
-    }
-
-    if (errors.isNotEmpty) {
-      sb.writeln('\n**⚠️ Issues:**');
-      for (final err in errors) sb.writeln('- $err');
-    }
-
-    sb.writeln('\n_Open the Voucher Builder to review, adjust, or export._');
-
-    _addMessage(ChatMessage(
-      role: ChatRole.assistant,
-      text: sb.toString(),
-      timestamp: DateTime.now(),
-    ));
-    notifyListeners();
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // MAIN: sendMessage
-  // ─────────────────────────────────────────────────────────────────────────
-
+  // ── MAIN: sendMessage ────────────────────────────────────────────────────
   Future<void> sendMessage(
     String userText, {
     Uint8List? imageBytes,
@@ -622,32 +294,10 @@ class AiChatNotifier extends ChangeNotifier {
 
     await _refreshContext();
 
-    // ── Guard: image processing checks ─────────────────────────────────────
+    // ── Image processing is not supported (OllamaService removed) ───────────
     if (imageBytes != null) {
-      if (!_imageSettings.enableImageProcessing) {
-        _handleError('Image processing is disabled in settings.');
-        return;
-      }
-      final now = DateTime.now();
-      if (_lastExtractionTime != null &&
-          now.difference(_lastExtractionTime!) < _extractionCooldown) {
-        _handleError('Please wait a few seconds before sending another image.');
-        return;
-      }
-      final modelOk = await OllamaService.instance
-          .isVisionModel(_imageSettings.imageProcessingModel);
-      if (!modelOk) {
-        _handleError(
-          'Vision model "${_imageSettings.imageProcessingModel}" not available. '
-          'Check Image Processing settings.',
-        );
-        return;
-      }
-      if (_selectedModel.isEmpty) {
-        _handleError('No main model selected.');
-        return;
-      }
-      _lastExtractionTime = now;
+      _handleError('Image processing is not available in this build.');
+      return;
     }
 
     // ── Handle batch sync navigation commands ──────────────────────────────
@@ -697,13 +347,11 @@ class AiChatNotifier extends ChangeNotifier {
     }
 
     // ── Build user message text ─────────────────────────────────────────────
-    final userMessageText = imageBytes != null
-        ? (trimmed.isEmpty ? '📎 Image uploaded' : trimmed)
-        : fileBytes != null
-            ? (trimmed.isEmpty
-                ? '📎 ${fileName ?? fileType ?? 'File'} uploaded'
-                : trimmed)
-            : trimmed;
+    final userMessageText = fileBytes != null
+        ? (trimmed.isEmpty
+            ? '📎 ${fileName ?? fileType ?? 'File'} uploaded'
+            : trimmed)
+        : trimmed;
 
     final userMsg = ChatMessage(
       role: ChatRole.user, text: userMessageText, timestamp: DateTime.now(),
@@ -750,11 +398,9 @@ class AiChatNotifier extends ChangeNotifier {
           return;
         }
 
-        // Persist file context
         _activeFileContext = extraction;
         _activeFileName = fileName ?? fileType;
 
-        // Add collapsible bubble
         _addMessage(ChatMessage(
           role: ChatRole.assistant,
           text: '[EXTRACTED_FILE]\n'
@@ -772,7 +418,6 @@ class AiChatNotifier extends ChangeNotifier {
         _lastTaskDescription = userQuestion;
 
         final isEmployeeVerification = _isEmployeeVerificationQuery(userQuestion);
-
         if (isEmployeeVerification) {
           final appEmployees = EmployeeNotifier.instance.employees;
           if (appEmployees.isNotEmpty) {
@@ -780,7 +425,6 @@ class AiChatNotifier extends ChangeNotifier {
               extraction, appEmployees,
             );
 
-            // *** NEW: autonomous sync detection ***
             final wantsAutoSync = _isAutonomousSyncQuery(userQuestion);
             if (wantsAutoSync) {
               final adds = verification.additions.length;
@@ -866,7 +510,7 @@ class AiChatNotifier extends ChangeNotifier {
           }
         }
 
-        // Regular file Q&A (non‑sync)
+        // Regular file Q&A
         String analysisPrompt = _buildFileContextBlock(extraction, fileName) +
             'Using the data above, please answer: $userQuestion';
 
@@ -885,255 +529,22 @@ class AiChatNotifier extends ChangeNotifier {
         return;
       }
 
-      // ─────────────────────────────────────────────────────────────────
-      // IMAGE PROCESSING BRANCH
-      // ─────────────────────────────────────────────────────────────────
-      if (imageBytes != null) {
-        _isExtracting = true;
-        _pendingStreamText =
-            '🔍 Reading image with ${_imageSettings.imageProcessingModel}…';
-        _chatPhase = ChatPhase.thinking;
-        notifyListeners();
-
-        final extractionStream =
-            OllamaService.instance.sendMultimodalExtractionStream(
-          model: _imageSettings.imageProcessingModel,
-          prompt:
-              'Extract all readable text and data from this image. '
-              'If the image contains a table, preserve the row and column '
-              'structure by separating columns with " | " and each row on '
-              'its own line. Include all numbers, names, codes, and headers '
-              'exactly as they appear. Do not summarise or add commentary.',
-          imageBytes: imageBytes,
-          timeout:
-              Duration(seconds: _imageSettings.extractionTimeoutSeconds),
-        );
-
-        final extractedBuffer = StringBuffer();
-        StreamSubscription<String>? extractionSub;
-
-        try {
-          final completer = Completer<void>();
-          extractionSub = extractionStream.listen(
-            (token) {
-              extractedBuffer.write(token);
-              _pendingStreamText = extractedBuffer.toString();
-              notifyListeners();
-            },
-            onDone: () => completer.complete(),
-            onError: (e) => completer.completeError(e),
-            cancelOnError: true,
-          );
-          await completer.future;
-        } on OllamaCancelledException {
-          _isExtracting = false;
-          _pendingStreamText = null;
-          _chatPhase = ChatPhase.idle;
-          _status = ChatStatus.idle;
-          notifyListeners();
-          return;
-        } on OllamaException catch (e) {
-          _isExtracting = false;
-          _pendingStreamText = null;
-          _chatPhase = ChatPhase.idle;
-          _handleError(
-            '❌ Image processing failed: ${e.message}\n\n'
-            'Configured model: ${_imageSettings.imageProcessingModel}',
-          );
-          return;
-        } finally {
-          extractionSub?.cancel();
-        }
-
-        _isExtracting = false;
-        final rawText = extractedBuffer.toString().trim();
-
-        if (rawText.isEmpty) {
-          _handleError(
-              'The vision model did not extract any text from the image.');
-          return;
-        }
-
-        _addMessage(ChatMessage(
-          role: ChatRole.assistant,
-          text: '[EXTRACTED_TEXT]\n$rawText\n[/EXTRACTED_TEXT]',
-          timestamp: DateTime.now(),
-        ));
-
-        // ── Check if user wants to create voucher from image ──────────────
-        final wantsVoucher = _isVoucherCreationRequest(trimmed);
-
-        if (wantsVoucher) {
-          // ── VOUCHER CREATION PATH ────────────────────────────────────────
-          _pendingStreamText = '🔨 Structuring data for voucher creation…';
-          _chatPhase = ChatPhase.thinking;
-          notifyListeners();
-
-          // Step 1: Ask LLM to convert raw text → JSON
-          final structuringPrompt =
-              VoucherImageProcessingService.buildStructuringPrompt(rawText);
-
-          final jsonBuffer = StringBuffer();
-          try {
-            await AiService.instance
-                .sendMessagesStream(
-                  provider: _selectedProvider,
-                  messages: [{'role': 'user', 'content': structuringPrompt}],
-                  model: _imageSettings.analysisModel ?? _selectedModel,
-                  systemPrompt:
-                      'You are a JSON extractor. Return ONLY valid JSON.',
-                )
-                .forEach((token) => jsonBuffer.write(token));
-          } catch (e) {
-            _pendingStreamText = null;
-            _chatPhase = ChatPhase.idle;
-            _handleError(
-              'Failed to structure voucher data: ${_friendlyError(e)}',
-            );
-            return;
-          }
-
-          // Step 2: Process with Dart (no more AI — deterministic)
-          final now = DateTime.now();
-          final parseResult = VoucherImageProcessingService.process(
-            llmJsonResponse: jsonBuffer.toString(),
-            employees: EmployeeNotifier.instance.employees,
-            inferYear: now.year,
-            inferMonth: now.month,
-          );
-
-          // Step 3: Apply PO number if found
-          if (parseResult.extractedPoNo != null) {
-            VoucherNotifier.instance.update(
-              (v) => v.copyWith(poNo: parseResult.extractedPoNo),
-            );
-          }
-
-          // Step 4: Create actions for resolved rows
-          final actionJsons = parseResult.resolvedRows.map((row) {
-            return jsonEncode({
-              'action': 'add_voucher_row',
-              'employeeName': row.resolvedEmployee?.name ?? row.rawName,
-              'employeeId': row.resolvedEmployee?.id,
-              'amount': row.amount,
-              'fromDate': row.fromDate,
-              'toDate': row.toDate,
-              // Auto-fill bank details from resolved employee
-              'ifscCode': row.resolvedEmployee?.ifscCode ?? '',
-              'accountNumber': row.resolvedEmployee?.accountNumber ?? '',
-              'bankDetails': row.resolvedEmployee?.bankDetails ?? '',
-              'branch': row.resolvedEmployee?.branch ?? '',
-              'sbCode': row.resolvedEmployee?.sbCode ?? '',
-            });
-          }).toList();
-
-          // Step 5: Build response message
-          final sb = StringBuffer();
-          sb.writeln(
-              '✅ **${parseResult.resolvedRows.length} rows ready to add** '
-              'to the current voucher.\n');
-
-          if (parseResult.extractedPoNo != null) {
-            sb.writeln(
-                '📄 PO Number detected: **${parseResult.extractedPoNo}** '
-                '(applied to voucher)\n');
-          }
-
-          // List what will be created
-          for (final row in parseResult.resolvedRows) {
-            final empName =
-                row.resolvedEmployee?.name ?? row.rawName;
-            final warning = row.issues.isNotEmpty ? ' ⚠️' : '';
-            sb.writeln(
-                '- **$empName** — ₹${row.amount?.toStringAsFixed(0)} '
-                '(${row.fromDate} → ${row.toDate})$warning');
-          }
-
-          if (parseResult.hasIssues) {
-            sb.writeln('\n${parseResult.buildIssueReport()}');
-          }
-
-          if (actionJsons.isNotEmpty) {
-            sb.writeln(
-                '\n**Shall I add these ${actionJsons.length} rows to the voucher?**');
-          }
-
-          _pendingStreamText = null;
-          _chatPhase = ChatPhase.idle;
-          _status = ChatStatus.idle;
-
-          _addMessage(ChatMessage(
-            role: ChatRole.assistant,
-            text: sb.toString(),
-            timestamp: DateTime.now(),
-          ));
-
-          // Trigger confirmation dialog for the batch
-          if (actionJsons.isNotEmpty) {
-            await _executeToolFromAssistantResponse(
-              actionJsons.map((j) => '[ACTION]$j[/ACTION]').join('\n'),
-            );
-          }
-          notifyListeners();
-          return;
-        }
-        // else fall through to normal image analysis path
-
-        final userQuestion = trimmed.isEmpty
-            ? 'Please summarise the key data shown in this image.'
-            : trimmed;
-        final analysisModel =
-            _imageSettings.analysisModel ?? _selectedModel;
-
-        _pendingStreamText = '💬 Analysing with $analysisModel…';
-        _chatPhase = ChatPhase.connecting;
-        notifyListeners();
-
-        final analysisPrompt =
-            '[IMAGE DATA — text extracted from the uploaded image]\n'
-            '$rawText\n'
-            '[END IMAGE DATA]\n\n'
-            'Using the image data above, please answer: $userQuestion';
-
-        await _startStreamingAnswer(
-          messages: [
-            {'role': 'user', 'content': analysisPrompt}
-          ],
-          model: analysisModel,
-          skipVerification: true,
-          systemPromptOverride: _buildImageAnalysisPrompt(),
-        );
-      } else {
-        // ── NEW: Structured voucher creation from markdown table ────────────
-        // Checked BEFORE the normal AI path. If the message contains a valid
-        // payment/schedule table with voucher-creation intent, we handle it
-        // deterministically without sending anything to the LLM.
-        if (_isStructuredVoucherCreation(trimmed)) {
-          final meta = StructuredVoucherCreationService.parse(trimmed);
-          if (meta != null && meta.hasRows) {
-            await _handleStructuredVoucherCreation(meta);
-            return;
-          }
-        }
-
-        // ── Normal text‑only path ────────────────────────────────────────
-        List<Map<String, String>> effectiveHistory = history;
-        if (_activeFileContext != null) {
-          effectiveHistory = _injectFileContextIntoHistory(
-              history, _activeFileContext!, _activeFileName);
-        }
-        await _startStreamingAnswer(
-          messages: effectiveHistory,
-          model: _selectedModel,
-        );
+      // ── Normal text‑only path ────────────────────────────────────────
+      List<Map<String, String>> effectiveHistory = history;
+      if (_activeFileContext != null) {
+        effectiveHistory = _injectFileContextIntoHistory(
+            history, _activeFileContext!, _activeFileName);
       }
+      await _startStreamingAnswer(
+        messages: effectiveHistory,
+        model: _selectedModel,
+      );
     } catch (e) {
       _pendingStreamText = null;
       _chatPhase = ChatPhase.idle;
       _streamSubscription = null;
-      _isExtracting = false;
 
-      if (e is OllamaCancelledException || e is GeminiCancelledException) {
+      if (e is GeminiCancelledException) {
         _status = ChatStatus.idle;
       } else {
         _handleError(_friendlyError(e));
@@ -1305,7 +716,7 @@ class AiChatNotifier extends ChangeNotifier {
         _chatPhase = ChatPhase.idle;
         _streamSubscription = null;
 
-        if (e is OllamaCancelledException || e is GeminiCancelledException) {
+        if (e is GeminiCancelledException) {
           _status = ChatStatus.idle;
         } else {
           _handleError(_friendlyError(e));
@@ -1484,7 +895,6 @@ class AiChatNotifier extends ChangeNotifier {
   }
 
   String _friendlyError(Object e) {
-    if (e is OllamaException) return e.message;
     if (e is GeminiException) return e.message;
     final raw = e.toString();
     return raw.startsWith('Exception:') ? raw.substring(10).trim() : raw;
@@ -1573,7 +983,6 @@ class AiChatNotifier extends ChangeNotifier {
   }
 
   // ── System prompts ───────────────────────────────────────────────────────
-
   String _buildImageAnalysisPrompt() => '''
 You are a professional data analyst embedded in Crusam, a business management app.
 The user has uploaded an image. Raw text has been extracted and provided as [IMAGE DATA].
@@ -1692,17 +1101,6 @@ GROUNDING
 ENTITY MATCHING
 ▸ Match employee names and IDs EXACTLY (case‑insensitive string match).
 ▸ If a name matches multiple entries, ASK for clarification before proceeding.
-▸ For structured voucher creation from markdown tables, name matching uses
-  multi-strategy fuzzy logic: exact → all-words → spaceless comparison →
-  word-prefix/infix (e.g. "Karthickkumar" matches "Karthick Kumar") →
-  token-set overlap. Only report a name as unmatched if ALL strategies fail.
-
-AUTO-DRAFT SAVE BEHAVIOUR
-▸ When a structured markdown table is processed for voucher creation, the
-  voucher is ALWAYS saved as a draft automatically — no manual save needed.
-▸ The user will see the voucher in the Invoices screen immediately after.
-▸ If save fails for any reason, clearly tell the user to click "Save as Draft"
-  in the Voucher Builder.
 
 RESPONSE STYLE
 ▸ Be concise, professional, and direct.

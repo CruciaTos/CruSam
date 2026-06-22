@@ -1,3 +1,33 @@
+// lib/core/ai/services/gemini_service.dart
+//
+// CHANGES FROM PREVIOUS VERSION
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Added ApiUsageManager integration in two methods:
+//
+//   sendMessages()            — text-only and streaming path (streaming calls
+//                               this internally, so it's covered automatically)
+//   sendMultimodalMessage()   — image+text path
+//
+// Both methods now:
+//   1. Call ApiUsageManager.instance.enforceBeforeRequest() BEFORE the HTTP
+//      call — throws ApiRateLimitException if any limit is exceeded.
+//   2. Extract `usageMetadata.totalTokenCount` from the response JSON.
+//      Falls back to text.length ~/ 4 if the field is absent.
+//   3. Call ApiUsageManager.instance.recordUsage(tokens) AFTER success.
+//
+// ApiRateLimitException propagates up through AiChatNotifier and surfaces
+// as a chat error via _friendlyError (no AiChatNotifier changes needed).
+//
+// THIS VERSION (model update):
+//   - Removed deprecated Gemini 1.5 models (Flash & Pro).
+//   - Kept only currently available models: Gemini 2.0 Flash,
+//     Gemini 2.5 Flash, Gemini 2.5 Pro.
+//   - Changed default model in sendMessages(), sendMultimodalMessage()
+//     and sendMessagesStream() to gemini-2.5-flash.
+//
+// ══════════════════════════════════════════════════════════════════════════════
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -6,6 +36,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ai_provider.dart';
+import 'api_usage_manager.dart';
 
 /// Low-level wrapper around the Gemini generateContent REST endpoint.
 class GeminiService {
@@ -16,21 +47,17 @@ class GeminiService {
   static const _prefKey = 'gemini_api_key';
 
   // ---------------------------------------------------------------------------
-  // Available models
+  // Available models (current as of mid-2026)
   // ---------------------------------------------------------------------------
-  static const String model15Flash = 'gemini-1.5-flash-latest';
-  static const String model15Pro = 'gemini-1.5-pro-latest';
   static const String model20Flash = 'gemini-2.0-flash';
   static const String model25Flash = 'gemini-2.5-flash';
-  static const String model25Pro = 'gemini-2.5-pro';
+  static const String model25Pro   = 'gemini-2.5-pro';
 
   Future<List<AiModelInfo>> fetchModels() async {
     return const [
-      AiModelInfo(id: model15Flash, label: 'Gemini 1.5 Flash'),
-      AiModelInfo(id: model15Pro, label: 'Gemini 1.5 Pro'),
       AiModelInfo(id: model20Flash, label: 'Gemini 2.0 Flash'),
       AiModelInfo(id: model25Flash, label: 'Gemini 2.5 Flash'),
-      AiModelInfo(id: model25Pro, label: 'Gemini 2.5 Pro'),
+      AiModelInfo(id: model25Pro,   label: 'Gemini 2.5 Pro'),
     ];
   }
 
@@ -73,9 +100,16 @@ class GeminiService {
   Future<String> sendMessages({
     required List<Map<String, dynamic>> messages,
     String? systemPrompt,
-    String model = model15Flash,
+    String model = model25Flash,   // default updated to 2.5 Flash
   }) async {
     _streamCancelled = false;
+
+    // ── Usage limit check ─────────────────────────────────────────────────
+    // Throws ApiRateLimitException if RPM / daily-request / daily-token
+    // limits are exceeded. The exception propagates to AiChatNotifier and
+    // surfaces as a chat error — no extra handling needed here.
+    await ApiUsageManager.instance.enforceBeforeRequest();
+    // ─────────────────────────────────────────────────────────────────────
 
     final apiKey = await getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
@@ -146,6 +180,15 @@ class GeminiService {
         );
       }
 
+      // ── Record usage ────────────────────────────────────────────────────
+      // Prefer the exact count from the API; fall back to char-based estimate
+      // (~4 chars/token) if usageMetadata is absent (older model variants).
+      final totalTokens =
+          (decoded['usageMetadata']?['totalTokenCount'] as num?)?.toInt() ??
+          (text.length ~/ 4);
+      await ApiUsageManager.instance.recordUsage(totalTokens);
+      // ────────────────────────────────────────────────────────────────────
+
       return text;
     } on http.ClientException {
       throw GeminiCancelledException();
@@ -156,7 +199,7 @@ class GeminiService {
   }
 
   // ---------------------------------------------------------------------------
-  // Multimodal request (image + text) – NEW
+  // Multimodal request (image + text)
   // ---------------------------------------------------------------------------
 
   /// Sends a text prompt along with an image and returns the full text response.
@@ -165,9 +208,13 @@ class GeminiService {
     required String prompt,
     required Uint8List imageBytes,
     String? systemPrompt,
-    String model = model15Flash,
+    String model = model25Flash,   // default updated to 2.5 Flash
   }) async {
     _streamCancelled = false;
+
+    // ── Usage limit check ─────────────────────────────────────────────────
+    await ApiUsageManager.instance.enforceBeforeRequest();
+    // ─────────────────────────────────────────────────────────────────────
 
     final apiKey = await getApiKey();
     if (apiKey == null || apiKey.isEmpty) {
@@ -187,7 +234,7 @@ class GeminiService {
         {'text': prompt},
         {
           'inline_data': {
-            'mime_type': 'image/jpeg', // adjust if you need PNG detection
+            'mime_type': 'image/jpeg',
             'data': base64Encode(imageBytes),
           }
         }
@@ -197,7 +244,7 @@ class GeminiService {
     final body = <String, dynamic>{
       'contents': [content],
       'generationConfig': {
-        'temperature': 0.2,  // lower temperature for structured extraction
+        'temperature': 0.2,
         'maxOutputTokens': 2048,
       },
     };
@@ -251,6 +298,14 @@ class GeminiService {
         );
       }
 
+      // ── Record usage ────────────────────────────────────────────────────
+      // Image tokens are included in totalTokenCount from the API.
+      final totalTokens =
+          (decoded['usageMetadata']?['totalTokenCount'] as num?)?.toInt() ??
+          (text.length ~/ 4);
+      await ApiUsageManager.instance.recordUsage(totalTokens);
+      // ────────────────────────────────────────────────────────────────────
+
       return text;
     } on http.ClientException {
       throw GeminiCancelledException();
@@ -262,16 +317,17 @@ class GeminiService {
 
   // ---------------------------------------------------------------------------
   // Pseudo‑streaming for Gemini (text‑only)
+  // Calls sendMessages internally — usage tracking is automatic.
   // ---------------------------------------------------------------------------
 
-  /// Streams the Gemini response token‑by‑token (simulated).
   Stream<String> sendMessagesStream({
     required List<Map<String, dynamic>> messages,
     String? systemPrompt,
-    String model = model15Flash,
+    String model = model25Flash,   // default updated to 2.5 Flash
   }) async* {
     _streamCancelled = false;
 
+    // sendMessages() handles enforceBeforeRequest + recordUsage.
     final fullText = await sendMessages(
       messages: messages,
       systemPrompt: systemPrompt,
