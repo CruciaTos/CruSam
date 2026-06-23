@@ -40,6 +40,18 @@ class ClassificationResult {
     this.domainScores = const {},
   });
 
+  ClassificationResult copyWith({Set<ContextDomain>? requiredDomains, QueryGranularity? granularity}) =>
+      ClassificationResult(
+        requiredDomains: requiredDomains ?? this.requiredDomains,
+        granularity: granularity ?? this.granularity,
+        extractedEntityNames: extractedEntityNames,
+        extractedEntityIds: extractedEntityIds,
+        monthHint: monthHint,
+        yearHint: yearHint,
+        billNoHint: billNoHint,
+        domainScores: domainScores,
+      );
+
   // ── Core output ────────────────────────────────────────────────────────────
 
   /// Which context domains are required to answer this query.

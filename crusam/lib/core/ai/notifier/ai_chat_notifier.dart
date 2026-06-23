@@ -1,4 +1,4 @@
-﻿// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
+// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
 //
 // Features:
 //  1. _activeFileContext         — persists last uploaded file across follow‑ups
@@ -25,6 +25,8 @@ import 'package:crusam/core/ai/services/batch_sync_manager.dart';
 import 'package:crusam/core/ai/services/file_extraction_service.dart';
 import 'package:crusam/core/ai/services/employee_verification_service.dart';
 import 'package:crusam/core/ai/services/gemini_service.dart';
+import 'package:crusam/core/ai/services/intent_classifier.dart';
+import 'package:crusam/core/ai/services/classification_result.dart';
 import 'package:crusam/core/ai/tools/ai_tool_executor.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
@@ -208,8 +210,10 @@ class AiChatNotifier extends ChangeNotifier {
     _context = ctx;
   }
 
-  Future<void> _refreshContext() async {
+  Future<void> _refreshContext(ClassificationResult classification, String rawQuery) async {
     final ctx = await AiContextBuilder.build(
+      classification: classification,
+      rawQuery: rawQuery,
       employeeNotifier: EmployeeNotifier.instance,
       salaryStateController: SalaryStateController.instance,
       salaryDataNotifier: SalaryDataNotifier.instance,
@@ -292,7 +296,25 @@ class AiChatNotifier extends ChangeNotifier {
     if (trimmed.isEmpty && imageBytes == null && fileBytes == null) return;
     if (isLoading) return;
 
-    await _refreshContext();
+    // ── Classify intent and build optimised context ────────────────────────
+    var classification = IntentClassifier.instance.classify(trimmed);
+
+    // Specialised flows that genuinely need full employee data must not be
+    // degraded by token optimisation – force employees into the context.
+    if (_batchSyncActive ||
+        _isAutonomousSyncQuery(trimmed) ||
+        _isEmployeeVerificationQuery(trimmed) ||
+        fileBytes != null) {
+      classification = classification.copyWith(
+        requiredDomains: {
+          ...classification.requiredDomains,
+          ContextDomain.employees,
+        },
+        granularity: QueryGranularity.full,
+      );
+    }
+
+    await _refreshContext(classification, trimmed);
 
     // ── Image processing is not supported (OllamaService removed) ───────────
     if (imageBytes != null) {

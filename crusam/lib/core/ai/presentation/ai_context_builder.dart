@@ -6,6 +6,11 @@ import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../data/models/voucher_model.dart';
 import '../../../data/models/voucher_row_model.dart';
+import 'package:crusam/core/ai/services/classification_result.dart';
+import 'package:crusam/core/ai/services/semantic_index_service.dart';
+import 'package:crusam/core/ai/services/semantic_index_formatter.dart';
+import 'package:crusam/core/ai/services/semantic_index_models.dart';
+import '../../../data/db/database_helper.dart';
 
 /// Builds a rich [AppContext] from live notifier state for injection into
 /// [AiChatNotifier] before every message.
@@ -28,34 +33,129 @@ class AiContextBuilder {
   AiContextBuilder._();
 
   static Future<AppContext> build({
+    ClassificationResult? classification,
+    String? rawQuery,
     EmployeeNotifier? employeeNotifier,
     SalaryStateController? salaryStateController,
     SalaryDataNotifier? salaryDataNotifier,
     VoucherNotifier? voucherNotifier,
+
     /// The voucher currently open in the Voucher Builder screen.
     /// Pass [VoucherNotifier.instance.current] for real-time draft data.
     VoucherModel? currentVoucher,
     Map<String, String>? extras,
   }) async {
+    if (classification != null && classification.requiresNoContext) {
+      return AppContext(extra: extras);
+    }
+
+    final needsEmployees =
+        classification == null ||
+        classification.requires(ContextDomain.employees);
+    final needsSalary =
+        classification == null || classification.requires(ContextDomain.salary);
+    final needsCurrentVoucher =
+        classification == null ||
+        classification.requires(ContextDomain.currentVoucher);
+    final needsSavedVouchers =
+        classification == null ||
+        classification.requires(ContextDomain.savedVouchers);
+    final needsCompanyConfig =
+        classification != null &&
+        classification.requires(ContextDomain.companyConfig);
+
     // **CRITICAL**: Load ALL historical data from database before building context.
     // This ensures Ollama receives the complete picture, not just in-memory state.
-    if (employeeNotifier != null && employeeNotifier.employees.isEmpty) {
+    if (needsEmployees &&
+        employeeNotifier != null &&
+        employeeNotifier.employees.isEmpty) {
       await employeeNotifier.load();
     }
-    if (voucherNotifier != null && voucherNotifier.savedVouchers.isEmpty) {
+    if (needsSavedVouchers &&
+        voucherNotifier != null &&
+        voucherNotifier.savedVouchers.isEmpty) {
       await voucherNotifier.loadDependencies();
     }
 
-    final employeeSection     = _buildEmployeeSection(employeeNotifier);
-    final salarySection       = _buildSalarySection(salaryStateController, salaryDataNotifier);
-    final currentDraftSection = _buildCurrentDraftSection(currentVoucher);
-    final savedInvoiceSection = _buildSavedInvoiceSection(voucherNotifier);
+    String? employeeSection;
+    if (needsEmployees) {
+      if (classification != null) {
+        final result = await SemanticIndexService.instance.search(
+          domain: IndexDomain.employees,
+          classification: classification,
+          rawQuery: rawQuery ?? '',
+          topK: 15,
+        );
+        employeeSection = SemanticIndexFormatter.format(result);
+      } else {
+        employeeSection = _buildEmployeeSection(employeeNotifier);
+      }
+    }
+
+    String? salarySection;
+    if (needsSalary) {
+      if (classification != null) {
+        final result = await SemanticIndexService.instance.search(
+          domain: IndexDomain.salarySnapshots,
+          classification: classification,
+          rawQuery: rawQuery ?? '',
+          topK: 10,
+        );
+        salarySection = SemanticIndexFormatter.format(result);
+      } else {
+        salarySection = _buildSalarySection(
+          salaryStateController,
+          salaryDataNotifier,
+        );
+      }
+    }
+
+    String? currentDraftSection;
+    if (needsCurrentVoucher) {
+      currentDraftSection = _buildCurrentDraftSection(currentVoucher);
+    }
+
+    String? savedInvoiceSection;
+    if (needsSavedVouchers) {
+      if (classification != null) {
+        final result = await SemanticIndexService.instance.search(
+          domain: IndexDomain.vouchers,
+          classification: classification,
+          rawQuery: rawQuery ?? '',
+          topK: 10,
+        );
+        savedInvoiceSection = SemanticIndexFormatter.format(result);
+      } else {
+        savedInvoiceSection = _buildSavedInvoiceSection(voucherNotifier);
+      }
+    }
+
+    String? companyConfigSection;
+    if (needsCompanyConfig) {
+      final config = await DatabaseHelper.instance.getCompanyConfig();
+      if (config != null) {
+        companyConfigSection = '''
+=== COMPANY CONFIGURATION ===
+Name: ${config['name']}
+Code: ${config['code']}
+Address: ${config['address1']}, ${config['address2']}, ${config['address3']}
+PAN: ${config['pan']}
+GST: ${config['gst']}
+State: ${config['state']}
+State Code: ${config['stateCode']}
+Email: ${config['email']}
+Phone: ${config['phone']}
+=== END COMPANY CONFIGURATION ===
+''';
+      }
+    }
 
     final combined = <String, String>{
-      if (employeeSection     != null) 'employee_data':      employeeSection,
-      if (salarySection       != null) 'salary_data':        salarySection,
-      if (currentDraftSection != null) 'current_draft':      currentDraftSection,
-      if (savedInvoiceSection != null) 'saved_invoices':     savedInvoiceSection,
+      if (employeeSection != null) 'employee_data': employeeSection,
+      if (salarySection != null) 'salary_data': salarySection,
+      if (currentDraftSection != null) 'current_draft': currentDraftSection,
+      if (savedInvoiceSection != null) 'saved_invoices': savedInvoiceSection,
+      if (companyConfigSection != null) 'company_config': companyConfigSection,
       ...?extras,
     };
 
@@ -70,21 +170,27 @@ class AiContextBuilder {
       totalOther += e.otherCharges;
     }
 
-    return AppContext(
-      employeeCount:   employees.length,
-      totalSalary:     totalBasic + totalOther,
-      pendingVouchers: voucherNotifier != null
-          ? voucherNotifier.savedVouchers
-              .where((v) => v.status == VoucherStatus.draft)
-              .length
-          : null,
-      dashboardSummary: _fullDashboardSummary(
+    String? dashboardSummary;
+    if (classification == null) {
+      dashboardSummary = _fullDashboardSummary(
         employees,
         voucherNotifier,
         currentVoucher,
         salaryStateController,
         salaryDataNotifier,
-      ),
+      );
+    }
+
+    return AppContext(
+      employeeCount: employees.length,
+      totalSalary: totalBasic + totalOther,
+      pendingVouchers:
+          voucherNotifier != null
+              ? voucherNotifier.savedVouchers
+                  .where((v) => v.status == VoucherStatus.draft)
+                  .length
+              : null,
+      dashboardSummary: dashboardSummary,
       extra: combined.isEmpty ? null : combined,
     );
   }
@@ -109,8 +215,12 @@ class AiContextBuilder {
       totalOther += e.otherCharges;
     }
 
-    final zoneLines   = zoneMap.entries.map((e) => '  ${e.key}: ${e.value} employees').join('\n');
-    final codeLines   = codeMap.entries.map((e) => '  ${e.key}: ${e.value} employees').join('\n');
+    final zoneLines = zoneMap.entries
+        .map((e) => '  ${e.key}: ${e.value} employees')
+        .join('\n');
+    final codeLines = codeMap.entries
+        .map((e) => '  ${e.key}: ${e.value} employees')
+        .join('\n');
     final rosterLines = employees.map(_employeeToLine).join('\n');
 
     return '''
@@ -151,7 +261,9 @@ $rosterLines
     sb.writeln('Title       : ${v.title.isEmpty ? "(Untitled)" : v.title}');
     sb.writeln('Bill No     : ${v.billNo.isEmpty ? "(not set)" : v.billNo}');
     sb.writeln('Date        : ${v.date}');
-    sb.writeln('Client      : ${v.clientName.isEmpty ? "(not set)" : v.clientName}');
+    sb.writeln(
+      'Client      : ${v.clientName.isEmpty ? "(not set)" : v.clientName}',
+    );
     sb.writeln('Dept Code   : ${v.deptCode}');
     sb.writeln('Status      : ${v.status.name.toUpperCase()}');
     sb.writeln('Base Total  : ₹${v.baseTotal.toStringAsFixed(2)}');
@@ -180,8 +292,10 @@ $rosterLines
     final vouchers = notifier.savedVouchers;
     if (vouchers.isEmpty) return null;
 
-    final saved  = vouchers.where((v) => v.status == VoucherStatus.saved).toList();
-    final drafts = vouchers.where((v) => v.status == VoucherStatus.draft).toList();
+    final saved =
+        vouchers.where((v) => v.status == VoucherStatus.saved).toList();
+    final drafts =
+        vouchers.where((v) => v.status == VoucherStatus.draft).toList();
 
     double totalInvoiced = 0;
     for (final v in saved) {
@@ -190,15 +304,21 @@ $rosterLines
 
     final sb = StringBuffer();
     sb.writeln('=== ALL INVOICES ===');
-    sb.writeln('Total : ${vouchers.length}  (${saved.length} saved, ${drafts.length} drafts)');
+    sb.writeln(
+      'Total : ${vouchers.length}  (${saved.length} saved, ${drafts.length} drafts)',
+    );
     sb.writeln('Total Invoiced Amount : ₹${totalInvoiced.toStringAsFixed(2)}');
     sb.writeln();
 
     for (final v in vouchers) {
-      sb.writeln('--- Invoice: ${v.billNo.isEmpty ? "(no bill no)" : v.billNo} ---');
+      sb.writeln(
+        '--- Invoice: ${v.billNo.isEmpty ? "(no bill no)" : v.billNo} ---',
+      );
       sb.writeln('  Title       : ${v.title.isEmpty ? "(Untitled)" : v.title}');
       sb.writeln('  Date        : ${v.date}');
-      sb.writeln('  Client      : ${v.clientName.isEmpty ? "(not set)" : v.clientName}');
+      sb.writeln(
+        '  Client      : ${v.clientName.isEmpty ? "(not set)" : v.clientName}',
+      );
       sb.writeln('  Dept Code   : ${v.deptCode}');
       sb.writeln('  Status      : ${v.status.name.toUpperCase()}');
       sb.writeln('  Base Total  : ₹${v.baseTotal.toStringAsFixed(2)}');
@@ -238,16 +358,20 @@ $rosterLines
 
     final monthYear = '${dataNotifier.monthName} ${dataNotifier.year}';
     final employees = controller.filteredEmployees;
-    final employeeLines = employees.map((e) {
-      final days = dataNotifier.getDays(e.id ?? 0);
-      final earnedBasic = dataNotifier.totalDays == 0
-          ? 0
-          : e.basicCharges * days / dataNotifier.totalDays;
-      final earnedGross = dataNotifier.totalDays == 0
-          ? 0
-          : e.grossSalary * days / dataNotifier.totalDays;
-      return '  [${e.srNo}] ${e.name} | Days:$days | Basic:₹${e.basicCharges.toStringAsFixed(2)} | Gross:₹${e.grossSalary.toStringAsFixed(2)} | Earned Basic:₹${earnedBasic.toStringAsFixed(2)} | Earned Gross:₹${earnedGross.toStringAsFixed(2)}';
-    }).join('\n');
+    final employeeLines = employees
+        .map((e) {
+          final days = dataNotifier.getDays(e.id ?? 0);
+          final earnedBasic =
+              dataNotifier.totalDays == 0
+                  ? 0
+                  : e.basicCharges * days / dataNotifier.totalDays;
+          final earnedGross =
+              dataNotifier.totalDays == 0
+                  ? 0
+                  : e.grossSalary * days / dataNotifier.totalDays;
+          return '  [${e.srNo}] ${e.name} | Days:$days | Basic:₹${e.basicCharges.toStringAsFixed(2)} | Gross:₹${e.grossSalary.toStringAsFixed(2)} | Earned Basic:₹${earnedBasic.toStringAsFixed(2)} | Earned Gross:₹${earnedGross.toStringAsFixed(2)}';
+        })
+        .join('\n');
 
     return '''
 --- Salary Context ---
@@ -301,10 +425,15 @@ $employeeLines
       parts.add(
         'Dept Breakdown: ${codeMap.entries.map((e) => "${e.key}:${e.value}").join(", ")}',
       );
-      parts.add('\n--- Employee Roster ---\n${employees.map(_employeeToLine).join('\n')}');
+      parts.add(
+        '\n--- Employee Roster ---\n${employees.map(_employeeToLine).join('\n')}',
+      );
     }
 
-    final salarySection = _buildSalarySummary(salaryStateController, salaryDataNotifier);
+    final salarySection = _buildSalarySummary(
+      salaryStateController,
+      salaryDataNotifier,
+    );
     if (salarySection != null) parts.add(salarySection);
 
     final draftSection = _buildCurrentDraftSection(currentVoucher);
