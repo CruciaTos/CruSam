@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -7,21 +6,31 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
+import 'core/sync/drive_service.dart';
+import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/updater/update_dialog.dart';
 import 'core/updater/update_notifier.dart';
+import 'features/auth/notifiers/auth_notifier.dart';
+import 'features/master_data/notifiers/employee_notifier.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // No login required – skip all session checks
+  // await AuthNotifier.instance.checkSession();
   await ExportPreferencesNotifier.instance.load();
+  // await GoogleAuthService.instance.restoreSession();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
 
+  EmployeeNotifier.instance.load(); // Load local employee data
   UpdateNotifier.instance.checkForUpdate();
+  // Cloud sync disabled on startup – manual backup/restore remains available
+  // unawaited(SyncManager.instance.syncOnStartup());
 
   runApp(const AartiApp());
 }

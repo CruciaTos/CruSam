@@ -1,4 +1,3 @@
-// ignore_for_file: unused_element_parameter
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +5,7 @@ import 'package:particles_network/particles_network.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../features/auth/notifiers/auth_notifier.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 // ── AI chat integration ─────────────────────────────────────────────────────
 import '../../core/ai/presentation/ai_context_builder.dart';
@@ -14,7 +14,6 @@ import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
 import '../../shared/widgets/ai_chat_panel.dart';   // ← AiChatScreen lives here
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dark Slate Color Scheme – Minimal & Eye‑Friendly
@@ -276,7 +275,6 @@ class _ShellScreenState extends State<ShellScreen> {
                           child: Container(
                             width: 6,
                             decoration: BoxDecoration(
-                              // The visible line is the right border of this thin zone
                               border: Border(
                                 right: BorderSide(
                                   color: _handleLineColor,
@@ -324,7 +322,7 @@ class _ShellScreenState extends State<ShellScreen> {
   }
 }
 
-// ───── Expanded Sidebar (unchanged) ─────────────────────────────────────────
+// ───── Expanded Sidebar (logout removed) ────────────────────────────────────
 class _ExpandedSidebar extends StatelessWidget {
   final String active;
   final Set<String> openGroups;
@@ -406,12 +404,13 @@ class _ExpandedSidebar extends StatelessWidget {
           depth: 0,
           onTap: () => onNavigate('/profile'),
         ),
+        // Logout tile removed – no login required
       ],
     );
   }
 }
 
-// ───── Collapsed Sidebar (unchanged) ────────────────────────────────────────
+// ───── Collapsed Sidebar (logout removed) ──────────────────────────────────
 class _CollapsedSidebar extends StatelessWidget {
   final String active;
   final void Function(String) onNavigate;
@@ -457,6 +456,7 @@ class _CollapsedSidebar extends StatelessWidget {
             selected: active == '/profile',
             onTap: () => onNavigate('/profile'),
           ),
+          // Logout tile removed
         ],
       ),
     ),
@@ -1056,58 +1056,60 @@ class _HeaderState extends State<_Header> {
                   : _ShellColors.iconDefault,
             ),
             tooltip: 'AI Assistant',
-            onPressed: () async {           // ← add async
-  final ctx = await AiContextBuilder.build(   // ← add await
-    employeeNotifier: EmployeeNotifier.instance,
-    salaryStateController: SalaryStateController.instance,
-    salaryDataNotifier: SalaryDataNotifier.instance,
-    voucherNotifier: VoucherNotifier.instance,
-    currentVoucher: VoucherNotifier.instance.current,
-  );
-  AiChatNotifier.instance.updateContext(ctx);
-  widget.onAiTap();
-},
+            onPressed: () async {
+              final ctx = await AiContextBuilder.build(
+                employeeNotifier: EmployeeNotifier.instance,
+                salaryStateController: SalaryStateController.instance,
+                salaryDataNotifier: SalaryDataNotifier.instance,
+                voucherNotifier: VoucherNotifier.instance,
+                currentVoucher: VoucherNotifier.instance.current,
+              );
+              AiChatNotifier.instance.updateContext(ctx);
+              widget.onAiTap();
+            },
           ),
         ),
         const SizedBox(width: 12),
 
-        // Local PC profile shortcut. No sign-in is required; data is loaded
-        // from this computer's local SQLite database.
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
+        // User info – fallback to "Admin User" when no session
+        ListenableBuilder(
+          listenable: AuthNotifier.instance,
+          builder: (ctx, _) {
+            final user = AuthNotifier.instance.user;
+            final name = user?.displayName ?? 'Admin User';
+            final initials = user?.initials ?? 'AU';
+
+            return Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  'Local PC',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    color: _ShellColors.textPrimary,
-                  ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(name,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                            color: _ShellColors.textPrimary)),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => context.go('/profile'),
-                child: const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: _ShellColors.primary,
-                  child: Text(
-                    'PC',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                const SizedBox(width: 12),
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => context.go('/profile'),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: _ShellColors.primary,
+                      child: Text(initials,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white)),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ]),
     );

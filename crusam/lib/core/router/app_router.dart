@@ -1,5 +1,3 @@
-// ignore_for_file: unused_import
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -40,14 +38,12 @@ class AppRouter {
 
   static final router = GoRouter(
     navigatorKey: _root,
-    initialLocation: '/dashboard',
+    initialLocation: '/dashboard', // Opens directly to dashboard
     routes: [
-      // ---------- App shell routes ----------
       ShellRoute(
         navigatorKey: _shell,
         builder: (context, state, child) => ShellScreen(child: child),
         routes: [
-          // ---- Existing routes (unchanged) ----
           GoRoute(
             path: '/dashboard',
             pageBuilder: (context, state) =>

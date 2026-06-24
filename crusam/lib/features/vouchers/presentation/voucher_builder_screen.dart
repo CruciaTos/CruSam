@@ -45,7 +45,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../data/models/voucher_model.dart';
-import '../../master_data/notifiers/employee_notifier.dart';
+import '../../master_data/notifiers/employee_notifier.dart';    // ← NEW import
 import '../../salary/notifier/salary_data_notifier.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
@@ -1110,7 +1110,10 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: _notifier,
+        listenable: Listenable.merge([          // ← CHANGE: listen to both notifiers
+          _notifier,
+          EmployeeNotifier.instance,
+        ]),
         builder   : (ctx, _) {
           if (_notifier.isLoading) {
             return const Center(child: CircularProgressIndicator());

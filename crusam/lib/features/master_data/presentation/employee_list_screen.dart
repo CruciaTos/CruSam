@@ -93,7 +93,12 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   void initState() {
     super.initState();
     _notifier.addListener(_onModelChanged);
-    _notifier.load();
+
+    // Defer the load to avoid triggering ListenableBuilder
+    // while the master screen is still being built.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notifier.load();
+    });
 
     _searchController.addListener(_onSearchChanged);
 
