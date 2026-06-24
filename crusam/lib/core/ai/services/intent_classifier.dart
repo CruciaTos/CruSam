@@ -112,6 +112,7 @@ class IntentClassifier {
     final isSpecific = entityNames.isNotEmpty ||
         entityIds.isNotEmpty ||
         monthHint != null ||
+        yearHint != null ||
         billNoHint != null;
 
     _log(rawQuery, required, scores, noneScore);
@@ -177,6 +178,11 @@ class IntentClassifier {
 
     // Core concept
     s += _kw(q, ['salary', 'wage', 'payroll', 'compensation', 'pay slip', 'payslip'], 4.0);
+
+    // Pay-action synonyms — covers "how much was Rajesh paid", "Rajesh's earnings",
+    // "show payout for April".  Weight 3.0: strong signal but one step below
+    // the unambiguous "salary"/"payroll" terms.
+    s += _kw(q, ['paid', 'payout', 'earnings', 'earning', 'total pay', 'payment for'], 3.0);
 
     // Attendance
     s += _kw(q, ['days present', 'days worked', 'days attended', 'attendance'], 4.0);
@@ -275,6 +281,11 @@ class IntentClassifier {
     // Generic "voucher" — weak; combined with other signals only.
     s += _kw(q, ['voucher'], 1.5);
 
+    // Bare "bill" — covers "show bill INV-042", "bill INV-003".
+    // 2.0 clears the domain threshold alone, which is intentional: "bill" in
+    // this app almost always means a saved voucher, not a legislative bill.
+    s += _kw(q, ['bill'], 2.0);
+
     return s;
   }
 
@@ -346,35 +357,95 @@ class IntentClassifier {
     'december': 12,'dec': 12,
   };
 
+  // Reverse map used when a numeric month (04, 4) is parsed from the query.
+  static const _monthNumToName = {
+    1: 'january',  2: 'february', 3: 'march',    4: 'april',
+    5: 'may',      6: 'june',     7: 'july',      8: 'august',
+    9: 'september',10: 'october', 11: 'november', 12: 'december',
+  };
+
   /// Extract proper-noun names from the raw (original-case) query.
   ///
-  /// Patterns:
-  ///   "salary of Rajesh Kumar"   → ["Rajesh Kumar"]
-  ///   "Rajesh Kumar's details"   → ["Rajesh Kumar"]
-  ///   "for employee John Doe"    → ["John Doe"]
+  /// Three patterns are tried:
+  ///
+  ///   Pattern 1 — preposition anchor:
+  ///     "salary of Rajesh Kumar"  → ["Rajesh Kumar"]
+  ///     "salary of rajesh"        → ["Rajesh"]  (via title-cased copy)
+  ///
+  ///   Pattern 2 — possessive / data-keyword suffix:
+  ///     "Rajesh's salary"         → ["Rajesh"]
+  ///     "Rajesh Kumar's details"  → ["Rajesh Kumar"]
+  ///
+  ///   Pattern 3 — domain keyword immediately before name, no preposition:
+  ///     "salary Rajesh April 2026"  → ["Rajesh"]
+  ///     "payroll Amit Kumar"        → ["Amit Kumar"]
+  ///
+  /// All three patterns are run on both the original query and a title-cased copy
+  /// so that "salary of rajesh" and "salary of RAJESH" both extract correctly.
+  /// The result set deduplicates automatically.
   List<String> _extractEntityNames(String raw) {
     final names = <String>{};
 
-    // Pattern 1: preposition + title-cased name (1–4 words)
-    final prepPattern = RegExp(
-      r'(?:of|for|by|about|named|called|employee)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})',
+    // Build a title-cased copy so all-lowercase / ALL-CAPS inputs still fire.
+    // Example: "salary of rajesh kumar" → "Salary Of Rajesh Kumar"
+    final titleCased = raw.replaceAllMapped(
+      RegExp(r'\b(\w)(\w*)'),
+      (m) => m.group(1)!.toUpperCase() + (m.group(2) ?? '').toLowerCase(),
     );
-    for (final m in prepPattern.allMatches(raw)) {
-      final name = m.group(1)?.trim();
-      if (name != null && !_isNameStopWord(name)) names.add(name);
-    }
 
-    // Pattern 2: title-cased name followed by possessive or data keyword
-    final possessivePattern = RegExp(
-      r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})"
-      r"(?:'s|\s+salary|\s+days|\s+attendance|\s+details|\s+info|\s+data|\s+account)",
-    );
-    for (final m in possessivePattern.allMatches(raw)) {
-      final name = m.group(1)?.trim();
-      if (name != null && !_isNameStopWord(name)) names.add(name);
+    for (final source in <String>{raw, titleCased}) {
+      // ── Pattern 1: preposition + title-cased name (1–4 words) ─────────────
+      for (final m in RegExp(
+        r'(?:of|for|by|about|named|called|employee)\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})',
+      ).allMatches(source)) {
+        final name = _trimTrailingStopWords(m.group(1)?.trim() ?? '');
+        if (name.isNotEmpty && !_isNameStopWord(name)) names.add(name);
+      }
+
+      // ── Pattern 2: title-cased name followed by possessive/data keyword ───
+      for (final m in RegExp(
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})'
+        r"(?:'s|\s+salary|\s+days|\s+attendance|\s+details|\s+info|\s+data|\s+account)",
+      ).allMatches(source)) {
+        final name = _trimTrailingStopWords(m.group(1)?.trim() ?? '');
+        if (name.isNotEmpty && !_isNameStopWord(name)) names.add(name);
+      }
+
+      // ── Pattern 3: domain keyword directly before a name, no preposition ──
+      // Handles "salary Rajesh April 2026", "payroll Amit Kumar", etc.
+      // Captures at most 2 title-case words, then strips trailing stop-words
+      // so month names ("April") don't bleed into the name.
+      for (final m in RegExp(
+        r'(?:salary|payroll|wage|wages|invoice|attendance)\s+'
+        r'([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?',
+        caseSensitive: false,
+      ).allMatches(source)) {
+        final part1 = m.group(1)?.trim() ?? '';
+        final part2 = m.group(2)?.trim() ?? '';
+        if (part1.isEmpty || _isNameStopWord(part1)) continue;
+        // Accept second word only if it isn't a stop-word (month / domain term)
+        final name = part2.isNotEmpty && !_isNameStopWord(part2)
+            ? '$part1 $part2'
+            : part1;
+        names.add(name);
+      }
     }
 
     return names.toList();
+  }
+
+  /// Strips trailing title-cased words that are domain stop-words or month names.
+  ///
+  /// Prevents Pattern 1/2 captures like "Rajesh April" from leaking the month
+  /// into the extracted name when a date follows immediately.
+  String _trimTrailingStopWords(String name) {
+    if (name.isEmpty) return name;
+    final words = name.split(RegExp(r'\s+'));
+    while (words.isNotEmpty && _isNameStopWord(words.last)) {
+      words.removeLast();
+    }
+    return words.join(' ');
   }
 
   /// Extract explicit numeric employee IDs from the lowercased query.
@@ -391,7 +462,28 @@ class IntentClassifier {
   }
 
   /// Extract a month name from the lowercased query.
+  ///
+  /// Handles both text ("april", "apr") and numeric forms ("04/2026", "2026-04").
+  /// Always returns a full lowercase month name (e.g. "april") so downstream
+  /// callers have a single canonical form to match against searchText.
   String? _extractMonth(String q) {
+    // ── Numeric formats: MM/YYYY · YYYY-MM · YYYY/MM ─────────────────────────
+    // Tried first so "04/2026" doesn't accidentally hit a text-name false-positive.
+    final numFmt = RegExp(
+      r'(?:^|\D)(0?[1-9]|1[0-2])[/\-](20\d{2})'    // MM/YYYY or MM-YYYY
+      r'|(20\d{2})[/\-](0?[1-9]|1[0-2])(?:\D|$)',   // YYYY/MM or YYYY-MM
+    );
+    final nm = numFmt.firstMatch(q);
+    if (nm != null) {
+      // group(1) = month from MM/YYYY form; group(4) = month from YYYY-MM form
+      final raw = nm.group(1) ?? nm.group(4);
+      final n   = int.tryParse(raw ?? '');
+      if (n != null) return _monthNumToName[n];
+    }
+
+    // ── Text names ────────────────────────────────────────────────────────────
+    // Iterate in insertion order (full name before abbreviation) so "march" is
+    // matched before "mar" — prevents the "mar" substring false-positive.
     for (final name in _monthNumberMap.keys) {
       if (q.contains(name)) return name;
     }
@@ -406,13 +498,26 @@ class IntentClassifier {
 
   /// Extract a bill / invoice number from the original-case query.
   ///
-  /// Patterns:  "bill no INV-042", "invoice #INV-042", "bill number 12"
+  /// Pattern A — explicit separator:
+  ///   "bill no INV-042", "invoice number INV-042", "invoice #INV-042", "#042"
+  ///
+  /// Pattern B — bare keyword + code:
+  ///   "invoice INV-042", "find voucher INV-042", "show bill INV-042"
+  ///   Requires the code to look like a bill number: 2–5 letters, a dash, digits.
   String? _extractBillNo(String raw) {
-    final m = RegExp(
+    // Pattern A: explicit separator keyword
+    final mA = RegExp(
       r'(?:bill\s*(?:no|number)|invoice\s*(?:no|number)|invoice\s*#|#)\s*([A-Za-z0-9/_-]+)',
       caseSensitive: false,
     ).firstMatch(raw);
-    return m?.group(1)?.trim();
+    if (mA != null) return mA.group(1)?.trim();
+
+    // Pattern B: bare "<keyword> <CODE>" where CODE looks like INV-042 / PO-003
+    final mB = RegExp(
+      r'(?:invoice|voucher|bill)\s+([A-Za-z]{2,6}-\d+)',
+      caseSensitive: false,
+    ).firstMatch(raw);
+    return mB?.group(1)?.trim();
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -430,10 +535,16 @@ class IntentClassifier {
   }
 
   /// Words that look like proper nouns but are domain keywords, not names.
+  /// Checked against both whole-string captures and individual trailing words
+  /// (via _trimTrailingStopWords) to prevent month / domain terms leaking in.
   static const _nameStopWords = {
+    // Month names (title-cased, as they appear after normalisation)
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
+    // Domain nouns that appear in title-case near names
     'Salary', 'Employee', 'Voucher', 'Invoice', 'Company',
+    'Statement', 'Report', 'Summary', 'Details', 'Data', 'Info',
+    'Payroll', 'Attendance', 'Record', 'Records', 'List', 'All',
   };
 
   bool _isNameStopWord(String word) => _nameStopWords.contains(word);

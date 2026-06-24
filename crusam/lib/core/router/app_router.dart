@@ -18,9 +18,6 @@ import '../../features/salary/presentation/salary_preview_screen.dart';
 import '../../features/salary/presentation/salary_attachment_a_screen.dart';
 import '../../features/salary/presentation/salary_attachment_b_screen.dart';
 import '../../features/salary/presentation/salary_analytics_screen.dart';
-import '../../features/landing/presentation/landing_screen.dart';
-import '../../features/auth/presentation/login_screen.dart';
-import '../../features/auth/notifiers/auth_notifier.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/google_drive_debug_screen.dart';
 import '../../shared/widgets/coming_soon_screen.dart';
@@ -30,9 +27,6 @@ class AppRouter {
   static final _shell = GlobalKey<NavigatorState>();
 
   static GlobalKey<NavigatorState> get rootNavigatorKey => _root;
-
-  // Public routes that do not require authentication
-  static const _publicPaths = {'/landing', '/login'};
 
   static NoTransitionPage<void> _buildPageTransition(
     GoRouterState state,
@@ -46,36 +40,9 @@ class AppRouter {
 
   static final router = GoRouter(
     navigatorKey: _root,
-    initialLocation: '/landing', // Starts on landing; auth will redirect accordingly
-    refreshListenable: AuthNotifier.instance,
-    redirect: (context, state) {
-      final auth = AuthNotifier.instance;
-
-      // Wait for session check before deciding
-      if (auth.isLoading) return null;
-
-      final isPublic = _publicPaths.contains(state.matchedLocation);
-
-      // Not logged in → force to landing (unless already on public route)
-      if (!auth.isLoggedIn && !isPublic) return '/landing';
-
-      // Logged in → prevent going back to landing/login
-      if (auth.isLoggedIn && isPublic) return '/dashboard';
-
-      return null;
-    },
+    initialLocation: '/dashboard',
     routes: [
-      // ---------- Public routes (outside shell) ----------
-      GoRoute(
-        path: '/landing',
-        builder: (context, state) => const LandingScreen(),
-      ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
-
-      // ---------- Protected shell routes ----------
+      // ---------- App shell routes ----------
       ShellRoute(
         navigatorKey: _shell,
         builder: (context, state, child) => ShellScreen(child: child),

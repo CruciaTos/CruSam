@@ -1048,8 +1048,9 @@ class WidgetPdfExportService {
         ? '${DateTime.now().millisecondsSinceEpoch}'
         : billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
     final dir      = await _outputDirFor(pathType);
-    final basePath =
-        '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf';
+    final basePath = billNo.isEmpty
+    ? '${dir.path}${Platform.pathSeparator}${prefix}_$slug.pdf'
+    : '${dir.path}${Platform.pathSeparator}$slug.pdf';
     final path = await _uniquePath(basePath);
     await File(path).writeAsBytes(bytes, flush: true);
   }

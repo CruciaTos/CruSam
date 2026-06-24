@@ -100,6 +100,7 @@ class ClassificationResult {
       extractedEntityNames.isNotEmpty ||
       extractedEntityIds.isNotEmpty ||
       monthHint != null ||
+      yearHint != null ||
       billNoHint != null;
 
   @override

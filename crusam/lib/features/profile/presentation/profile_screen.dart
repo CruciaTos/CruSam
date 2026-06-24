@@ -210,183 +210,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (dc) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dc, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dc, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Sign Out',
-                style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && mounted) {
-      await _auth.logout();
-      if (mounted) context.go('/landing');
-    }
+    context.go('/dashboard');
   }
 
   Future<void> _connectGoogleDrive() async {
-    final ok = await _googleAuth.signIn();
-    if (!mounted) return;
-
-    if (ok) {
-      await SyncManager.instance.syncNow();
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok ? 'Google Drive connected' : 'Failed to connect Google Drive'),
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Cloud sync is disabled. This app is using local PC data only.'),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _auth,
-      builder: (ctx, _) {
-        final user = _auth.user;
-        if (user == null) {
-          WidgetsBinding.instance.addPostFrameCallback(
-              (_) => context.go('/landing'));
-          return const SizedBox.shrink();
-        }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.pagePadding),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ProfileHeader(user: user, onLogout: _logout),
-                  const SizedBox(height: 24),
-                  ListenableBuilder(
-                    listenable: _googleAuth,
-                    builder: (ctx, _) {
-                      final connected = _googleAuth.isSignedIn;
-                      return Card(
-                        elevation: 1,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Google Drive connection', style: AppTextStyles.h4),
-                              const SizedBox(height: 8),
-                              Text(
-                                connected
-                                    ? 'Connected as ${_googleAuth.userEmail ?? 'unknown'}'
-                                    : 'Not connected to Google Drive.',
-                                style: AppTextStyles.bodyMedium,
-                              ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                crossAxisAlignment: WrapCrossAlignment.center,
-                                spacing: 12,
-                                runSpacing: 10,
-                                children: [
-                                  ElevatedButton(
-                                    onPressed: _googleAuth.isLoading ? null : _connectGoogleDrive,
-                                    child: Text(connected ? 'Reconnect Google Drive' : 'Connect Google Drive'),
-                                  ),
-                                  OutlinedButton(
-                                    onPressed: () => context.go('/google-drive-debug'),
-                                    child: const Text('Debug Google Drive'),
-                                  ),
-                                ],
-                              ),
-                              if (_googleAuth.driveSmokeTestMessage != null) ...[
-                                const SizedBox(height: 12),
-                                Text(
-                                  _googleAuth.driveSmokeTestMessage!,
-                                  style: AppTextStyles.small.copyWith(color: Colors.green[800]),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
+    const user = UserModel(
+      fullName: 'Local PC',
+      username: 'local_pc',
+      email: 'Data saved on this computer only',
+    );
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.pagePadding),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _ProfileHeader(user: user, onLogout: _logout),
+              const SizedBox(height: 24),
+              Card(
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        flex: 3,
-                        child: _PersonalInfoCard(
-                          user: user,
-                          editing: _editing,
-                          saving: _saving,
-                          formKey: _profileKey,
-                          nameCtrl: _nameCtrl,
-                          emailCtrl: _emailCtrl,
-                          phoneCtrl: _phoneCtrl,
-                          usernameCtrl: _usernameCtrl,
-                          onEdit: () => setState(() => _editing = true),
-                          onCancel: () {
-                            _syncFromUser();
-                            setState(() => _editing = false);
-                          },
-                          onSave: _saveProfile,
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          children: [
-                            _AccountCard(
-                              user: user,
-                              showPassSection: _showPassSection,
-                              saving: _saving,
-                              obscureCur: _obscureCur,
-                              obscureNew: _obscureNew,
-                              obscureConf: _obscureConf,
-                              passwordKey: _passwordKey,
-                              curPassCtrl: _curPassCtrl,
-                              newPassCtrl: _newPassCtrl,
-                              confPassCtrl: _confPassCtrl,
-                              onTogglePass: () =>
-                                  setState(() => _showPassSection = !_showPassSection),
-                              onSavePass: _savePassword,
-                              onToggleCur: () =>
-                                  setState(() => _obscureCur = !_obscureCur),
-                              onToggleNew: () =>
-                                  setState(() => _obscureNew = !_obscureNew),
-                              onToggleConf: () =>
-                                  setState(() => _obscureConf = !_obscureConf),
-                            ),
-                            const SizedBox(height: 20),
-                            const ExportPathsCard(),
-                            const SizedBox(height: 20),
-                            const _PdfMethodCard(),
-                            const SizedBox(height: 20),
-                            const BackupRestoreCard(),       // ← inserted
-                            const SizedBox(height: 20),
-                            const UpdateCard(),
-                          ],
-                        ),
+                      Text('Local PC storage', style: AppTextStyles.h4),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Cloud sync is disabled. Invoices, vouchers, salary snapshots, and settings load from this computer\'s local database only.',
+                        style: AppTextStyles.bodyMedium,
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(height: 24),
+              const ExportPathsCard(),
+              const SizedBox(height: 20),
+              const _PdfMethodCard(),
+              const SizedBox(height: 20),
+              const BackupRestoreCard(),
+              const SizedBox(height: 20),
+              const UpdateCard(),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

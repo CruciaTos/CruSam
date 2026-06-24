@@ -6,7 +6,6 @@ import 'package:particles_network/particles_network.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
-import '../../features/auth/notifiers/auth_notifier.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 // ── AI chat integration ─────────────────────────────────────────────────────
 import '../../core/ai/presentation/ai_context_builder.dart';
@@ -407,19 +406,6 @@ class _ExpandedSidebar extends StatelessWidget {
           depth: 0,
           onTap: () => onNavigate('/profile'),
         ),
-        const SizedBox(height: 2),
-        _NavTile(
-          icon: Icons.logout_outlined,
-          label: 'Logout',
-          selected: false,
-          depth: 0,
-          onTap: () async {
-            await AuthNotifier.instance.logout();
-            if (context.mounted) {
-              context.go('/login');
-            }
-          },
-        ),
       ],
     );
   }
@@ -470,18 +456,6 @@ class _CollapsedSidebar extends StatelessWidget {
             label: 'Settings',
             selected: active == '/profile',
             onTap: () => onNavigate('/profile'),
-          ),
-          const SizedBox(height: 2),
-          _CollapsedTile(
-            icon: Icons.logout_outlined,
-            label: 'Logout',
-            selected: false,
-            onTap: () async {
-              await AuthNotifier.instance.logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
           ),
         ],
       ),
@@ -1097,45 +1071,43 @@ class _HeaderState extends State<_Header> {
         ),
         const SizedBox(width: 12),
 
-        // User info
-        ListenableBuilder(
-          listenable: AuthNotifier.instance,
-          builder: (ctx, _) {
-            final user = AuthNotifier.instance.user;
-            final name = user?.displayName ?? 'Admin User';
-            final initials = user?.initials ?? 'AU';
-
-            return Row(
-              mainAxisSize: MainAxisSize.min,
+        // Local PC profile shortcut. No sign-in is required; data is loaded
+        // from this computer's local SQLite database.
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(name,
-                        style: AppTextStyles.bodyMedium.copyWith(
-                            color: _ShellColors.textPrimary)),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: () => context.go('/profile'),
-                    child: CircleAvatar(
-                      radius: 18,
-                      backgroundColor: _ShellColors.primary,
-                      child: Text(initials,
-                          style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white)),
-                    ),
+                Text(
+                  'Local PC',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: _ShellColors.textPrimary,
                   ),
                 ),
               ],
-            );
-          },
+            ),
+            const SizedBox(width: 12),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => context.go('/profile'),
+                child: const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: _ShellColors.primary,
+                  child: Text(
+                    'PC',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ]),
     );

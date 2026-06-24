@@ -36,7 +36,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum ChatPhase { idle, connecting, thinking, streaming, verifying }
+
 enum ChatRole { user, assistant }
+
 enum ChatStatus { idle, loading, error }
 
 class ChatMessage {
@@ -55,12 +57,12 @@ class ChatMessage {
   final String? id;
 
   ChatMessage copyWith({String? text}) => ChatMessage(
-        role: role,
-        text: text ?? this.text,
-        timestamp: timestamp,
-        isError: isError,
-        id: id,
-      );
+    role: role,
+    text: text ?? this.text,
+    timestamp: timestamp,
+    isError: isError,
+    id: id,
+  );
 }
 
 class AiChatNotifier extends ChangeNotifier {
@@ -158,20 +160,23 @@ class AiChatNotifier extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _availableModels =
-          await AiService.instance.getAvailableModels(_selectedProvider);
+      _availableModels = await AiService.instance.getAvailableModels(
+        _selectedProvider,
+      );
 
       if (_availableModels.isNotEmpty) {
-        final currentValid =
-            _availableModels.any((m) => m.id == _selectedModel);
+        final currentValid = _availableModels.any(
+          (m) => m.id == _selectedModel,
+        );
         if (!currentValid || _selectedModel.isEmpty) {
           _selectedModel = _availableModels.first.id;
         }
       } else {
         _selectedModel = '';
-        _errorMessage = _selectedProvider == AiProvider.ollama
-            ? 'No Ollama models found. Run: ollama pull llama3.2:3b'
-            : 'No Gemini models available.';
+        _errorMessage =
+            _selectedProvider == AiProvider.ollama
+                ? 'No Ollama models found. Run: ollama pull llama3.2:3b'
+                : 'No Gemini models available.';
       }
     } catch (e) {
       _availableModels = [];
@@ -210,7 +215,10 @@ class AiChatNotifier extends ChangeNotifier {
     _context = ctx;
   }
 
-  Future<void> _refreshContext(ClassificationResult classification, String rawQuery) async {
+  Future<void> _refreshContext(
+    ClassificationResult? classification,
+    String rawQuery,
+  ) async {
     final ctx = await AiContextBuilder.build(
       classification: classification,
       rawQuery: rawQuery,
@@ -253,9 +261,21 @@ class AiChatNotifier extends ChangeNotifier {
 
   bool _isContinueIntent(String text) {
     final lower = text.toLowerCase().trim();
-    if (['continue', 'next', 'proceed', 'go ahead', 'go on',
-         'resume', 'carry on', 'keep going', 'do it', 'do it all',
-         'apply all', 'sync all'].contains(lower)) return true;
+    if ([
+      'continue',
+      'next',
+      'proceed',
+      'go ahead',
+      'go on',
+      'resume',
+      'carry on',
+      'keep going',
+      'do it',
+      'do it all',
+      'apply all',
+      'sync all',
+    ].contains(lower))
+      return true;
     return lower.startsWith('continue with') ||
         lower.startsWith('resume the') ||
         lower.startsWith('continue the') ||
@@ -266,13 +286,22 @@ class AiChatNotifier extends ChangeNotifier {
 
   bool _isSkipIntent(String text) {
     final lower = text.toLowerCase().trim();
-    return ['skip', 'no', 'nope', 'ignore', 'skip this', 'skip it',
-            'leave it', 'not this one'].contains(lower);
+    return [
+      'skip',
+      'no',
+      'nope',
+      'ignore',
+      'skip this',
+      'skip it',
+      'leave it',
+      'not this one',
+    ].contains(lower);
   }
 
   bool _isAutonomousSyncQuery(String query) {
     final lower = query.toLowerCase();
-    return (lower.contains('sync') && (lower.contains('all') || lower.contains('auto'))) ||
+    return (lower.contains('sync') &&
+            (lower.contains('all') || lower.contains('auto'))) ||
         lower.contains('apply all') ||
         lower.contains('make changes') ||
         lower.contains('update all') ||
@@ -297,21 +326,18 @@ class AiChatNotifier extends ChangeNotifier {
     if (isLoading) return;
 
     // ── Classify intent and build optimised context ────────────────────────
-    var classification = IntentClassifier.instance.classify(trimmed);
+    ClassificationResult? classification = IntentClassifier.instance.classify(
+      trimmed,
+    );
 
     // Specialised flows that genuinely need full employee data must not be
-    // degraded by token optimisation – force employees into the context.
+    // degraded by token optimisation – force employees into the context by
+    // passing null, which triggers the legacy full-roster dump.
     if (_batchSyncActive ||
         _isAutonomousSyncQuery(trimmed) ||
         _isEmployeeVerificationQuery(trimmed) ||
         fileBytes != null) {
-      classification = classification.copyWith(
-        requiredDomains: {
-          ...classification.requiredDomains,
-          ContextDomain.employees,
-        },
-        granularity: QueryGranularity.full,
-      );
+      classification = null;
     }
 
     await _refreshContext(classification, trimmed);
@@ -325,18 +351,33 @@ class AiChatNotifier extends ChangeNotifier {
     // ── Handle batch sync navigation commands ──────────────────────────────
     if (_batchSyncActive && BatchSyncManager.instance.hasActiveQueue) {
       if (_isSkipIntent(trimmed) || trimmed.toLowerCase() == 'no') {
-        _addMessage(ChatMessage(
-          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.user,
+            text: trimmed,
+            timestamp: DateTime.now(),
+          ),
+        );
         BatchSyncManager.instance.skip();
         _presentNextBatchItem();
         return;
       }
-      if (['yes', 'apply', 'confirm', 'ok', 'okay', 'do it', 'sure']
-          .contains(trimmed.toLowerCase())) {
-        _addMessage(ChatMessage(
-          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
-        ));
+      if ([
+        'yes',
+        'apply',
+        'confirm',
+        'ok',
+        'okay',
+        'do it',
+        'sure',
+      ].contains(trimmed.toLowerCase())) {
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.user,
+            text: trimmed,
+            timestamp: DateTime.now(),
+          ),
+        );
         await _executeCurrentBatchItem();
         return;
       }
@@ -345,38 +386,52 @@ class AiChatNotifier extends ChangeNotifier {
     // ── "Continue last task" intent ────────────────────────────────────────
     if (_isContinueIntent(trimmed)) {
       if (BatchSyncManager.instance.hasActiveQueue) {
-        _addMessage(ChatMessage(
-          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.user,
+            text: trimmed,
+            timestamp: DateTime.now(),
+          ),
+        );
         _batchSyncActive = true;
         _presentNextBatchItem();
         return;
       }
       if (_activeFileContext != null && _lastTaskDescription != null) {
-        _addMessage(ChatMessage(
-          role: ChatRole.user, text: trimmed, timestamp: DateTime.now(),
-        ));
-        _addMessage(ChatMessage(
-          role: ChatRole.assistant,
-          text: '📋 Last task: **$_lastTaskDescription**\n\n'
-              'The file **$_activeFileName** is still loaded. '
-              'What would you like to do with it?',
-          timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.user,
+            text: trimmed,
+            timestamp: DateTime.now(),
+          ),
+        );
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.assistant,
+            text:
+                '📋 Last task: **$_lastTaskDescription**\n\n'
+                'The file **$_activeFileName** is still loaded. '
+                'What would you like to do with it?',
+            timestamp: DateTime.now(),
+          ),
+        );
         notifyListeners();
         return;
       }
     }
 
     // ── Build user message text ─────────────────────────────────────────────
-    final userMessageText = fileBytes != null
-        ? (trimmed.isEmpty
-            ? '📎 ${fileName ?? fileType ?? 'File'} uploaded'
-            : trimmed)
-        : trimmed;
+    final userMessageText =
+        fileBytes != null
+            ? (trimmed.isEmpty
+                ? '📎 ${fileName ?? fileType ?? 'File'} uploaded'
+                : trimmed)
+            : trimmed;
 
     final userMsg = ChatMessage(
-      role: ChatRole.user, text: userMessageText, timestamp: DateTime.now(),
+      role: ChatRole.user,
+      text: userMessageText,
+      timestamp: DateTime.now(),
     );
     _addMessage(userMsg);
 
@@ -401,7 +456,8 @@ class AiChatNotifier extends ChangeNotifier {
         try {
           extraction = await FileExtractionService.extract(
             bytes: fileBytes,
-            fileName: fileName ??
+            fileName:
+                fileName ??
                 (fileType == 'pdf' ? 'document.pdf' : 'spreadsheet.xlsx'),
             onProgress: (progress) {
               _pendingStreamText = '📂 $progress';
@@ -423,28 +479,35 @@ class AiChatNotifier extends ChangeNotifier {
         _activeFileContext = extraction;
         _activeFileName = fileName ?? fileType;
 
-        _addMessage(ChatMessage(
-          role: ChatRole.assistant,
-          text: '[EXTRACTED_FILE]\n'
-              'type:${extraction.fileType.label}\n'
-              'summary:${extraction.summaryLine}\n'
-              '${extraction.toPromptString()}\n'
-              '[/EXTRACTED_FILE]',
-          timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.assistant,
+            text:
+                '[EXTRACTED_FILE]\n'
+                'type:${extraction.fileType.label}\n'
+                'summary:${extraction.summaryLine}\n'
+                '${extraction.toPromptString()}\n'
+                '[/EXTRACTED_FILE]',
+            timestamp: DateTime.now(),
+          ),
+        );
 
-        final userQuestion = trimmed.isEmpty
-            ? 'Please summarise the key data in this ${extraction.fileType.label} file.'
-            : trimmed;
+        final userQuestion =
+            trimmed.isEmpty
+                ? 'Please summarise the key data in this ${extraction.fileType.label} file.'
+                : trimmed;
 
         _lastTaskDescription = userQuestion;
 
-        final isEmployeeVerification = _isEmployeeVerificationQuery(userQuestion);
+        final isEmployeeVerification = _isEmployeeVerificationQuery(
+          userQuestion,
+        );
         if (isEmployeeVerification) {
           final appEmployees = EmployeeNotifier.instance.employees;
           if (appEmployees.isNotEmpty) {
             final verification = EmployeeVerificationService.compare(
-              extraction, appEmployees,
+              extraction,
+              appEmployees,
             );
 
             final wantsAutoSync = _isAutonomousSyncQuery(userQuestion);
@@ -453,13 +516,16 @@ class AiChatNotifier extends ChangeNotifier {
               final updates = verification.updates.length;
               final deletes = verification.deletions.length;
 
-              _addMessage(ChatMessage(
-                role: ChatRole.assistant,
-                text: '🔄 **Found $adds additions, $updates updates, $deletes deletions.**\n\n'
-                    'Starting autonomous sync… I will apply all changes now.\n'
-                    '_Deletions are skipped by default for safety._',
-                timestamp: DateTime.now(),
-              ));
+              _addMessage(
+                ChatMessage(
+                  role: ChatRole.assistant,
+                  text:
+                      '🔄 **Found $adds additions, $updates updates, $deletes deletions.**\n\n'
+                      'Starting autonomous sync… I will apply all changes now.\n'
+                      '_Deletions are skipped by default for safety._',
+                  timestamp: DateTime.now(),
+                ),
+              );
               notifyListeners();
 
               final syncService = AutonomousSyncService.instance;
@@ -477,11 +543,13 @@ class AiChatNotifier extends ChangeNotifier {
               _chatPhase = ChatPhase.idle;
               _status = ChatStatus.idle;
 
-              _addMessage(ChatMessage(
-                role: ChatRole.assistant,
-                text: summary.chatMessage,
-                timestamp: DateTime.now(),
-              ));
+              _addMessage(
+                ChatMessage(
+                  role: ChatRole.assistant,
+                  text: summary.chatMessage,
+                  timestamp: DateTime.now(),
+                ),
+              );
               notifyListeners();
               return;
             }
@@ -497,11 +565,14 @@ class AiChatNotifier extends ChangeNotifier {
             _status = ChatStatus.idle;
 
             if (!BatchSyncManager.instance.hasActiveQueue) {
-              _addMessage(ChatMessage(
-                role: ChatRole.assistant,
-                text: '✅ No differences found between the file and app employee records.',
-                timestamp: DateTime.now(),
-              ));
+              _addMessage(
+                ChatMessage(
+                  role: ChatRole.assistant,
+                  text:
+                      '✅ No differences found between the file and app employee records.',
+                  timestamp: DateTime.now(),
+                ),
+              );
               notifyListeners();
               return;
             }
@@ -511,18 +582,21 @@ class AiChatNotifier extends ChangeNotifier {
             final deletes = verification.deletions.length;
             final prog = BatchSyncManager.instance.progress;
 
-            _addMessage(ChatMessage(
-              role: ChatRole.assistant,
-              text: '📊 **Employee Sync Summary** — *${fileName ?? 'file'}*\n'
-                  '- ➕ Additions: $adds\n'
-                  '- ✏️ Updates: $updates\n'
-                  '- 🗑️ Deletions: $deletes\n\n'
-                  'I will walk you through each change one by one.\n'
-                  'Reply **Yes** to apply, **Skip** to skip, or **Stop** to cancel.\n\n'
-                  '---\n\n'
-                  '${BatchSyncManager.instance.currentChangeCard()}',
-              timestamp: DateTime.now(),
-            ));
+            _addMessage(
+              ChatMessage(
+                role: ChatRole.assistant,
+                text:
+                    '📊 **Employee Sync Summary** — *${fileName ?? 'file'}*\n'
+                    '- ➕ Additions: $adds\n'
+                    '- ✏️ Updates: $updates\n'
+                    '- 🗑️ Deletions: $deletes\n\n'
+                    'I will walk you through each change one by one.\n'
+                    'Reply **Yes** to apply, **Skip** to skip, or **Stop** to cancel.\n\n'
+                    '---\n\n'
+                    '${BatchSyncManager.instance.currentChangeCard()}',
+                timestamp: DateTime.now(),
+              ),
+            );
 
             _batchSyncActive = true;
             _lastTaskDescription =
@@ -533,7 +607,8 @@ class AiChatNotifier extends ChangeNotifier {
         }
 
         // Regular file Q&A
-        String analysisPrompt = _buildFileContextBlock(extraction, fileName) +
+        String analysisPrompt =
+            _buildFileContextBlock(extraction, fileName) +
             'Using the data above, please answer: $userQuestion';
 
         _pendingStreamText = '💬 Analysing with $_selectedModel…';
@@ -542,7 +617,7 @@ class AiChatNotifier extends ChangeNotifier {
 
         await _startStreamingAnswer(
           messages: [
-            {'role': 'user', 'content': analysisPrompt}
+            {'role': 'user', 'content': analysisPrompt},
           ],
           model: _selectedModel,
           skipVerification: true,
@@ -555,7 +630,10 @@ class AiChatNotifier extends ChangeNotifier {
       List<Map<String, String>> effectiveHistory = history;
       if (_activeFileContext != null) {
         effectiveHistory = _injectFileContextIntoHistory(
-            history, _activeFileContext!, _activeFileName);
+          history,
+          _activeFileContext!,
+          _activeFileName,
+        );
       }
       await _startStreamingAnswer(
         messages: effectiveHistory,
@@ -595,18 +673,22 @@ class AiChatNotifier extends ChangeNotifier {
     BatchSyncManager.instance.markProcessed();
 
     if (result is AiToolSuccess) {
-      _addMessage(ChatMessage(
-        role: ChatRole.assistant,
-        text: result.confirmation,
-        timestamp: DateTime.now(),
-      ));
+      _addMessage(
+        ChatMessage(
+          role: ChatRole.assistant,
+          text: result.confirmation,
+          timestamp: DateTime.now(),
+        ),
+      );
     } else if (result is AiToolFailure) {
-      _addMessage(ChatMessage(
-        role: ChatRole.assistant,
-        text: '⚠️ Failed: ${(result as AiToolFailure).reason}',
-        timestamp: DateTime.now(),
-        isError: true,
-      ));
+      _addMessage(
+        ChatMessage(
+          role: ChatRole.assistant,
+          text: '⚠️ Failed: ${(result as AiToolFailure).reason}',
+          timestamp: DateTime.now(),
+          isError: true,
+        ),
+      );
     }
 
     _status = ChatStatus.idle;
@@ -617,20 +699,24 @@ class AiChatNotifier extends ChangeNotifier {
     final mgr = BatchSyncManager.instance;
     if (!mgr.hasActiveQueue) {
       _batchSyncActive = false;
-      _addMessage(ChatMessage(
-        role: ChatRole.assistant,
-        text: mgr.completionSummary(),
-        timestamp: DateTime.now(),
-      ));
+      _addMessage(
+        ChatMessage(
+          role: ChatRole.assistant,
+          text: mgr.completionSummary(),
+          timestamp: DateTime.now(),
+        ),
+      );
       notifyListeners();
       return;
     }
 
-    _addMessage(ChatMessage(
-      role: ChatRole.assistant,
-      text: mgr.currentChangeCard(),
-      timestamp: DateTime.now(),
-    ));
+    _addMessage(
+      ChatMessage(
+        role: ChatRole.assistant,
+        text: mgr.currentChangeCard(),
+        timestamp: DateTime.now(),
+      ),
+    );
     notifyListeners();
   }
 
@@ -644,21 +730,25 @@ class AiChatNotifier extends ChangeNotifier {
     return [
       {
         'role': 'user',
-        'content': '[ACTIVE FILE CONTEXT — injected automatically]\n$contextBlock\n'
+        'content':
+            '[ACTIVE FILE CONTEXT — injected automatically]\n$contextBlock\n'
             '[END ACTIVE FILE CONTEXT]\n\n'
             'I may ask follow-up questions about this file. '
             'Use the data above to answer them.',
       },
       {
         'role': 'assistant',
-        'content': 'Understood. I have the file **$fileName** loaded and can answer questions about it.',
+        'content':
+            'Understood. I have the file **$fileName** loaded and can answer questions about it.',
       },
       ...history,
     ];
   }
 
   String _buildFileContextBlock(
-      FileExtractionResult extraction, String? fileName) {
+    FileExtractionResult extraction,
+    String? fileName,
+  ) {
     return '[${extraction.fileType.label.toUpperCase()} DATA — '
         'extracted from "${fileName ?? 'uploaded file'}"]\n'
         '${extraction.summaryLine}\n\n'
@@ -724,11 +814,13 @@ class AiChatNotifier extends ChangeNotifier {
         _chatPhase = ChatPhase.idle;
         _status = ChatStatus.idle;
 
-        _addMessage(ChatMessage(
-          role: ChatRole.assistant,
-          text: verifiedText,
-          timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.assistant,
+            text: verifiedText,
+            timestamp: DateTime.now(),
+          ),
+        );
 
         await _executeToolFromAssistantResponse(rawStreamText);
         notifyListeners();
@@ -754,9 +846,10 @@ class AiChatNotifier extends ChangeNotifier {
     final actionJsons = AiToolExecutor.extractAllActionJsons(assistantText);
     if (actionJsons.isEmpty) return;
 
-    final description = actionJsons.length == 1
-        ? _buildSingleActionDescription(actionJsons.first)
-        : 'Add ${actionJsons.length} voucher rows?';
+    final description =
+        actionJsons.length == 1
+            ? _buildSingleActionDescription(actionJsons.first)
+            : 'Add ${actionJsons.length} voucher rows?';
 
     _pendingActionCompleter = Completer<bool>();
     _pendingActionDescription = description;
@@ -773,25 +866,31 @@ class AiChatNotifier extends ChangeNotifier {
         );
 
         if (result is AiToolSuccess) {
-          _addMessage(ChatMessage(
-            role: ChatRole.assistant,
-            text: result.confirmation,
-            timestamp: DateTime.now(),
-          ));
+          _addMessage(
+            ChatMessage(
+              role: ChatRole.assistant,
+              text: result.confirmation,
+              timestamp: DateTime.now(),
+            ),
+          );
         } else if (result is AiToolFailure) {
-          _addMessage(ChatMessage(
-            role: ChatRole.assistant,
-            text: '⚠️ Actions failed: ${(result as AiToolFailure).reason}',
-            timestamp: DateTime.now(),
-            isError: true,
-          ));
+          _addMessage(
+            ChatMessage(
+              role: ChatRole.assistant,
+              text: '⚠️ Actions failed: ${(result as AiToolFailure).reason}',
+              timestamp: DateTime.now(),
+              isError: true,
+            ),
+          );
         }
       } else {
-        _addMessage(ChatMessage(
-          role: ChatRole.assistant,
-          text: 'Action cancelled.',
-          timestamp: DateTime.now(),
-        ));
+        _addMessage(
+          ChatMessage(
+            role: ChatRole.assistant,
+            text: 'Action cancelled.',
+            timestamp: DateTime.now(),
+          ),
+        );
       }
     } finally {
       _pendingActionCompleter = null;
@@ -890,29 +989,35 @@ class AiChatNotifier extends ChangeNotifier {
   void _handleError(String message) {
     _errorMessage = message;
     _status = ChatStatus.error;
-    _addMessage(ChatMessage(
-      role: ChatRole.assistant,
-      text: '⚠️ $message',
-      timestamp: DateTime.now(),
-      isError: true,
-    ));
+    _addMessage(
+      ChatMessage(
+        role: ChatRole.assistant,
+        text: '⚠️ $message',
+        timestamp: DateTime.now(),
+        isError: true,
+      ),
+    );
   }
 
   String _sanitizeAssistantOutput(String text) {
     return text
         .replaceAll(
-            RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false), '')
+          RegExp(r'\[ACTION\][\s\S]*?\[/ACTION\]', caseSensitive: false),
+          '',
+        )
         .replaceAll(RegExp(r'```[\s\S]*?```'), '')
         .replaceAll(RegExp(r'`{1,3}[^`]*$', multiLine: false), '')
         .replaceAll(
-            RegExp(r'^[📂💬🔍📊⏳✅]\s*[^\n]{0,80}[…\.]{1,3}\s*',
-                multiLine: false),
-            '')
+          RegExp(r'^[📂💬🔍📊⏳✅]\s*[^\n]{0,80}[…\.]{1,3}\s*', multiLine: false),
+          '',
+        )
         .replaceAll(
-            RegExp(
-                r'^(?:(?:Analysing|Reading|Extracting|Processing|Thinking)[^\n]*\n)+',
-                caseSensitive: false),
-            '')
+          RegExp(
+            r'^(?:(?:Analysing|Reading|Extracting|Processing|Thinking)[^\n]*\n)+',
+            caseSensitive: false,
+          ),
+          '',
+        )
         .trim();
   }
 
@@ -944,7 +1049,7 @@ class AiChatNotifier extends ChangeNotifier {
           .sendMessagesStream(
             provider: _selectedProvider,
             messages: [
-              {'role': 'user', 'content': verificationPrompt}
+              {'role': 'user', 'content': verificationPrompt},
             ],
             model: _selectedModel,
             systemPrompt:
@@ -982,7 +1087,8 @@ class AiChatNotifier extends ChangeNotifier {
 
       if (msg.role == ChatRole.user && i + 1 < history.length) {
         final next = history[i + 1];
-        if (next.role == ChatRole.assistant && !next.isError &&
+        if (next.role == ChatRole.assistant &&
+            !next.isError &&
             !next.text.contains('[EXTRACTED_FILE]') &&
             !next.text.contains('[EXTRACTED_TEXT]')) {
           valid.add(msg);
@@ -997,10 +1103,12 @@ class AiChatNotifier extends ChangeNotifier {
     valid.add(_messages.last);
 
     return valid
-        .map((m) => {
-              'role': m.role == ChatRole.user ? 'user' : 'assistant',
-              'content': m.text,
-            })
+        .map(
+          (m) => {
+            'role': m.role == ChatRole.user ? 'user' : 'assistant',
+            'content': m.text,
+          },
+        )
         .toList();
   }
 
@@ -1089,7 +1197,9 @@ The [ACTION] block will be stripped from the chat, but a confirmation dialog wil
 - NEVER expose the [ACTION] block or JSON to the user.
 ''';
 
-    final imageInstructions = hasImage ? '''
+    final imageInstructions =
+        hasImage
+            ? '''
 ════════════════════════════════════════
 IMAGE PARSING MODE (UPLOADED VOUCHER)
 ════════════════════════════════════════
@@ -1100,7 +1210,8 @@ IMAGE PARSING MODE (UPLOADED VOUCHER)
 ▸ Output EXACTLY one [ACTION] block for each row using add_voucher_row.
 ▸ Do NOT output any commentary, greetings, or summaries — ONLY the ACTION blocks.
 ──────────────────────────────────────── 
-''' : '';
+'''
+            : '';
 
     return '''
 You are a professional auditing assistant embedded in Crusam, a business management app used by Bharat Boridkar.

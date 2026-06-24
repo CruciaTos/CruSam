@@ -43,7 +43,9 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
+import '../../../data/models/employee_model.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../master_data/notifiers/employee_notifier.dart';
 import '../../salary/notifier/salary_data_notifier.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
@@ -1316,6 +1318,17 @@ class _RowsTableState extends State<_RowsTable> {
     };
   }
 
+  /// Returns employees filtered to the currently selected department.
+  /// If no dept is set, returns the full list (no accidental hiding).
+  List<EmployeeModel> _deptFilteredEmployees() {
+    final dept = notifier.current.deptCode.trim();
+    final all  = EmployeeNotifier.instance.employees;
+    if (dept.isEmpty) return all;
+    return all
+        .where((e) => e.code.trim() == dept)
+        .toList(growable: false);
+  }
+
   TableRow _headerRow(Map<int, TableColumnWidth> _) => TableRow(
         decoration: const BoxDecoration(
           color : AppColors.slate50,
@@ -1352,7 +1365,7 @@ class _RowsTableState extends State<_RowsTable> {
       return voucher_row_widget.buildVoucherRow(
         index            : i,
         row              : row,
-        employees        : notifier.employees,
+        employees        : _deptFilteredEmployees(),
         employeeFocusNode: _employeeFocusNodes[row.id],
         amountFocusNode  : _amountFocusNodes[row.id],
         fromDateFocusNode: _fromDateFocusNodes[row.id],
