@@ -3,13 +3,14 @@
 // Compose-and-send dialog for emailing a saved invoice. Opened from
 // InvoicePreviewDialog's "Send Email" button.
 //
-// Flow: validate → log a 'pending' email_log row → build tax-invoice-only
-// PDF bytes (no internal voucher page, no disk write) → send via Gmail →
+// Flow: validate → log a 'pending' email_log row → build the full invoice
+// bundle (tax invoice + voucher pages, no disk write) → send via Gmail →
 // mark the log row sent/failed. The pending row is inserted *before* the
 // PDF/send work so a crash mid-send still leaves a trace instead of
 // silently losing the attempt.
 
 import 'package:flutter/material.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/sync/google_auth_service.dart';
@@ -21,25 +22,25 @@ import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
 import '../../../data/models/voucher_model.dart';
-import '../services/pdf_export_service.dart';
+import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
 
 class SendInvoiceDialog extends StatefulWidget {
   final VoucherModel       voucher;
   final CompanyConfigModel config;
-  final EdgeInsets         taxInvoiceMargins;
+  final pw.EdgeInsets?     taxInvoiceMargins;
 
   const SendInvoiceDialog({
     super.key,
     required this.voucher,
     required this.config,
-    required this.taxInvoiceMargins,
+    this.taxInvoiceMargins,
   });
 
   static Future<void> show(
     BuildContext context, {
     required VoucherModel       voucher,
     required CompanyConfigModel config,
-    required EdgeInsets         taxInvoiceMargins,
+    pw.EdgeInsets?              taxInvoiceMargins,
   }) =>
       showDialog(
         context: context,
@@ -83,7 +84,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
           'Please find attached the tax invoice'
           '${v.billNo.isNotEmpty ? " (Bill No. ${v.billNo})" : ""} '
           'for an amount of Rs. ${v.finalTotal.toStringAsFixed(2)}.\n\n'
-          'Regards,\nBharat Boridkar',
+          'Regards,\n${widget.config.companyName}',
     );
 
     _checkPriorSends();
@@ -127,7 +128,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
 
     if (!GoogleAuthService.instance.isSignedIn) {
       setState(() => _error =
-          'Not connected to Gmail — connect an account in Settings first.');
+          'Not connected to Gmail — connect an account in Profile first.');
       return;
     }
 
@@ -155,17 +156,15 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         sentBy: GoogleAuthService.instance.userEmail ?? '',
       ));
 
-      // 2. Build the client-facing PDF — tax invoice only, in memory.
-      //    NOTE: always uses the screenshot-based PdfExportService path,
-      //    which is also today's default ('useWidgetPdfForInvoiceVoucher'
-      //    is false out of the box). If that toggle ever flips to true by
-      //    default, WidgetPdfExportService needs an equivalent
-      //    tax-invoice-only bytes-only method before this should switch.
-      final pdfBytes = await PdfExportService.buildTaxInvoiceBytes(
-        context: context,
+      // 2. Build the client-facing PDF — full bundle (tax invoice + voucher
+      //    pages), same as "Save PDF" produces to disk. Widget-based
+      //    generator (vector pw.Widget tree), not the screenshot-based one —
+      //    used here regardless of the 'useWidgetPdfForInvoiceVoucher'
+      //    toggle, which only controls the separate "Save PDF" button.
+      final pdfBytes = await WidgetPdfExportService.buildInvoiceBundleBytes(
         voucher: widget.voucher,
         config: widget.config,
-        taxInvoiceMargins: widget.taxInvoiceMargins,
+        taxMargins: widget.taxInvoiceMargins,
       );
 
       // 3. Send.
@@ -178,7 +177,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         subject: _subjectCtrl.text.trim(),
         bodyText: _bodyCtrl.text,
         pdfBytes: pdfBytes,
-        attachmentFilename: 'tax_invoice_$slug.pdf',
+        attachmentFilename: 'tax_invoice_voucher_$slug.pdf',
       );
 
       // 4. Mark sent.
@@ -236,7 +235,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
               const SizedBox(height: AppSpacing.sm),
 
               if (!connected) const _Notice(
-                text: 'No Gmail account connected — go to Settings to '
+                text: 'No Gmail account connected — go to Profile to '
                     'connect one before sending.',
               ),
 

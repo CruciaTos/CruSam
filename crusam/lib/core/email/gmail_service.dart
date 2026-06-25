@@ -20,7 +20,7 @@ import '../sync/google_auth_service.dart';
 class GmailNotSignedInException implements Exception {
   @override
   String toString() =>
-      'Not signed in to Gmail. Connect a Gmail account in Settings first.';
+      'Not signed in to Gmail. Connect a Gmail account in Profile first.';
 }
 
 class GmailSendException implements Exception {
@@ -97,10 +97,10 @@ class GmailService {
   String _friendlyError(Object e) {
     final msg = e.toString();
     if (msg.contains('401') || msg.contains('invalid_grant')) {
-      return 'Your Gmail connection expired — reconnect it in Settings.';
+      return 'Your Gmail connection expired — reconnect it in Profile.';
     }
     if (msg.contains('insufficientPermissions') || msg.contains('403')) {
-      return 'Gmail denied this request — reconnect your account in Settings '
+      return 'Gmail denied this request — reconnect your account in Profile '
           'to refresh permissions.';
     }
     if (msg.contains('SocketException') || msg.contains('Failed host lookup')) {

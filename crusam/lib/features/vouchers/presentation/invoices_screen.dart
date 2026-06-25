@@ -77,14 +77,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   // ── Quick-send from the list — no need to open the full preview ──────────
   Future<void> _quickSendEmail(VoucherModel v) async {
-    final m = await DatabaseHelper.instance.getMarginSettings();
-    final margins = EdgeInsets.fromLTRB(m.left, m.top, m.right, m.bottom);
-    if (!mounted) return;
     await SendInvoiceDialog.show(
       context,
       voucher: v,
       config: _config,
-      taxInvoiceMargins: margins,
     );
     // Sending updates email_log — refresh so the "Sent ✓" badge appears
     // without the user having to manually reload the screen.

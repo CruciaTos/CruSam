@@ -14,6 +14,7 @@ import '../widgets/avatar_widget.dart';
 import '../widgets/update_card.dart';
 import 'package:crusam/features/profile/widgets/backup_restore_card.dart';
 import 'package:crusam/features/profile/widgets/export_paths_card.dart';
+import 'package:crusam/features/profile/widgets/gmail_account_card.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Profile screen – PC‑local only (no cloud login)
@@ -161,6 +162,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _PdfMethodCard(),
                         SizedBox(height: 20),
                         BackupRestoreCard(),
+                        SizedBox(height: 20),
+                        GmailAccountCard(),
                         SizedBox(height: 20),
                         UpdateCard(),
                       ],

@@ -1,5 +1,6 @@
-// lib/features/pdf/services/widget_pdf_export_service.dart
+// lib/features/pdf/service/widget_pdf_export_service.dart
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -201,6 +202,28 @@ class WidgetPdfExportService {
     final resolvedTax     = taxMargins     ?? await _loadSavedTaxMargins();
     final resolvedVoucher = voucherMargins ?? await _loadSavedVoucherMargins();
 
+    final doc = _buildInvoiceDoc(
+      voucher: voucher,
+      config: config,
+      resolvedTax: resolvedTax,
+      resolvedVoucher: resolvedVoucher,
+    );
+
+    await _saveFile(doc, voucher.billNo, 'tax_invoice_voucher',
+        pathType: ExportPathTarget.taxInvoice);
+  }
+
+  // ── Shared doc builder: tax invoice page + voucher page(s) ────────────────
+  // Same pw.Document exportTaxInvoiceAndVoucher saves to disk and
+  // buildInvoiceBundleBytes below returns as bytes — one place building the
+  // actual page tree so the two callers can't drift out of sync.
+
+  static pw.Document _buildInvoiceDoc({
+    required VoucherModel       voucher,
+    required CompanyConfigModel config,
+    required pw.EdgeInsets      resolvedTax,
+    required pw.EdgeInsets      resolvedVoucher,
+  }) {
     final doc = _newDoc();
 
     doc.addPage(pw.Page(
@@ -236,8 +259,35 @@ class WidgetPdfExportService {
       }
     }
 
-    await _saveFile(doc, voucher.billNo, 'tax_invoice_voucher',
-        pathType: ExportPathTarget.taxInvoice);
+    return doc;
+  }
+
+  // ── Full tax-invoice + voucher bytes, for email sending ───────────────────
+  // The complete bundle exportTaxInvoiceAndVoucher writes to disk — tax
+  // invoice page + voucher page(s), same pagination (20 rows/page) — just
+  // returned as bytes instead of saved to a file. Per explicit instruction,
+  // email sends this full bundle, not a tax-invoice-only page.
+
+  static Future<Uint8List> buildInvoiceBundleBytes({
+    required VoucherModel       voucher,
+    required CompanyConfigModel config,
+    pw.EdgeInsets?              taxMargins,
+    pw.EdgeInsets?              voucherMargins,
+  }) async {
+    await _init();
+    final resolvedTax     = taxMargins     ?? await _loadSavedTaxMargins();
+    final resolvedVoucher = voucherMargins ?? await _loadSavedVoucherMargins();
+
+    final doc = _buildInvoiceDoc(
+      voucher: voucher,
+      config: config,
+      resolvedTax: resolvedTax,
+      resolvedVoucher: resolvedVoucher,
+    );
+
+    final bytes = await doc.save();
+    if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
+    return bytes;
   }
 
   static Future<pw.EdgeInsets> _loadSavedTaxMargins() async {

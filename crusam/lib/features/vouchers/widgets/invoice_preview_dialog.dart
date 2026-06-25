@@ -195,14 +195,15 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   // ── Send Email ───────────────────────────────────────────────────────────
   // Opens the compose dialog — the actual send happens there, not here.
   // Only ever called for PreviewType.invoice on a saved voucher (see the
-  // onSendEmail wiring in build() below).
+  // onSendEmail wiring in build() below). No margins passed — the dialog
+  // builds the PDF via WidgetPdfExportService, which loads the saved tax
+  // invoice margins itself when none are given.
   void _sendEmail() {
     final voucher = widget.notifier.enriched;
     SendInvoiceDialog.show(
       context,
       voucher: voucher,
       config: widget.config,
-      taxInvoiceMargins: _marginsFrom(_marginNotifier1),
     );
   }
 
