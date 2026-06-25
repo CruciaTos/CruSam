@@ -12,6 +12,7 @@ import '../models/bank_column_widths_model.dart';
 import '../seeds/employee_seed_data.dart';
 import "package:crusam/core/sync/drive_service.dart";
 import 'package:path/path.dart' as p;
+import 'migrations/email_log_migration.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -49,6 +50,7 @@ class DatabaseHelper {
     await _ensureColumn(db, 'vouchers', 'client_name', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_address', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'client_gstin', 'TEXT');
+    await _ensureColumn(db, 'vouchers', 'client_email', 'TEXT');
     await _ensureColumn(db, 'vouchers', 'cloud_id', 'TEXT');
     await _ensureUniqueIndex(db, 'idx_vouchers_cloud_id', 'vouchers', 'cloud_id');
     await _ensureColumn(db, 'vouchers', 'created_by', 'TEXT');
@@ -361,6 +363,10 @@ class DatabaseHelper {
       status                TEXT    NOT NULL DEFAULT 'pending',
       created_at            TEXT    NOT NULL DEFAULT (datetime('now'))
     )''');
+
+    // ── Gmail sending: one log table covers every document type as each
+    //    gets wired up (invoices now, salary slips/disbursements later).
+    await EmailLogMigration.migrate(db);
   }
 
   Future<void> _seedCompanyConfig(Database db) async {

@@ -11,6 +11,9 @@ import '../../../data/models/voucher_row_model.dart';
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../widgets/invoice_preview_dialog.dart';
+import '../widgets/send_invoice_dialog.dart';
+import '../../../data/db/email_log_repository.dart';
+import '../../../data/models/email_log_model.dart';
 import 'package:go_router/go_router.dart';
 
 class InvoicesScreen extends StatefulWidget {
@@ -21,6 +24,7 @@ class InvoicesScreen extends StatefulWidget {
 
 class _InvoicesScreenState extends State<InvoicesScreen> {
   List<VoucherModel> _vouchers = [];
+  Map<int, EmailLogModel> _sentLogs = {};
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _loading = true;
   bool _exporting = false;
@@ -60,7 +64,31 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       final rowMaps = await DatabaseHelper.instance.getRowsByVoucherId(v['id'] as int);
       loaded.add(VoucherModel.fromDbMap(v, rowMaps.map(VoucherRowModel.fromDbMap).toList()));
     }
-    if (mounted) setState(() { _vouchers = loaded; _loading = false; });
+    final sentLogs =
+        await DatabaseHelper.instance.getLatestSentEmailLogsByType('invoice');
+    if (mounted) {
+      setState(() {
+        _vouchers = loaded;
+        _sentLogs = sentLogs;
+        _loading = false;
+      });
+    }
+  }
+
+  // ── Quick-send from the list — no need to open the full preview ──────────
+  Future<void> _quickSendEmail(VoucherModel v) async {
+    final m = await DatabaseHelper.instance.getMarginSettings();
+    final margins = EdgeInsets.fromLTRB(m.left, m.top, m.right, m.bottom);
+    if (!mounted) return;
+    await SendInvoiceDialog.show(
+      context,
+      voucher: v,
+      config: _config,
+      taxInvoiceMargins: margins,
+    );
+    // Sending updates email_log — refresh so the "Sent ✓" badge appears
+    // without the user having to manually reload the screen.
+    await _load();
   }
 
   Future<void> _deleteVoucher(VoucherModel v) async {
@@ -379,6 +407,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       final v = visible[index];
                       return _InvoiceCard(
                         voucher: v,
+                        sentLog: v.id != null ? _sentLogs[v.id] : null,
                         onEdit: () => _editVoucher(context, v),
                         onPreview: () {
                           final previewNotifier = VoucherNotifier()..current = v;
@@ -389,6 +418,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                             PreviewType.invoice,
                           );
                         },
+                        onSendEmail: v.status == VoucherStatus.saved
+                            ? () => _quickSendEmail(v)
+                            : null,
                         onDelete: () => _deleteVoucher(v),
                       );
                     },
@@ -405,14 +437,18 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 // ── Invoice Card Widget ──────────────────────────────────────────────────────
 class _InvoiceCard extends StatelessWidget {
   final VoucherModel voucher;
+  final EmailLogModel? sentLog;
   final VoidCallback onEdit;
   final VoidCallback onPreview;
+  final VoidCallback? onSendEmail;
   final VoidCallback onDelete;
 
   const _InvoiceCard({
     required this.voucher,
+    this.sentLog,
     required this.onEdit,
     required this.onPreview,
+    this.onSendEmail,
     required this.onDelete,
   });
 
@@ -515,6 +551,25 @@ class _InvoiceCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
+            if (sentLog != null) ...[
+              Row(
+                children: [
+                  Icon(Icons.mark_email_read_outlined,
+                      size: 14, color: AppColors.emerald700),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Sent to ${sentLog!.recipientTo}'
+                      '${sentLog!.sentAt != null ? " on ${_fmtSentDate(sentLog!.sentAt!)}" : ""}',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.emerald700),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+
             // Action buttons
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -532,6 +587,15 @@ class _InvoiceCard extends StatelessWidget {
                   color: AppColors.indigo600,
                   onPressed: onPreview,
                 ),
+                if (onSendEmail != null) ...[
+                  const SizedBox(width: 8),
+                  _ActionButton(
+                    icon: Icons.send_outlined,
+                    label: sentLog != null ? 'Resend' : 'Send',
+                    color: AppColors.indigo600,
+                    onPressed: onSendEmail!,
+                  ),
+                ],
                 const SizedBox(width: 8),
                 _ActionButton(
                   icon: Icons.delete_outline,
@@ -545,6 +609,15 @@ class _InvoiceCard extends StatelessWidget {
         ),
       ),
     );
+  }
+  static String _fmtSentDate(String iso) {
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso.split('T').first;
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 }
 

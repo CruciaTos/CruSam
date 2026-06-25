@@ -21,6 +21,7 @@ class VoucherModel {
   final String          clientName;
   final String          clientAddress;
   final String          clientGstin;
+  final String          clientEmail;
   final String          cloudId;
   final String          createdBy;
   final String          updatedBy;
@@ -48,6 +49,7 @@ class VoucherModel {
     this.clientName      = '',
     this.clientAddress   = '',
     this.clientGstin     = '',
+    this.clientEmail     = '',
     this.cloudId         = '',
     this.createdBy       = '',
     this.updatedBy       = '',
@@ -62,7 +64,7 @@ class VoucherModel {
     List<VoucherRowModel>? rows, double? baseTotal, double? cgst, double? sgst,
     double? totalTax, double? roundOff, double? finalTotal, VoucherStatus? status,
     String? billNo, String? poNo, String? itemDescription,
-    String? clientName, String? clientAddress, String? clientGstin,
+    String? clientName, String? clientAddress, String? clientGstin, String? clientEmail,
     String? cloudId, String? createdBy, String? updatedBy,
     String? createdAt, String? updatedAt, bool? isDeleted, String? deletedAt,
   }) => VoucherModel(
@@ -74,7 +76,7 @@ class VoucherModel {
     billNo: billNo ?? this.billNo, poNo: poNo ?? this.poNo,
     itemDescription: itemDescription ?? this.itemDescription,
     clientName: clientName ?? this.clientName, clientAddress: clientAddress ?? this.clientAddress,
-    clientGstin: clientGstin ?? this.clientGstin,
+    clientGstin: clientGstin ?? this.clientGstin, clientEmail: clientEmail ?? this.clientEmail,
     cloudId: cloudId ?? this.cloudId, createdBy: createdBy ?? this.createdBy,
     updatedBy: updatedBy ?? this.updatedBy, createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt, isDeleted: isDeleted ?? this.isDeleted,
@@ -92,6 +94,7 @@ class VoucherModel {
   'client_name':      clientName,      // ← add
   'client_address':   clientAddress,   // ← add
   'client_gstin':     clientGstin,     // ← add
+  'client_email':     clientEmail,
   'base_total':       baseTotal,
   'cgst':             cgst,
   'sgst':             sgst,
@@ -150,6 +153,7 @@ class VoucherModel {
   clientName:      (m['client_name']      as String?) ?? '',
   clientAddress:   (m['client_address']   as String?) ?? '',
   clientGstin:     (m['client_gstin']     as String?) ?? '',
+  clientEmail:     (m['client_email']     as String?) ?? '',
   cloudId:         (m['cloud_id']         as String?) ?? '',
   createdBy:       (m['created_by']       as String?) ?? '',
   updatedBy:       (m['updated_by']       as String?) ?? '',

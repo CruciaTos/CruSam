@@ -110,6 +110,31 @@ class PdfExportService {
     );
   }
 
+  // ── Tax-invoice-only bytes, for email sending ─────────────────────────────
+  // Deliberately different from exportInvoiceBundle above in two ways:
+  //
+  // 1. Only the client-facing tax invoice pages — NOT VoucherPdfPreview.
+  //    The internal voucher pages carry banking/disbursement detail (debit/
+  //    credit account, IFSC, employee names) that must never be auto-attached
+  //    to an email going to an external client.
+  //
+  // 2. Returns bytes only, no disk write. exportInvoiceBundle's _uniquePath
+  //    would otherwise create a new numbered file on every single send.
+
+  static Future<Uint8List> buildTaxInvoiceBytes({
+    required BuildContext        context,
+    required VoucherModel        voucher,
+    required CompanyConfigModel  config,
+    required EdgeInsets          taxInvoiceMargins,
+  }) async {
+    await _precacheInvoiceAssets(context);
+
+    final pages = TaxInvoicePreview.buildPdfPages(
+      voucher: voucher, config: config, margins: taxInvoiceMargins);
+
+    return _renderPagesToBytes(context, pages);
+  }
+
   // ── Bank disbursement export ──────────────────────────────────────────────
 
   static Future<void> exportBankDisbursement({
@@ -130,15 +155,16 @@ class PdfExportService {
     );
   }
 
-  // ── Core: capture pages → PDF → save ─────────────────────────────────────
+  // ── Core: capture pages → PDF bytes, no disk write ───────────────────────
+  // Shared by every export flow below AND by anything that just needs bytes
+  // in memory — e.g. email sending, which must never trigger a disk write
+  // (that's what _uniquePath is for, and it would create a new numbered
+  // file on every single send).
 
-  static Future<void> _exportPages({
-    required BuildContext    context,
-    required List<Widget>    pages,
-    required String          billNo,
-    required String          filePrefix,
-    _PdfPathType             pathType = _PdfPathType.general,
-  }) async {
+  static Future<Uint8List> _renderPagesToBytes(
+    BuildContext context,
+    List<Widget> pages,
+  ) async {
     await WidgetsBinding.instance.endOfFrame;
     await _ensurePdfFontsLoaded();
 
@@ -164,10 +190,24 @@ class PdfExportService {
       ));
     }
 
-    // 3. Save to disk — Task 4: no Share popup.
     final bytes = await pdf.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
+    return bytes;
+  }
 
+  // ── Core: capture pages → PDF → save to disk ─────────────────────────────
+
+  static Future<void> _exportPages({
+    required BuildContext    context,
+    required List<Widget>    pages,
+    required String          billNo,
+    required String          filePrefix,
+    _PdfPathType             pathType = _PdfPathType.general,
+  }) async {
+    // 1+2. Capture + build PDF bytes (shared with the bytes-only path below).
+    final bytes = await _renderPagesToBytes(context, pages);
+
+    // 3. Save to disk — Task 4: no Share popup.
     final slug   = _slugify(billNo);
     final dir    = await _resolveOutputDir(pathType);
     final base   = '${dir.path}${Platform.pathSeparator}${filePrefix}_$slug.pdf';

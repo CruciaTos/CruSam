@@ -19,6 +19,8 @@ import 'package:crusam/data/models/voucher_column_widths_model.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../../core/preferences/export_preferences_notifier.dart';
 import '../../../shared/widgets/full_screen_loader.dart'; // <-- added import
+import '../../../data/models/voucher_model.dart' show VoucherStatus;
+import 'send_invoice_dialog.dart';
 
 export 'voucher_pdf_preview.dart'     show VoucherColWidths;
 export 'bank_disbursement_preview.dart' show BankColWidths;
@@ -190,6 +192,20 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
         n.settings.left, n.settings.top, n.settings.right, n.settings.bottom,
       );
 
+  // ── Send Email ───────────────────────────────────────────────────────────
+  // Opens the compose dialog — the actual send happens there, not here.
+  // Only ever called for PreviewType.invoice on a saved voucher (see the
+  // onSendEmail wiring in build() below).
+  void _sendEmail() {
+    final voucher = widget.notifier.enriched;
+    SendInvoiceDialog.show(
+      context,
+      voucher: voucher,
+      config: widget.config,
+      taxInvoiceMargins: _marginsFrom(_marginNotifier1),
+    );
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -211,6 +227,10 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                     onToggleColumns: () => _togglePanel(_ActivePanel.columns),
                     onExportPdf:    _exportPdf,
                     onExportExcel:  _exportExcel,
+                    onSendEmail: widget.type == PreviewType.invoice &&
+                            voucher.status == VoucherStatus.saved
+                        ? _sendEmail
+                        : null,
                     onClose: () => Navigator.pop(context),
                   ),
 
@@ -391,6 +411,7 @@ class _HeaderBar extends StatelessWidget {
   final VoidCallback onToggleColumns;
   final VoidCallback onExportPdf;
   final VoidCallback onExportExcel;
+  final VoidCallback? onSendEmail;
   final VoidCallback onClose;
 
   const _HeaderBar({
@@ -401,6 +422,7 @@ class _HeaderBar extends StatelessWidget {
     required this.onToggleColumns,
     required this.onExportPdf,
     required this.onExportExcel,
+    this.onSendEmail,
     required this.onClose,
   });
 
@@ -457,6 +479,18 @@ class _HeaderBar extends StatelessWidget {
                   side: BorderSide(color: Colors.red.shade400),
                 ),
               ),
+              if (onSendEmail != null) ...[
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: onSendEmail,
+                  icon:  const Icon(Icons.send_outlined, size: 16),
+                  label: const Text('Send Email'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.indigo600,
+                    side: const BorderSide(color: AppColors.indigo400),
+                  ),
+                ),
+              ],
             ],
 
             const SizedBox(width: 8),
