@@ -62,6 +62,7 @@ const _kNav = <_NavItem>[
   _Route('/invoices',         Icons.receipt_outlined,         'Invoices'),
   _Route('/settings',         Icons.settings_outlined,        'Company-Config'),
   _Route('/salary-employees', Icons.badge_outlined,           'Employee Salary'),
+  _Route('/saved-salary',     Icons.history_outlined,         'Saved Salary'),
   _Group(Icons.payments_outlined, 'Salary-Output', [
     _Route('/salary-slips',        Icons.receipt_long_outlined,     'Salary Slips'),
     _Group(Icons.request_quote_outlined, 'Salary Bills', [
@@ -73,9 +74,8 @@ const _kNav = <_NavItem>[
     ]),
     _Route('/salary-statement',    Icons.summarize_outlined,        'Salary Statement'),
   ]),
-  _Group(Icons.bar_chart_outlined, 'Salary Reports', [
-    _Route('/salary-analytics', Icons.insights_outlined, 'Salary Analytics'),
-  ]),
+  // ── Salary Analytics – now a direct top‑level route (the old group is gone) ──
+  _Route('/salary-analytics', Icons.insights_outlined, 'Salary Analytics'),
 ];
 
 String? _findActiveStatic(List<_NavItem> items, String loc) {

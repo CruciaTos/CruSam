@@ -159,6 +159,60 @@ class SalaryPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // PUBLIC: Salary Slips — bytes only, no disk write (for email sending).
+  // Mirrors exportSalarySlips exactly, just returns the encoded PDF instead
+  // of saving it — same reasoning as PdfExportService.buildTaxInvoiceBytes.
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Uint8List> buildSalarySlipsBytes({
+    required CompanyConfigModel  config,
+    required List<EmployeeModel> employees,
+    required String              monthName,
+    required int                 year,
+    required int                 daysInMonth,
+    required bool                isMsw,
+    required bool                isFeb,
+  }) async {
+    await _loadAssets();
+    final n   = SalaryDataNotifier.instance;
+    final doc = _createDocument();
+
+    for (int i = 0; i < employees.length; i += 2) {
+      final emp1  = employees[i];
+      final emp2  = (i + 1 < employees.length) ? employees[i + 1] : null;
+      final calc1 = _calc(emp: emp1, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb);
+      final calc2 = emp2 != null
+          ? _calc(emp: emp2, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb)
+          : null;
+
+      doc.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin:     pw.EdgeInsets.zero,
+        build: (ctx) => pw.Column(children: [
+          pw.Expanded(
+            child: _singleSlip(
+              config: config, emp: emp1, calc: calc1,
+              monthName: monthName, year: year, daysInMonth: daysInMonth,
+            ),
+          ),
+          if (calc2 != null)
+            pw.Expanded(
+              child: _singleSlip(
+                config: config, emp: emp2!, calc: calc2,
+                monthName: monthName, year: year, daysInMonth: daysInMonth,
+              ),
+            )
+          else
+            pw.Spacer(),
+        ]),
+      ));
+    }
+
+    final bytes = await doc.save();
+    if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
+    return bytes;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC: Attachment A
   // ══════════════════════════════════════════════════════════════════════════
   static Future<void> exportAttachmentA({

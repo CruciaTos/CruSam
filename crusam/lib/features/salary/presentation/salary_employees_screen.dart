@@ -9,7 +9,6 @@ import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/salary/notifier/salary_snapshot_notifier.dart';
 import '../widgets/salary_entry_table.dart';
 import '../widgets/shared_salary_widget.dart'; // ✅ corrected import (singular)
-import 'salary_snapshots_screen.dart';
 
 class SalaryEmployeesScreen extends StatefulWidget {
   const SalaryEmployeesScreen({super.key});
@@ -87,10 +86,66 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
     n.setMonthYear(month, year);
   }
 
-  void _openSnapshots() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const SalarySnapshotsScreen()));
+  Future<void> _onSaveCurrentMonth() async {
+    final n = SalaryDataNotifier.instance;
+    final defaultName = _snapshotNotifier.defaultNameFor(n.month, n.year);
+    final name = await _promptForName(
+      title: 'Save Current Month',
+      initialValue: defaultName,
+      confirmLabel: 'Save',
+    );
+    if (name == null) return;
+    final ok = await _snapshotNotifier.saveCurrentMonth(name: name);
+    _showSnack(
+      ok
+          ? 'Saved Salary recorded for ${n.periodLabel}.'
+          : 'Save failed: ${_snapshotNotifier.error}',
+      isError: !ok,
+    );
+  }
+
+  Future<String?> _promptForName({
+    required String title,
+    required String initialValue,
+    required String confirmLabel,
+  }) {
+    final ctrl = TextEditingController(text: initialValue);
+    return showDialog<String>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text(title),
+            content: TextField(
+              controller: ctrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                isDense: true,
+                labelText: 'Saved Salary name',
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                child: Text(confirmLabel),
+              ),
+            ],
+          ),
+    );
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+      ),
+    );
   }
 
   List<EmployeeModel> get _displayEmployees => _ctrl.filteredEmployees;
@@ -136,7 +191,8 @@ class _SalaryEmployeesScreenState extends State<SalaryEmployeesScreen> {
               selectedCode: _ctrl.selectedCompanyCode,
               onMonthChanged: _onMonthChange,
               onCodeChanged: (c) => _ctrl.setCompanyCode(c),
-              onSnapshotsTap: _openSnapshots,
+              onSaveTap: _onSaveCurrentMonth,
+              isSaving: _snapshotNotifier.isSaving,
             ),
             const SizedBox(height: AppSpacing.lg),
             if (_ctrl.isLoading)
@@ -273,7 +329,8 @@ class _Toolbar extends StatelessWidget {
   final String selectedCode;
   final ValueChanged<int> onMonthChanged;
   final ValueChanged<String> onCodeChanged;
-  final VoidCallback onSnapshotsTap;
+  final VoidCallback onSaveTap;
+  final bool isSaving;
 
   const _Toolbar({
     required this.title,
@@ -285,7 +342,8 @@ class _Toolbar extends StatelessWidget {
     required this.selectedCode,
     required this.onMonthChanged,
     required this.onCodeChanged,
-    required this.onSnapshotsTap,
+    required this.onSaveTap,
+    this.isSaving = false,
   });
 
   @override
@@ -297,19 +355,26 @@ class _Toolbar extends StatelessWidget {
           children: [
             Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
             const Spacer(),
-            OutlinedButton.icon(
-              onPressed: onSnapshotsTap,
-              icon: const Icon(
-                Icons.save_outlined,
-                size: 16,
-                color: AppColors.slate400,
-              ),
+            // ── REPLACED: Elevated button instead of OutlinedButton ──────────
+            ElevatedButton.icon(
+              onPressed: isSaving ? null : onSaveTap,
+              icon: isSaving
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save_outlined, size: 16),
               label: Text(
-                'Saved Salary',
-                style: AppTextStyles.input.copyWith(color: AppColors.slate400),
+                isSaving ? 'Saving…' : 'Save Current Month',
+                style: AppTextStyles.input.copyWith(color: Colors.white),
               ),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.slate400),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.indigo600,
+                foregroundColor: Colors.white,
               ),
             ),
             const SizedBox(width: 12),

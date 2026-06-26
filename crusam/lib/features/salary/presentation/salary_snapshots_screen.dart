@@ -37,24 +37,6 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     );
   }
 
-  Future<void> _onSaveCurrentMonth() async {
-    final n = SalaryDataNotifier.instance;
-    final defaultName = _notifier.defaultNameFor(n.month, n.year);
-    final name = await _promptForName(
-      title: 'Save Current Month',
-      initialValue: defaultName,
-      confirmLabel: 'Save',
-    );
-    if (name == null) return;
-    final ok = await _notifier.saveCurrentMonth(name: name);
-    _showSnack(
-      ok
-          ? 'Saved Salary recorded for ${n.periodLabel}.'
-          : 'Save failed: ${_notifier.error}',
-      isError: !ok,
-    );
-  }
-
   Future<void> _onLoad(SavedSalarySummary summary) async {
     final snapshot = summary.snapshot;
     final confirmed = await showDialog<bool>(
@@ -170,11 +152,6 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: const Text('Saved Salary'),
-        backgroundColor: AppColors.slate900,
-        foregroundColor: Colors.white,
-      ),
       body: ListenableBuilder(
         listenable: _notifier,
         builder: (context, _) {
@@ -200,22 +177,6 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                               ? null
                               : () => _notifier.loadSnapshotList(),
                     ),
-                    const SizedBox(width: 4),
-                    _notifier.isSaving
-                        ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : ElevatedButton.icon(
-                          onPressed: _onSaveCurrentMonth,
-                          icon: const Icon(Icons.save_outlined, size: 16),
-                          label: const Text('Save Current Month'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.indigo600,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -238,7 +199,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                       _notifier.isLoading
                           ? const Center(child: CircularProgressIndicator())
                           : summaries.isEmpty
-                          ? _EmptyState(onSave: _onSaveCurrentMonth)
+                          ? const _EmptyState()
                           : ListView.separated(
                             itemCount: summaries.length,
                             separatorBuilder:
@@ -422,8 +383,7 @@ class _SavedSalaryCard extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final VoidCallback onSave;
-  const _EmptyState({required this.onSave});
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) => Center(
@@ -437,12 +397,6 @@ class _EmptyState extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Text('No saved salary periods yet.', style: AppTextStyles.small),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: onSave,
-          icon: const Icon(Icons.save_outlined, size: 16),
-          label: const Text('Save Current Month'),
-        ),
       ],
     ),
   );

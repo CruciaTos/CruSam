@@ -47,6 +47,33 @@ class GmailService {
     required String bodyText,
     required Uint8List pdfBytes,
     required String attachmentFilename,
+  }) => sendAttachmentEmail(
+        to: to,
+        cc: cc,
+        subject: subject,
+        bodyText: bodyText,
+        attachmentBytes: pdfBytes,
+        attachmentFilename: attachmentFilename,
+        mimeType: 'application/pdf',
+      );
+
+  /// Sends [attachmentBytes] as an email attachment of any [mimeType] —
+  /// the generic form behind [sendPdfEmail]. Added for non-PDF documents
+  /// (e.g. the .xlsx disbursement sheet) that still go through the same
+  /// Gmail-send pipeline.
+  ///
+  /// Returns the Gmail message id on success. Throws
+  /// [GmailNotSignedInException] if no Gmail account is connected, or
+  /// [GmailSendException] for anything the Gmail API itself rejects
+  /// (bad recipient, quota, etc).
+  Future<String> sendAttachmentEmail({
+    required String to,
+    String cc = '',
+    required String subject,
+    required String bodyText,
+    required Uint8List attachmentBytes,
+    required String attachmentFilename,
+    required String mimeType,
   }) async {
     final api = await _api();
     if (api == null) throw GmailNotSignedInException();
@@ -59,7 +86,8 @@ class GmailService {
       subject: subject,
       bodyText: bodyText,
       attachmentFilename: attachmentFilename,
-      attachmentBytes: pdfBytes,
+      attachmentBytes: attachmentBytes,
+      contentType: mimeType,
     );
 
     // One retry on a transient failure — Gmail sending at this volume never
@@ -76,7 +104,7 @@ class GmailService {
         return sent.id!;
       } catch (e) {
         final isLastAttempt = attempt == 2;
-        debugPrint('GmailService.sendPdfEmail attempt $attempt failed: $e');
+        debugPrint('GmailService.sendAttachmentEmail attempt $attempt failed: $e');
         if (isLastAttempt) {
           throw GmailSendException(_friendlyError(e));
         }
@@ -119,6 +147,7 @@ class GmailService {
     required String bodyText,
     required String attachmentFilename,
     required Uint8List attachmentBytes,
+    required String contentType,
   }) {
     final boundary = 'crusam_${DateTime.now().microsecondsSinceEpoch}';
     final b = StringBuffer()
@@ -138,7 +167,7 @@ class GmailService {
       ..writeln(bodyText)
       ..writeln()
       ..writeln('--$boundary')
-      ..writeln('Content-Type: application/pdf; name="$attachmentFilename"')
+      ..writeln('Content-Type: $contentType; name="$attachmentFilename"')
       ..writeln('Content-Disposition: attachment; filename="$attachmentFilename"')
       ..writeln('Content-Transfer-Encoding: base64')
       ..writeln()

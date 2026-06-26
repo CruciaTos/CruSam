@@ -135,6 +135,24 @@ class PdfExportService {
     return _renderPagesToBytes(context, pages);
   }
 
+  // ── Generic widget-pages bytes builder, no disk write ─────────────────────
+  // Same shape as buildTaxInvoiceBytes above but for any caller-supplied
+  // pages list — e.g. the salary module's "email this bill" flow, which
+  // reuses SalaryBillPreview / AttachmentAPreview / AttachmentBPreview /
+  // SalaryStatementPreview pages exactly as the on-disk export does, just
+  // without writing a numbered file to disk per send.
+
+  static Future<Uint8List> buildWidgetsBytes({
+    required BuildContext context,
+    required List<Widget> pages,
+    List<String>?         assetPathsToPrecache,
+  }) async {
+    if (assetPathsToPrecache != null) {
+      await _precacheAssets(context, assetPathsToPrecache);
+    }
+    return _renderPagesToBytes(context, pages);
+  }
+
   // ── Bank disbursement export ──────────────────────────────────────────────
 
   static Future<void> exportBankDisbursement({

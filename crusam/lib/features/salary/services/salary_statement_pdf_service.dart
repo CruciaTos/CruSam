@@ -154,6 +154,69 @@ class SalaryStatementPdfService {
     required int                 daysInMonth,
     Map<int, double>             columnWidths = const {},
   }) async {
+    final doc = await _buildDocument(
+      config: config,
+      employees: employees,
+      monthName: monthName,
+      year: year,
+      isMsw: isMsw,
+      isFeb: isFeb,
+      daysMap: daysMap,
+      daysInMonth: daysInMonth,
+      columnWidths: columnWidths,
+    );
+
+    await _saveAndShare(
+      doc,
+      'salary_statement_${monthName.toLowerCase()}_$year',
+      'Salary Statement',
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PUBLIC: Salary Statement — bytes only, no disk write (for email sending).
+  // Mirrors exportSalaryStatement exactly, just returns the encoded PDF
+  // instead of saving it — same reasoning as PdfExportService.buildTaxInvoiceBytes.
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Uint8List> buildSalaryStatementBytes({
+    required CompanyConfigModel  config,
+    required List<EmployeeModel> employees,
+    required String              monthName,
+    required int                 year,
+    required bool                isMsw,
+    required bool                isFeb,
+    required Map<int, int>       daysMap,
+    required int                 daysInMonth,
+    Map<int, double>             columnWidths = const {},
+  }) async {
+    final doc = await _buildDocument(
+      config: config,
+      employees: employees,
+      monthName: monthName,
+      year: year,
+      isMsw: isMsw,
+      isFeb: isFeb,
+      daysMap: daysMap,
+      daysInMonth: daysInMonth,
+      columnWidths: columnWidths,
+    );
+    final bytes = await doc.save();
+    if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
+    return bytes;
+  }
+
+  // ── Shared document builder behind both public methods above ─────────────
+  static Future<pw.Document> _buildDocument({
+    required CompanyConfigModel  config,
+    required List<EmployeeModel> employees,
+    required String              monthName,
+    required int                 year,
+    required bool                isMsw,
+    required bool                isFeb,
+    required Map<int, int>       daysMap,
+    required int                 daysInMonth,
+    Map<int, double>             columnWidths = const {},
+  }) async {
     await _init();
 
     final sorted = List<EmployeeModel>.from(employees)
@@ -224,11 +287,7 @@ class SalaryStatementPdfService {
       ));
     }
 
-    await _saveAndShare(
-      doc,
-      'salary_statement_${monthName.toLowerCase()}_$year',
-      'Salary Statement',
-    );
+    return doc;
   }
 
   // ══════════════════════════════════════════════════════════════════════════

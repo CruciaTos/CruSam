@@ -16,6 +16,7 @@ import '../../features/salary/presentation/salary_preview_screen.dart';
 import '../../features/salary/presentation/salary_attachment_a_screen.dart';
 import '../../features/salary/presentation/salary_attachment_b_screen.dart';
 import '../../features/salary/presentation/salary_analytics_screen.dart';
+import '../../features/salary/presentation/salary_snapshots_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/google_drive_debug_screen.dart';
 import '../../shared/widgets/coming_soon_screen.dart';
@@ -83,6 +84,11 @@ class AppRouter {
             path: '/salary-employees',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const SalaryEmployeesScreen()),
+          ),
+          GoRoute(
+            path: '/saved-salary',
+            pageBuilder: (context, state) =>
+                _buildPageTransition(state, const SalarySnapshotsScreen()),
           ),
           GoRoute(
             path: '/salary-slips',
