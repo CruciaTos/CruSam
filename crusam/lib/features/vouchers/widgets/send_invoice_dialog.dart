@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/email/gmail_service.dart';
+import '../../../core/email/email_suggestions_cache.dart';
 import '../../../core/sync/google_auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -66,6 +67,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
   String?        _error;
   EmailLogModel? _alreadySentLog;
   bool           _confirmedResend = false;
+  List<String>   _suggestions = const [];
 
   @override
   void initState() {
@@ -88,6 +90,19 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
     );
 
     _checkPriorSends();
+    _loadSuggestions();
+  }
+
+  // Cached app-wide, defensive against DB errors internally — this can't
+  // throw, but the extra try/catch here is a second, cheap safety net so a
+  // suggestions hiccup can never affect the rest of the dialog either way.
+  Future<void> _loadSuggestions() async {
+    try {
+      final emails = await EmailSuggestionsCache.instance.load();
+      if (mounted) setState(() => _suggestions = emails);
+    } catch (_) {
+      // Suggestions are a convenience, not a requirement — fail silently.
+    }
   }
 
   Future<void> _checkPriorSends() async {
@@ -185,6 +200,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         id: logId,
         gmailMessageId: messageId,
       );
+      EmailSuggestionsCache.instance.noteUsed(to);
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -250,7 +266,26 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
               TextField(
                 controller: _toCtrl,
                 enabled: !_sending,
-                decoration: const InputDecoration(labelText: 'To'),
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'To',
+                  suffixIcon: _suggestions.isEmpty
+                      ? null
+                      : PopupMenuButton<String>(
+                          icon: const Icon(Icons.arrow_drop_down),
+                          tooltip: 'Previously used emails',
+                          enabled: !_sending,
+                          itemBuilder: (context) => _suggestions
+                              .map((e) => PopupMenuItem<String>(
+                                    value: e,
+                                    child: Text(e,
+                                        style: const TextStyle(fontSize: 13)),
+                                  ))
+                              .toList(),
+                          onSelected: (email) =>
+                              setState(() => _toCtrl.text = email),
+                        ),
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
               TextField(

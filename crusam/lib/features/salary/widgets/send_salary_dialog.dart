@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/email/gmail_service.dart';
+import '../../../core/email/email_suggestions_cache.dart';
 import '../../../core/sync/google_auth_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
@@ -73,6 +74,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   String?        _error;
   EmailLogModel? _alreadySentLog;
   bool           _confirmedResend = false;
+  List<String>   _suggestions     = const [];
 
   // ── Resources ─────────────────────────────────────────────────────────────
   CompanyConfigModel _config  = const CompanyConfigModel();
@@ -89,6 +91,20 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
     _subjectCtrl.text = _buildSubject();
     _bodyCtrl.text    = _buildBody();
     _initialise();
+    _loadSuggestions();
+  }
+
+  // Deliberately separate from _initialise() — a suggestions-cache hiccup
+  // should never show as an error on top of (or block) the actual send
+  // form. Cached app-wide and already defensive against DB errors
+  // internally; this try/catch is a second, cheap safety net regardless.
+  Future<void> _loadSuggestions() async {
+    try {
+      final emails = await EmailSuggestionsCache.instance.load();
+      if (mounted) setState(() => _suggestions = emails);
+    } catch (_) {
+      // Suggestions are a convenience, not a requirement — fail silently.
+    }
   }
 
   @override
@@ -269,6 +285,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
         id:             logId,
         gmailMessageId: messageId,
       );
+      EmailSuggestionsCache.instance.noteUsed(to);
 
       if (!mounted) return;
       Navigator.pop(context);
@@ -506,10 +523,26 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
           controller: _toCtrl,
           enabled: !_sending,
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'To',
             hintText: 'recipient@example.com',
             isDense: true,
+            suffixIcon: _suggestions.isEmpty
+                ? null
+                : PopupMenuButton<String>(
+                    icon: const Icon(Icons.arrow_drop_down, size: 20),
+                    tooltip: 'Previously used emails',
+                    enabled: !_sending,
+                    itemBuilder: (context) => _suggestions
+                        .map((e) => PopupMenuItem<String>(
+                              value: e,
+                              child:
+                                  Text(e, style: const TextStyle(fontSize: 13)),
+                            ))
+                        .toList(),
+                    onSelected: (email) =>
+                        setState(() => _toCtrl.text = email),
+                  ),
           ),
         ),
         const SizedBox(height: AppSpacing.sm),

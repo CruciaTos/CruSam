@@ -110,4 +110,37 @@ extension EmailLogRepository on DatabaseHelper {
     }
     return result;
   }
+
+  // ── Every distinct recipient ever successfully emailed, any document
+  //    type, most-recently-used first ─────────────────────────────────────
+  // Powers EmailSuggestionsCache (lib/core/email/email_suggestions_cache.dart)
+  // — one shared "people you've emailed before" list across every send
+  // dialog (invoices, salary documents, ...), not scoped to one entity_type.
+  //
+  // Dedupe happens in Dart rather than via SQL DISTINCT because SQLite
+  // rejects "SELECT DISTINCT col ... ORDER BY id" when id isn't part of
+  // the selected columns — ordering by recency needs id, so we fetch
+  // ordered rows and dedupe by hand instead.
+
+  Future<List<String>> getAllDistinctSentRecipientEmails({
+    int limit = 50,
+  }) async {
+    final db   = await database;
+    final rows = await db.query(
+      'email_log',
+      columns:   ['recipient_to'],
+      where:     "status = 'sent'",
+      orderBy:   'id DESC',
+    );
+    final seen = <String>{};
+    final result = <String>[];
+    for (final row in rows) {
+      final email = ((row['recipient_to'] as String?) ?? '').trim();
+      if (email.isEmpty || seen.contains(email)) continue;
+      seen.add(email);
+      result.add(email);
+      if (result.length >= limit) break;
+    }
+    return result;
+  }
 }

@@ -83,7 +83,7 @@ class _AartiAppState extends State<AartiApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp.router(
-        title: 'Aarti Enterprises',
+        title: 'Crusam Enterprises',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         routerConfig: AppRouter.router,

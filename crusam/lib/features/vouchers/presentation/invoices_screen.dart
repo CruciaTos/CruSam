@@ -28,25 +28,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _loading = true;
   bool _exporting = false;
-  String? _selectedCreator;
-
-  List<String> get _creators {
-    final values = _vouchers
-        .map((v) => v.createdBy.trim().toLowerCase())
-        .where((email) => email.isNotEmpty && email != 'unknown')
-        .toSet()
-        .toList()
-      ..sort();
-    return values;
-  }
-
-  List<VoucherModel> get _visibleVouchers {
-    final selected = _selectedCreator;
-    if (selected == null || selected.isEmpty) return _vouchers;
-    return _vouchers
-        .where((v) => v.createdBy.trim().toLowerCase() == selected)
-        .toList(growable: false);
-  }
 
   @override
   void initState() {
@@ -160,7 +141,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   // ── Export invoice list as CSV ─────────────────────────────────────────────
   Future<void> _exportList() async {
-    final exportRows = _visibleVouchers;
+    final exportRows = _vouchers;
     if (_exporting || exportRows.isEmpty) {
       if (exportRows.isEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -275,8 +256,6 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = _visibleVouchers;
-
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SafeArea(
@@ -318,64 +297,14 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 12),
-
-              // ── Creator filter chips ────────────────────────────────
-              if (!_loading && _vouchers.isNotEmpty) ...[
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      FilterChip(
-                        label: const Text('All'),
-                        selected: _selectedCreator == null,
-                        onSelected: (_) => setState(() => _selectedCreator = null),
-                        backgroundColor: Colors.white,
-                        selectedColor: AppColors.indigo50,
-                        checkmarkColor: AppColors.indigo600,
-                        side: BorderSide(
-                          color: AppColors.indigo600.withValues(alpha: 0.3),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        showCheckmark: false,
-                      ),
-                      const SizedBox(width: 8),
-                      ..._creators.map(
-                        (email) => Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
-                          child: FilterChip(
-                            label: Text(email),
-                            selected: _selectedCreator == email,
-                            onSelected: (selected) {
-                              setState(() => _selectedCreator = selected ? email : null);
-                            },
-                            backgroundColor: Colors.white,
-                            selectedColor: AppColors.indigo50,
-                            checkmarkColor: AppColors.indigo600,
-                            side: BorderSide(
-                              color: AppColors.indigo600.withValues(alpha: 0.3),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            showCheckmark: false,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
+              const SizedBox(height: 16),
 
               // ── Invoice list ────────────────────────────────────────
               if (_loading)
                 const Expanded(
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (visible.isEmpty)
+              else if (_vouchers.isEmpty)
                 Expanded(
                   child: Center(
                     child: Column(
@@ -405,9 +334,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                 Expanded(
                   child: ListView.builder(
                     padding: const EdgeInsets.only(bottom: 8),
-                    itemCount: visible.length,
+                    itemCount: _vouchers.length,
                     itemBuilder: (context, index) {
-                      final v = visible[index];
+                      final v = _vouchers[index];
                       return _InvoiceCard(
                         voucher: v,
                         sentLog: v.id != null ? _sentLogs[v.id] : null,
@@ -512,7 +441,7 @@ class _InvoiceCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Voucher reference and department
+            // Voucher reference, department, and total amount
             Row(
               children: [
                 Expanded(
@@ -531,23 +460,13 @@ class _InvoiceCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      formatCurrency(voucher.finalTotal),
-                      style: AppTextStyles.bodySemi.copyWith(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.indigo600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Created by: ${voucher.createdBy.isNotEmpty ? voucher.createdBy : '—'}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                    ),
-                  ],
+                Text(
+                  formatCurrency(voucher.finalTotal),
+                  style: AppTextStyles.bodySemi.copyWith(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.indigo600,
+                  ),
                 ),
               ],
             ),

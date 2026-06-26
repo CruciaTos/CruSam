@@ -1864,7 +1864,7 @@ class _LandingFooter extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  '© 2025 Aarti Enterprises. CRUSAM Business Management System.',
+                  '© 2025 Crusam Enterprises. CRUSAM Business Management System.',
                   style: GoogleFonts.inter(
                     fontSize: 11,
                     color: const Color(0xFF334155),

@@ -1,4 +1,4 @@
-// lib/core/update/update_service.dart
+// lib/core/updater/update_service.dart
 
 import 'dart:convert';
 import 'dart:io';
@@ -13,11 +13,38 @@ import 'version_constants.dart';
 class UpdateService {
   UpdateService._();
 
-  /// Returns the current app version from the compiled binary at runtime.
-  /// Always accurate even after updater.exe replaces the binary.
+  /// Returns the current installed version.
+  ///
+  /// Priority order:
+  ///   1. `installed_version.txt` written by updater.exe after a successful
+  ///      in-place update.  This is the most reliable source because it's
+  ///      written at the moment the new files land on disk.
+  ///   2. `PackageInfo.fromPlatform()` — reads the PE version resources baked
+  ///      into the running executable at compile time.  Accurate for fresh
+  ///      installs; can be stale if the updater extracted files into a
+  ///      subdirectory and crusam.exe was not actually replaced in-place.
   static Future<String> getCurrentVersion() async {
+    if (Platform.isWindows) {
+      final installed = await _readInstalledVersionFile();
+      if (installed != null) return installed;
+    }
     final info = await PackageInfo.fromPlatform();
     return info.version;
+  }
+
+  /// Reads the version written by updater.exe to `<appDir>/installed_version.txt`.
+  /// Returns null if the file doesn't exist or can't be read.
+  static Future<String?> _readInstalledVersionFile() async {
+    try {
+      final appDir = File(Platform.resolvedExecutable).parent.path;
+      final file =
+          File('$appDir${Platform.pathSeparator}installed_version.txt');
+      if (!file.existsSync()) return null;
+      final version = file.readAsStringSync().trim();
+      return version.isEmpty ? null : version;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Throws on any network / parse error so the notifier's catch block fires.
@@ -112,9 +139,16 @@ class UpdateService {
 
   /// Launches updater.exe and exits the main process.
   ///
+  /// [newVersion] is passed to updater.exe as a 3rd argument so it can write
+  /// `installed_version.txt` after extraction — this is what fixes the
+  /// "version stays at 1.0.0 after update" issue.
+  ///
   /// Returns `null` on success (process calls exit(0) so we never return).
   /// Returns a non-null error string that the UI can display on any failure.
-  static Future<String?> launchUpdaterAndExit(String zipPath) async {
+  static Future<String?> launchUpdaterAndExit(
+    String zipPath,
+    String newVersion,
+  ) async {
     try {
       if (!Platform.isWindows) {
         return 'Auto-update is only supported on Windows.';
@@ -135,7 +169,9 @@ class UpdateService {
 
       await Process.start(
         updaterPath,
-        [zipPath, Platform.resolvedExecutable],
+        // 3rd arg is the new version — updater writes it to
+        // installed_version.txt after a successful extraction.
+        [zipPath, Platform.resolvedExecutable, newVersion],
         workingDirectory: appDir,
         mode: ProcessStartMode.detached,
         runInShell: false,

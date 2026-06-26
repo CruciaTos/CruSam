@@ -980,7 +980,7 @@ class _SidebarHeader extends StatelessWidget {
             if (expanded) ...[
               const SizedBox(width: 10),
               Expanded(
-                child: Text('AARTI ENTERPRISES',
+                child: Text('Crusam ENTERPRISES',
                     style: AppTextStyles.sidebarBrand.copyWith(
                       color: _ShellColors.textPrimary,
                       fontWeight: FontWeight.w700,

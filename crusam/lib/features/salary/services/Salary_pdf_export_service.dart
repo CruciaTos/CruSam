@@ -656,7 +656,7 @@ class SalaryPdfExportService {
         ),
         alignment: pw.Alignment.center,
         child: pw.Text(
-          'Aarti\nEnterprises',
+          'Crusam\nEnterprises',
           textAlign: pw.TextAlign.center,
           style: _style(fontSize: 7.5, color: PdfColors.white, fontWeight: pw.FontWeight.bold),
         ),

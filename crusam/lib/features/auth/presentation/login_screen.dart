@@ -499,7 +499,7 @@ class _LeftPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Aarti Enterprises\nManagement System',
+                  'Crusam Enterprises\nManagement System',
                   style: GoogleFonts.spaceGrotesk(
                     fontSize: 20,
                     fontWeight: FontWeight.w400,
@@ -516,7 +516,7 @@ class _LeftPanel extends StatelessWidget {
 
                 // Footer
                 Text(
-                  '© 2025 Aarti Enterprises. All rights reserved.',
+                  '© 2025 Crusam Enterprises. All rights reserved.',
                   style: GoogleFonts.inter(
                     fontSize: 12,
                     color: const Color(0xFF475569),

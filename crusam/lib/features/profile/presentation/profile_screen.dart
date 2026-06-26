@@ -122,7 +122,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _auth = AuthNotifier.instance;
 
   // Generic local user identity – no real authentication required
-  static const _localUserName = 'Aarti User';
+  static const _localUserName = 'Crusam User';
   static const _localUserEmail = 'local@pc';
   static const _localAuthMethod = 'Local (PC)';
 
@@ -140,36 +140,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 820),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Generic local profile header
-              _LocalHeader(),
+              const _LocalHeader(),
               const SizedBox(height: 24),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: _LocalInfoCard(),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      children: const [
-                        ExportPathsCard(),
-                        SizedBox(height: 20),
-                        _PdfMethodCard(),
-                        SizedBox(height: 20),
-                        BackupRestoreCard(),
-                        SizedBox(height: 20),
-                        GmailAccountCard(),
-                        SizedBox(height: 20),
-                        UpdateCard(),
-                      ],
-                    ),
-                  ),
-                ],
+              // Responsive grid of cards
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Use 2 columns when width > 600, otherwise 1 column
+                  final isWide = constraints.maxWidth > 600;
+                  final cardWidth = isWide
+                      ? (constraints.maxWidth - 16) / 2 // 16 = spacing
+                      : constraints.maxWidth;
+
+                  return Wrap(
+                    spacing: 16,
+                    runSpacing: 16,
+                    children: [
+                      SizedBox(width: cardWidth, child: const _LocalInfoCard()),
+                      SizedBox(width: cardWidth, child: const ExportPathsCard()),
+                      SizedBox(width: cardWidth, child: const _PdfMethodCard()),
+                      SizedBox(width: cardWidth, child: const BackupRestoreCard()),
+                      SizedBox(width: cardWidth, child: const GmailAccountCard()),
+                      SizedBox(width: cardWidth, child: const UpdateCard()),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -182,6 +179,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 // ── Generic local user header ──────────────────────────────────────────────
 
 class _LocalHeader extends StatelessWidget {
+  const _LocalHeader();
+
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(24),
@@ -216,9 +215,9 @@ class _LocalHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'PC Local Account',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       color: AppColors.slate400,
                     ),
@@ -252,6 +251,8 @@ class _LocalHeader extends StatelessWidget {
 // ── Local info card (simple static info) ───────────────────────────────────
 
 class _LocalInfoCard extends StatelessWidget {
+  const _LocalInfoCard();
+
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(24),

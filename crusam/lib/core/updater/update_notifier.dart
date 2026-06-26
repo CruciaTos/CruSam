@@ -1,4 +1,4 @@
-// lib/core/update/update_notifier.dart
+// lib/core/updater/update_notifier.dart
 
 import 'package:flutter/foundation.dart';
 
@@ -57,7 +57,6 @@ class UpdateNotifier extends ChangeNotifier {
     _setState(UpdateState.downloading);
 
     try {
-      // downloadUpdate now throws with a descriptive message on failure.
       final zipPath = await UpdateService.downloadUpdate(
         info.downloadUrl,
         (progress) {
@@ -69,16 +68,18 @@ class UpdateNotifier extends ChangeNotifier {
       // Set launching state BEFORE attempting launch so the UI reflects it.
       _setState(UpdateState.launching);
 
-      // launchUpdaterAndExit returns null on success (exit(0) is called) or
-      // a human-readable error string on failure.
-      final launchError = await UpdateService.launchUpdaterAndExit(zipPath);
+      // Pass info.latestVersion so updater.exe can write installed_version.txt.
+      // That file is what fixes the "still shows 1.0.0 after update" problem.
+      final launchError = await UpdateService.launchUpdaterAndExit(
+        zipPath,
+        info.latestVersion,
+      );
       if (launchError != null) {
         _errorMessage = launchError;
         _setState(UpdateState.error);
       }
       // If launchError == null the process called exit(0); we never reach here.
     } catch (e) {
-      // Catches anything thrown by downloadUpdate or unexpected errors.
       _errorMessage = e.toString().replaceFirst('Exception: ', '');
       _setState(UpdateState.error);
     }
