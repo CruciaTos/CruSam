@@ -66,6 +66,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
   String?        _error;
   EmailLogModel? _alreadySentLog;
   bool           _confirmedResend = false;
+  List<String>   _priorEmails = [];
 
   @override
   void initState() {
@@ -88,6 +89,16 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
     );
 
     _checkPriorSends();
+    _loadPriorEmails();
+  }
+
+  // Powers the "To" field's autocomplete dropdown — every address that's
+  // already been successfully emailed an invoice at least once, so typing
+  // the same client's email repeatedly is a tap instead of a retype.
+  Future<void> _loadPriorEmails() async {
+    final emails = await DatabaseHelper.instance
+        .getDistinctSentRecipientEmails(entityType: 'invoice');
+    if (mounted) setState(() => _priorEmails = emails);
   }
 
   Future<void> _checkPriorSends() async {
@@ -247,10 +258,26 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
               ],
 
               const SizedBox(height: AppSpacing.sm),
-              TextField(
-                controller: _toCtrl,
-                enabled: !_sending,
-                decoration: const InputDecoration(labelText: 'To'),
+              Autocomplete<String>(
+                textEditingController: _toCtrl,
+                optionsBuilder: (TextEditingValue value) {
+                  final q = value.text.trim().toLowerCase();
+                  if (q.isEmpty) return _priorEmails;
+                  return _priorEmails.where((e) => e.toLowerCase().contains(q));
+                },
+                fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) =>
+                    TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  enabled: !_sending,
+                  decoration: InputDecoration(
+                    labelText: 'To',
+                    helperText: _priorEmails.isNotEmpty
+                        ? 'Tap the field to pick a previous recipient'
+                        : null,
+                    helperMaxLines: 1,
+                  ),
+                ),
               ),
               const SizedBox(height: AppSpacing.sm),
               TextField(

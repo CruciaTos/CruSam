@@ -20,7 +20,15 @@ Future<void> main() async {
   // No login required – skip all session checks
   // await AuthNotifier.instance.checkSession();
   await ExportPreferencesNotifier.instance.load();
-  // await GoogleAuthService.instance.restoreSession();
+  // Restores the saved Gmail connection (if any) so the app doesn't ask the
+  // user to reconnect every launch — stays connected until they manually
+  // disconnect in Profile. Not awaited, same as EmployeeNotifier.load() and
+  // UpdateNotifier.checkForUpdate() below: this is a local-first desktop app
+  // and startup shouldn't hang on a network call (OIDC discovery + possible
+  // token refresh) if internet happens to be slow or unavailable. Whenever
+  // it resolves, GoogleAuthService's own ChangeNotifier updates anything
+  // listening (e.g. GmailAccountCard) automatically.
+  GoogleAuthService.instance.restoreSession();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();

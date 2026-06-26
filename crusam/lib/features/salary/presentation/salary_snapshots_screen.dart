@@ -8,6 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_snapshot_notifier.dart';
+import '../widgets/send_salary_document_dialog.dart';
 
 class SalarySnapshotsScreen extends StatefulWidget {
   const SalarySnapshotsScreen({super.key});
@@ -73,6 +74,58 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     } else {
       _showSnack('Load failed: ${_notifier.error}', isError: true);
     }
+  }
+
+  // ── Send ──────────────────────────────────────────────────────────────
+  // SendSalaryDocumentDialog reads the live SalaryDataNotifier/
+  // SalaryStateController singletons (same as the dedicated Salary Bills/
+  // Slips screens do for their own exports), so this period needs to be
+  // the active one before the dialog opens. If it already is, skip
+  // straight to the dialog; otherwise confirm the switch first — same
+  // pattern as "Load", since it's the same underlying side effect.
+  Future<void> _onSend(SavedSalarySummary summary) async {
+    final snapshot = summary.snapshot;
+    final alreadyActive = _notifier.activeSnapshot?.id == snapshot.id;
+
+    if (!alreadyActive) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder:
+            (ctx) => AlertDialog(
+              title: const Text('Load Before Sending'),
+              content: Text(
+                'To email documents for "${summary.periodLabel}", it needs '
+                'to become your active salary period first — the Employee '
+                'Salary screen and all calculations will reflect this data. '
+                'Continue?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.indigo600,
+                  ),
+                  child: const Text('Load & Continue'),
+                ),
+              ],
+            ),
+      );
+      if (confirmed != true || !mounted) return;
+
+      final ok = await _notifier.loadMonth(snapshot.id!);
+      if (!mounted) return;
+      if (!ok) {
+        _showSnack('Load failed: ${_notifier.error}', isError: true);
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    await SendSalaryDocumentDialog.show(context, summary: summary);
   }
 
   Future<void> _onRename(SavedSalarySummary summary) async {
