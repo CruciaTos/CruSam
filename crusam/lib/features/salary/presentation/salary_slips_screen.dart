@@ -152,7 +152,10 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                 children: [
                   Row(
                     children: [
-                      Text(title, style: AppTextStyles.h3),
+                      Text(
+                        title,
+                        style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                      ),
                       const SizedBox(width: AppSpacing.md),
                       _MonthBadge(monthName: n.monthName, year: n.year),
                       const Spacer(),

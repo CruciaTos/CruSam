@@ -36,7 +36,10 @@ class _SalaryAnalyticsScreenState extends State<SalaryAnalyticsScreen> {
             children: [
               Row(
                 children: [
-                  Text('Salary Analytics', style: AppTextStyles.h3),
+                  Text(
+                    'Salary Analytics',
+                    style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                  ),
                   const Spacer(),
                   IconButton(
                     icon: const Icon(Icons.refresh, size: 18, color: AppColors.slate400),

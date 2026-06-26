@@ -36,6 +36,9 @@ class _ShellColors {
   static const selectedOverlay = Color(0x261E3A8A);
   static const sectionHeader = Color(0xFF475569);
   static const squeezeLimit = Color(0xFFEF4444);   // red when min width reached
+
+  // New colour for side and top navigation bars
+  static const navColor = Color(0xFF1A1D29);
 }
 
 // ── Nav model ──────────────────────────────────────────────────────────────
@@ -199,11 +202,12 @@ class _ShellScreenState extends State<ShellScreen> {
         ),
         // Main layout – left sidebar + central area
         Row(children: [
+          // ───── Sidebar – now uses #1A1D29 ─────
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             width: w,
             decoration: BoxDecoration(
-              color: _ShellColors.surfaceGlass,
+              color: _ShellColors.navColor,   // ← changed from surfaceGlass
               border: Border(right: BorderSide(color: _ShellColors.border)),
               boxShadow: [
                 BoxShadow(
@@ -971,7 +975,7 @@ class _SidebarHeader extends StatelessWidget {
                     ),
                   ]),
               alignment: Alignment.center,
-              child: const Text('A',
+              child: const Text('DZ',
                   style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
@@ -980,7 +984,7 @@ class _SidebarHeader extends StatelessWidget {
             if (expanded) ...[
               const SizedBox(width: 10),
               Expanded(
-                child: Text('Crusam ENTERPRISES',
+                child: Text('CRUSAM',
                     style: AppTextStyles.sidebarBrand.copyWith(
                       color: _ShellColors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -996,7 +1000,7 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// _Header – with AI panel toggle
+// _Header – with AI panel toggle (now uses #1A1D29) ──────────────────────
 // ══════════════════════════════════════════════════════════════════════════
 class _Header extends StatefulWidget {
   final bool expanded;
@@ -1028,7 +1032,7 @@ class _HeaderState extends State<_Header> {
       height: AppSpacing.headerHeight,
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: _ShellColors.surfaceGlass,
+        color: _ShellColors.navColor,   // ← changed from surfaceGlass to #1A1D29
         border: Border(bottom: BorderSide(color: _ShellColors.border)),
       ),
       child: Row(children: [

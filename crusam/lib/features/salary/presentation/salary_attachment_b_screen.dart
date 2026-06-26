@@ -159,7 +159,10 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Text(title, style: AppTextStyles.h3),
+                    Text(
+                      title,
+                      style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                    ),
                     const SizedBox(width: AppSpacing.md),
                     SalaryMonthBadge(
                         monthName: n.monthName, year: n.year),
