@@ -110,38 +110,4 @@ extension EmailLogRepository on DatabaseHelper {
     }
     return result;
   }
-
-  // ── Distinct prior recipients, most-recently-used first ───────────────────
-  // Powers the "To" autocomplete dropdown in SendInvoiceDialog — every
-  // address that's already been successfully emailed at least once for
-  // [entityType], deduped, newest use first, capped at [limit].
-  //
-  // Dedupe happens in Dart rather than via SQL DISTINCT because SQLite
-  // rejects "SELECT DISTINCT col ... ORDER BY id" when id isn't part of
-  // the selected columns — ordering by recency needs id, so we fetch
-  // ordered rows and dedupe by hand instead.
-
-  Future<List<String>> getDistinctSentRecipientEmails({
-    String entityType = 'invoice',
-    int    limit = 25,
-  }) async {
-    final db   = await database;
-    final rows = await db.query(
-      'email_log',
-      columns:   ['recipient_to'],
-      where:     "entity_type = ? AND status = 'sent'",
-      whereArgs: [entityType],
-      orderBy:   'id DESC',
-    );
-    final seen = <String>{};
-    final result = <String>[];
-    for (final row in rows) {
-      final email = ((row['recipient_to'] as String?) ?? '').trim();
-      if (email.isEmpty || seen.contains(email)) continue;
-      seen.add(email);
-      result.add(email);
-      if (result.length >= limit) break;
-    }
-    return result;
-  }
 }

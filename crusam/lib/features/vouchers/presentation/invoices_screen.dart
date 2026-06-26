@@ -55,6 +55,10 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
 
   Future<void> _load() async {
+    // Guard: if the screen was disposed while an async operation was in
+    // progress (e.g. user navigated away while the send dialog was open),
+    // calling setState here would throw "setState() called after dispose()".
+    if (!mounted) return;
     setState(() => _loading = true);
     final vMaps = await DatabaseHelper.instance.getAllVouchers();
     final cfgMap = await DatabaseHelper.instance.getCompanyConfig();
@@ -84,6 +88,9 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     );
     // Sending updates email_log — refresh so the "Sent ✓" badge appears
     // without the user having to manually reload the screen.
+    // Guard: the screen might have been navigated away from while the dialog
+    // was open — check mounted before re-entering _load().
+    if (!mounted) return;
     await _load();
   }
 
