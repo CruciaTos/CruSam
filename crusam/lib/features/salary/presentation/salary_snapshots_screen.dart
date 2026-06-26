@@ -8,7 +8,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_snapshot_notifier.dart';
-import '../widgets/send_salary_document_dialog.dart';
+import '../widgets/send_salary_dialog.dart';
 
 class SalarySnapshotsScreen extends StatefulWidget {
   const SalarySnapshotsScreen({super.key});
@@ -76,58 +76,6 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     }
   }
 
-  // ── Send ──────────────────────────────────────────────────────────────
-  // SendSalaryDocumentDialog reads the live SalaryDataNotifier/
-  // SalaryStateController singletons (same as the dedicated Salary Bills/
-  // Slips screens do for their own exports), so this period needs to be
-  // the active one before the dialog opens. If it already is, skip
-  // straight to the dialog; otherwise confirm the switch first — same
-  // pattern as "Load", since it's the same underlying side effect.
-  Future<void> _onSend(SavedSalarySummary summary) async {
-    final snapshot = summary.snapshot;
-    final alreadyActive = _notifier.activeSnapshot?.id == snapshot.id;
-
-    if (!alreadyActive) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder:
-            (ctx) => AlertDialog(
-              title: const Text('Load Before Sending'),
-              content: Text(
-                'To email documents for "${summary.periodLabel}", it needs '
-                'to become your active salary period first — the Employee '
-                'Salary screen and all calculations will reflect this data. '
-                'Continue?',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.indigo600,
-                  ),
-                  child: const Text('Load & Continue'),
-                ),
-              ],
-            ),
-      );
-      if (confirmed != true || !mounted) return;
-
-      final ok = await _notifier.loadMonth(snapshot.id!);
-      if (!mounted) return;
-      if (!ok) {
-        _showSnack('Load failed: ${_notifier.error}', isError: true);
-        return;
-      }
-    }
-
-    if (!mounted) return;
-    await SendSalaryDocumentDialog.show(context, summary: summary);
-  }
-
   Future<void> _onRename(SavedSalarySummary summary) async {
     final snapshot = summary.snapshot;
     final name = await _promptForName(
@@ -137,6 +85,10 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
     );
     if (name == null) return;
     await _notifier.renameSnapshot(snapshot.id!, name);
+  }
+
+  void _onSend(SavedSalarySummary summary) {
+    SendSalaryDialog.show(context, summary: summary);
   }
 
   Future<void> _onDelete(SavedSalarySummary summary) async {
@@ -263,7 +215,8 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                                   isActive:
                                       _notifier.activeSnapshot?.id ==
                                       summaries[i].snapshot.id,
-                                  onLoad: () => _onLoad(summaries[i]),
+                                  onLoad:   () => _onLoad(summaries[i]),
+                                  onSend:   () => _onSend(summaries[i]),
                                   onRename: () => _onRename(summaries[i]),
                                   onDelete: () => _onDelete(summaries[i]),
                                 ),
@@ -282,6 +235,7 @@ class _SavedSalaryCard extends StatelessWidget {
   final SavedSalarySummary summary;
   final bool isActive;
   final VoidCallback onLoad;
+  final VoidCallback onSend;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
@@ -289,6 +243,7 @@ class _SavedSalaryCard extends StatelessWidget {
     required this.summary,
     required this.isActive,
     required this.onLoad,
+    required this.onSend,
     required this.onRename,
     required this.onDelete,
   });
@@ -414,6 +369,15 @@ class _SavedSalaryCard extends StatelessWidget {
             ),
             tooltip: 'Load Saved Salary',
             onPressed: onLoad,
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.email_outlined,
+              size: 18,
+              color: AppColors.slate500,
+            ),
+            tooltip: 'Send by Email',
+            onPressed: onSend,
           ),
           IconButton(
             icon: const Icon(
