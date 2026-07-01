@@ -1861,7 +1861,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 // =============================================================================
-// INPUT AREA (hint reflects batch sync)
+// INPUT AREA (input text color changed to black)
 // =============================================================================
 
 class _InputArea extends StatelessWidget {
@@ -2109,7 +2109,7 @@ class _InputArea extends StatelessWidget {
                     enabled:
                         !notifier.isLoading || notifier.isStreaming,
                     style: const TextStyle(
-                        color: _K.textPrimary,
+                        color: Colors.black,   // ← changed from _K.textPrimary to black
                         fontSize: 14,
                         height: 1.4),
                     decoration: InputDecoration(

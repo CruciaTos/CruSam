@@ -6,7 +6,7 @@ import '../../../../data/models/employee_model.dart';
 import '../../../../data/models/voucher_row_model.dart';
 import 'employee_search_dropdown.dart';
 
-const double _kH = 38.0;
+const double _kH = 50.0;
 const EdgeInsets _kInputPadding = EdgeInsets.symmetric(horizontal: 8);
 
 TableRow buildVoucherRow({
@@ -230,7 +230,19 @@ class _EmpDropdownState extends State<_EmpDropdown> {
 
   void _open({bool reset = true}) {
     if (_oe != null) return;
-    final rb = context.findRenderObject() as RenderBox;
+    if (!mounted) return;
+    // ── Crash fix ───────────────────────────────────────────────────────────
+    // context.findRenderObject() can legitimately return null (or a box that
+    // hasn't been through layout yet) right after a row is added/removed,
+    // because _open() is often invoked from a chain of addPostFrameCallback
+    // calls (add row → scroll into view → requestFocus → focus listener →
+    // _open). The previous code force-cast this with `as RenderBox`, which
+    // threw "type 'Null' is not a subtype of type 'RenderBox'" and crashed
+    // the app whenever the render object wasn't ready yet. We now bail out
+    // safely instead — the next focus/tap event will simply retry.
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox || !renderObject.hasSize) return;
+    final rb = renderObject;
     final offset = rb.localToGlobal(Offset.zero);
     if (reset) {
       _sc.clear();
