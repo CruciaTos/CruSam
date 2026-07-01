@@ -13,6 +13,7 @@ import '../../auth/data/models/user_model.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/update_card.dart';
 import 'package:crusam/features/profile/widgets/backup_restore_card.dart';
+import 'package:crusam/features/profile/widgets/data_location_card.dart';
 import 'package:crusam/features/profile/widgets/export_paths_card.dart';
 import 'package:crusam/features/profile/widgets/gmail_account_card.dart';
 
@@ -159,6 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     runSpacing: 16,
                     children: [
                       SizedBox(width: cardWidth, child: const _LocalInfoCard()),
+                      SizedBox(width: cardWidth, child: const DataLocationCard()),
                       SizedBox(width: cardWidth, child: const ExportPathsCard()),
                       SizedBox(width: cardWidth, child: const _PdfMethodCard()),
                       SizedBox(width: cardWidth, child: const BackupRestoreCard()),
@@ -269,7 +271,7 @@ class _LocalInfoCard extends StatelessWidget {
             _infoRow(Icons.computer_outlined, 'Instance',
                 'This PC – ${Platform.localHostname}'),
             _infoRow(Icons.folder_outlined, 'Data Storage',
-                'Local SQLite (per Windows user)'),
+                'See "Data Storage Location" card for the live path'),
             _infoRow(Icons.cloud_off_outlined, 'Cloud Sync',
                 'Disabled – manual backup only'),
             _infoRow(Icons.security_outlined, 'Access',

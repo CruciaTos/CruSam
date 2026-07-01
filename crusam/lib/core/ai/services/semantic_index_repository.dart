@@ -24,14 +24,24 @@
 //   • Term vectors are serialised as JSON strings ({term: weight}).
 //     The dart:convert round-trip is done once per build/load, not per query.
 //
-// No Flutter imports — safe to call from any isolate.
+// On Android/iOS this file still has no Flutter dependency and is safe to
+// call from any isolate, same as before. On Windows/Linux/macOS it now
+// resolves its database file via AppPaths (see _openDb), which uses
+// path_provider — a Flutter plugin — instead of sqflite_common_ffi's
+// getDatabasesPath() default (which resolves to Directory.current, i.e. the
+// install folder). That makes this file transitively Flutter-dependent on
+// desktop; nothing currently calls it from a background isolate, but if that
+// ever changes on desktop, the resolved directory would need to be handed in
+// rather than looked up from within the spawned isolate.
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import '../../storage/app_paths.dart';
 import 'semantic_index_models.dart';
 
 // ── Table and column name constants ────────────────────────────────────────
@@ -57,12 +67,25 @@ class SemanticIndexRepository {
   Future<Database> get _database async => _db ??= await _openDb();
 
   Future<Database> _openDb() async {
-    final dir = await getDatabasesPath();
+    final dbPath = await _resolveDbPath();
     // Opened without a `version` so sqflite never runs onUpgrade/onDowngrade.
     // Table creation and column migrations are handled entirely in _ensureTables.
-    final db = await openDatabase(p.join(dir, 'semantic_index.db'));
+    final db = await openDatabase(dbPath);
     await _ensureTables(db);
     return db;
+  }
+
+  /// Resolves the absolute path to `semantic_index.db`.
+  ///
+  /// Same rationale as [DatabaseHelper._resolveDbPath] in database_helper.dart:
+  /// desktop resolves through [AppPaths] (path_provider, not the install
+  /// folder); Android/iOS keep using the native plugin's already-correct
+  /// `getDatabasesPath()` unchanged.
+  static Future<String> _resolveDbPath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return AppPaths.childPath('semantic_index.db');
+    }
+    return p.join(await getDatabasesPath(), 'semantic_index.db');
   }
 
   /// Creates tables on first open and guards any future ALTER TABLE migrations

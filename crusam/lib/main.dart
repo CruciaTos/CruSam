@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
+import 'core/storage/app_paths.dart';
 import 'core/sync/drive_service.dart';
 import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
@@ -31,8 +32,30 @@ Future<void> main() async {
   GoogleAuthService.instance.restoreSession();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    // Resolve the canonical, per-user app-data directory (via path_provider
+    // — NOT the install folder, see AppPaths) before anything touches the
+    // database. If a previous build left aarti.db / semantic_index.db
+    // sitting next to the executable (the old, buggy default), carry it
+    // forward once so existing users don't appear to lose their data on
+    // this update.
+    final appDataDir = await AppPaths.directory;
+    await AppPaths.migrateLegacyFileIfNeeded(
+      legacyDir: Directory.current,
+      fileName: 'aarti.db',
+    );
+    await AppPaths.migrateLegacyFileIfNeeded(
+      legacyDir: Directory.current,
+      fileName: 'semantic_index.db',
+    );
+
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    // Defense-in-depth: sqflite_common_ffi's getDatabasesPath() otherwise
+    // defaults to Directory.current (the install folder). This neutralizes
+    // that default for any code that still calls getDatabasesPath()
+    // directly, on top of DatabaseHelper/SemanticIndexRepository resolving
+    // their own paths explicitly via AppPaths.
+    await databaseFactory.setDatabasesPath(appDataDir.path);
   }
 
   EmployeeNotifier.instance.load(); // Load local employee data
