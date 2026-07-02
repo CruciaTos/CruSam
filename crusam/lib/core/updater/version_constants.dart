@@ -7,7 +7,7 @@
 /// release page links) should derive from these two constants instead of
 /// hardcoding "CruciaTos/CruSam" again elsewhere.
 const String kGitHubRepoOwner = 'CruciaTos';
-const String kGitHubRepoName = 'CruSam';
+const String kGitHubRepoName = 'Crusam_RELEASE-VERSION';
 
 /// GitHub REST API endpoint that returns the most recently published
 /// (non-draft, non-prerelease) release for the repo above.

@@ -306,7 +306,7 @@ class _LeftPane extends StatelessWidget {
           _row('Total Gross Salary',
               '₹${sc.totalEarnedGross.toStringAsFixed(2)}',
               AppColors.indigo600),
-          _row('PF (13.61% basic)',
+          _row('PF (13% basic)',
               '₹${sc.attachmentAPf.round()}',
               AppColors.slate600),
           _row('ESIC (3.25% eligible)',
