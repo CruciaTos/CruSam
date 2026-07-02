@@ -1,11 +1,8 @@
 // lib/features/profile/widgets/data_location_card.dart
 //
 // Shows the ACTUAL, live, on-disk location of CruSam's local data (SQLite
-// database + AI semantic index) directly in the Profile screen.
-//
-// The full path to each file is displayed under its label, with a tiny
-// copy icon next to it. No more guessing – you can see, select, and copy
-// the real path right here.
+// database + AI semantic index) directly in the Profile screen, instead of
+// the old static "Local SQLite (per Windows user)" placeholder text.
 //
 // Purely diagnostic / read-only. Does not move, migrate, or touch anything
 // on disk — it only reports what AppPaths.resolveStorageInfo() finds.
@@ -58,8 +55,8 @@ class _DataLocationCardState extends State<DataLocationCard> {
   Future<void> _openFolder(String path) async {
     if (!Platform.isWindows) return;
     try {
-      // explorer.exe may return a non-zero exit code even on success,
-      // so we don't check the result.
+      // explorer.exe returns a non-zero exit code even on success in some
+      // cases, so we don't check the result — just fire and forget.
       await Process.run('explorer.exe', [path]);
     } catch (_) {
       // Folder may not exist yet on a completely fresh install; non-fatal.
@@ -136,7 +133,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
                 ),
               _iconButton(
                 Icons.copy_outlined,
-                'Copy folder path',
+                'Copy path',
                 () => _copy(info.databaseDirectory, 'Folder path'),
               ),
             ],
@@ -176,8 +173,8 @@ class _DataLocationCardState extends State<DataLocationCard> {
           child: TextButton.icon(
             onPressed: () => _copy(info.toDiagnosticText(), 'Diagnostic info'),
             icon: const Icon(Icons.bug_report_outlined, size: 15),
-            label: const Text('Copy diagnostic info',
-                style: TextStyle(fontSize: 13)),
+            label:
+                const Text('Copy diagnostic info', style: TextStyle(fontSize: 13)),
           ),
         ),
       ];
@@ -239,7 +236,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                // ── THE FULL PATH (selectable + copyable) ──
+                // ---------- THE ACTUAL FULL PATH ----------
                 Row(
                   children: [
                     Expanded(
