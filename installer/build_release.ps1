@@ -82,7 +82,7 @@ if (-not $versionMatch) {
 }
 
 $fullVersion = $versionMatch.Matches[0].Groups[1].Value.Trim()   # e.g. "2.0.0+1"
-$versionOnly = $fullVersion.Split('+')[0]                        # e.g. "2.0.0"
+$versionOnly = $fullVersion.Split('+')[0]                        # e.g. "2.0.0" – only for installer filename
 
 if ($versionOnly -notmatch '^\d+\.\d+\.\d+$') {
     Fail "Unexpected version format '$fullVersion' in pubspec.yaml (expected MAJOR.MINOR.PATCH[+BUILD])"
@@ -137,12 +137,10 @@ if (-not $SkipVerify) {
         Fail "Could not read FileVersion from $CrusamExePath"
     }
 
-    # Windows reports FileVersion as MAJOR.MINOR.PATCH.BUILD (4 parts);
-    # compare only the first three against pubspec.yaml's version.
-    $fileVersionCore = ($fileVersion.Split('.') | Select-Object -First 3) -join '.'
-
-    if ($fileVersionCore -ne $versionOnly) {
-        Fail "crusam.exe's embedded File version ($fileVersion) does not match pubspec.yaml ($versionOnly). This is the stale-build problem RELEASE.md warns about -- do not package this build. Re-run and confirm 'flutter clean' actually removed build/ and windows/flutter/ephemeral/ before rebuilding."
+    # Compare directly to the pubspec version string (Flutter on Windows
+    # embeds the version as-is, including the '+' build number suffix).
+    if ($fileVersion -ne $fullVersion) {
+        Fail "crusam.exe's embedded File version ($fileVersion) does not match pubspec.yaml ($fullVersion). This is the stale-build problem RELEASE.md warns about -- do not package this build. Re-run and confirm 'flutter clean' actually removed build/ and windows/flutter/ephemeral/ before rebuilding."
     }
 
     Write-Host "Embedded version matches pubspec.yaml: $fileVersion"

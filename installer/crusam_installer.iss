@@ -78,8 +78,10 @@ UpdateUninstallLogAppName=yes
 CloseApplications=yes
 CloseApplicationsFilter=crusam.exe,updater.exe
 ; Restart Manager restarting the app on its own would race with, and could
-; double-launch alongside, the explicit "Launch CruSam" checkbox below —
-; so relaunching is left entirely to that checkbox.
+; double-launch alongside, the explicit relaunch entries in [Run] below (the
+; interactive "Launch CruSam" checkbox, and the silent-only auto-relaunch
+; used by UpdateService.launchUpdaterAndExit) — so relaunching is left
+; entirely to those [Run] entries.
 RestartApplications=no
 
 ; ---- Output ---------------------------------------------------------------
@@ -131,7 +133,20 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
+; Interactive installs (double-click, no /VERYSILENT): shows an optional
+; "Launch CruSam" checkbox on the wizard's Finished page. skipifsilent means
+; this entry is always skipped when Setup is run silently — the entry below
+; handles that case instead, so the two together are mutually exclusive.
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+
+; Silent installs (/VERYSILENT, used by UpdateService.launchUpdaterAndExit
+; for in-app auto-updates): no wizard pages are shown, so there's no
+; checkbox to check and postinstall entries above are skipped outright.
+; skipifnotsilent is the mirror image of skipifsilent — it runs this entry
+; only when Setup IS silent — so a silent update automatically relaunches
+; the newly-installed CruSam instead of leaving the user with the app
+; closed after an update.
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; WorkingDir: "{app}"; Flags: nowait skipifnotsilent
 
 [UninstallDelete]
 ; Recursively remove the install directory itself on uninstall (engine

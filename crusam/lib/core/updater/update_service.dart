@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -183,7 +184,15 @@ class UpdateService {
         lower.endsWith(kInstallerAssetExtension);
   }
 
-  /// Returns the local zip path on success.
+  /// Downloads the installer EXE referenced by [downloadUrl] (the
+  /// `CruSam-Setup-{version}.exe` asset from Phase 4's GitHub Releases
+  /// lookup) into [getTemporaryDirectory], preserving its original
+  /// filename, and returns the local path on success.
+  ///
+  /// Replaces the old ZIP download — there is no extraction step anymore;
+  /// the file saved here is handed directly to
+  /// [launchUpdaterAndExit], which runs it as a real Inno Setup installer.
+  ///
   /// Throws a descriptive [Exception] on any failure so the notifier can
   /// surface the real reason to the user instead of a generic message.
   static Future<String> downloadUpdate(
@@ -193,8 +202,9 @@ class UpdateService {
     final client = http.Client();
     try {
       final tmpDir = await getTemporaryDirectory();
-      final zipPath =
-          '${tmpDir.path}${Platform.pathSeparator}crusam_update.zip';
+      final fileName = _installerFileNameFrom(downloadUrl);
+      final installerPath =
+          '${tmpDir.path}${Platform.pathSeparator}$fileName';
 
       final request = http.Request('GET', Uri.parse(downloadUrl));
       final streamedResponse = await client.send(request);
@@ -207,7 +217,7 @@ class UpdateService {
       final contentLength = streamedResponse.contentLength ?? 0;
       var received = 0;
 
-      final file = File(zipPath);
+      final file = File(installerPath);
       final sink = file.openWrite();
 
       try {
@@ -227,7 +237,13 @@ class UpdateService {
         throw Exception('Downloaded file is empty — the URL may be invalid.');
       }
 
-      return zipPath;
+      // Checksum verification extension point — see
+      // _verifyChecksumIfAvailable for details. Currently a no-op for every
+      // real release because the pipeline doesn't publish a checksum asset
+      // yet, so behavior here is unchanged from before this method existed.
+      await _verifyChecksumIfAvailable(client, downloadUrl, file);
+
+      return installerPath;
     } catch (e) {
       throw Exception('Download failed: $e');
     } finally {
@@ -235,16 +251,110 @@ class UpdateService {
     }
   }
 
-  /// Launches updater.exe and exits the main process.
+  /// Derives the on-disk filename for the downloaded installer from
+  /// [downloadUrl], preserving the original asset filename (e.g.
+  /// `CruSam-Setup-1.2.0.exe`) instead of a generic hardcoded name — the
+  /// installer's own name is what Windows/Inno Setup will show in any
+  /// UAC-less "Open File" prompts and logs, so keeping it intact matters.
   ///
-  /// [newVersion] is passed to updater.exe as a 3rd argument so it can write
-  /// `installed_version.txt` after extraction — this is what fixes the
-  /// "version stays at 1.0.0 after update" issue.
+  /// GitHub release asset download URLs always end in the asset's literal
+  /// filename, so this only falls back to a synthesized name if that ever
+  /// stops being true (e.g. a malformed URL).
+  static String _installerFileNameFrom(String downloadUrl) {
+    final segments = Uri.parse(downloadUrl).pathSegments;
+    final last = segments.isNotEmpty ? segments.last.trim() : '';
+    if (last.isNotEmpty) return last;
+    return '$kInstallerAssetPrefix'
+        '${DateTime.now().millisecondsSinceEpoch}'
+        '$kInstallerAssetExtension';
+  }
+
+  /// Best-effort SHA-256 verification against a sibling
+  /// `<installer-filename>.sha256` release asset, if the release publishes
+  /// one.
   ///
-  /// Returns `null` on success (process calls exit(0) so we never return).
-  /// Returns a non-null error string that the UI can display on any failure.
+  /// This is a clean extension point, not a hard requirement yet: neither
+  /// build_release.ps1 nor crusam_installer.iss currently produces a
+  /// checksum file alongside the installer, so `$downloadUrl.sha256` 404s
+  /// for every release today and this silently returns without altering
+  /// [downloadUpdate]'s behavior at all. The moment the release pipeline
+  /// starts publishing that sibling asset (a plain-text file containing the
+  /// 64-character hex SHA-256 digest, with or without a trailing filename
+  /// in the usual `sha256sum` output style), verification switches on
+  /// automatically: the downloaded installer is hashed and compared, and a
+  /// mismatch deletes the file and throws so a corrupted or tampered
+  /// installer is never handed to [launchUpdaterAndExit].
+  static Future<void> _verifyChecksumIfAvailable(
+    http.Client client,
+    String downloadUrl,
+    File installerFile,
+  ) async {
+    String expectedHex;
+    try {
+      final checksumResponse = await client
+          .get(Uri.parse('$downloadUrl.sha256'))
+          .timeout(const Duration(seconds: 10));
+
+      if (checksumResponse.statusCode != 200) return;
+
+      final match =
+          RegExp(r'[0-9a-fA-F]{64}').firstMatch(checksumResponse.body);
+      if (match == null) return;
+
+      expectedHex = match.group(0)!.toLowerCase();
+    } catch (_) {
+      // No checksum asset published (or transiently unreachable) — treated
+      // as "checksum support not implemented for this release", not as an
+      // error. Existing releases without a .sha256 asset must keep working
+      // exactly as they do today.
+      return;
+    }
+
+    final bytes = await installerFile.readAsBytes();
+    final actualHex = sha256.convert(bytes).toString();
+
+    if (actualHex != expectedHex) {
+      try {
+        await installerFile.delete();
+      } catch (_) {
+        // Best-effort cleanup only; the exception below is what matters.
+      }
+      throw Exception(
+        'Checksum verification failed — the downloaded installer does not '
+        'match the published SHA-256 digest. Update aborted.',
+      );
+    }
+  }
+
+  /// Launches the downloaded installer silently and exits the app.
+  ///
+  /// Replaces the old ZIP + updater.exe workflow now that GitHub Releases
+  /// publishes a real Inno Setup installer (Phase 4/5). [installerPath] is
+  /// the local path returned by [downloadUpdate].
+  ///
+  /// `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-` run the installer
+  /// fully unattended — no wizard pages, no message boxes, no forced
+  /// reboot, no "This will install..." confirmation prompt. Inno Setup's
+  /// native CloseApplications (see crusam_installer.iss) closes the
+  /// currently-running crusam.exe before copying files over it, and its
+  /// [Run] section's `skipifnotsilent` entry relaunches crusam.exe once the
+  /// silent install finishes — so nothing further is required here once
+  /// the installer process has been started.
+  ///
+  /// [newVersion] is intentionally unused here: unlike the old updater.exe,
+  /// this installer embeds the real version at build time (VersionInfoVersion
+  /// in crusam_installer.iss, sourced from pubspec.yaml — see RELEASE.md),
+  /// so the relaunched crusam.exe reports the new version directly via
+  /// `PackageInfo.fromPlatform()` in [getCurrentVersion] with no file to
+  /// write. The parameter is kept only so this method's signature keeps
+  /// matching the call in UpdateNotifier.downloadAndInstall(), which is out
+  /// of scope for this phase.
+  ///
+  /// Returns `null` on success — the process calls `exit(0)`, so callers
+  /// never actually observe that return value. Returns a non-null error
+  /// string that the UI can display on any failure.
   static Future<String?> launchUpdaterAndExit(
-    String zipPath,
+    String installerPath,
     String newVersion,
   ) async {
     try {
@@ -252,25 +362,15 @@ class UpdateService {
         return 'Auto-update is only supported on Windows.';
       }
 
-      final appDir = File(Platform.resolvedExecutable).parent.path;
-      final updaterPath = '$appDir${Platform.pathSeparator}updater.exe';
-
-      if (!File(updaterPath).existsSync()) {
-        return 'updater.exe not found in $appDir. '
-            'Please reinstall the application or update manually.';
-      }
-
-      final zipFile = File(zipPath);
-      if (!zipFile.existsSync() || zipFile.lengthSync() == 0) {
-        return 'Update package is missing or empty ($zipPath).';
+      final installerFile = File(installerPath);
+      if (!installerFile.existsSync() || installerFile.lengthSync() == 0) {
+        return 'Update installer is missing or empty ($installerPath).';
       }
 
       await Process.start(
-        updaterPath,
-        // 3rd arg is the new version — updater writes it to
-        // installed_version.txt after a successful extraction.
-        [zipPath, Platform.resolvedExecutable, newVersion],
-        workingDirectory: appDir,
+        installerPath,
+        const ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'],
+        workingDirectory: installerFile.parent.path,
         mode: ProcessStartMode.detached,
         runInShell: false,
       );
@@ -278,7 +378,7 @@ class UpdateService {
       await Future<void>.delayed(const Duration(milliseconds: 1500));
       exit(0);
     } catch (e) {
-      return 'Failed to launch updater: $e';
+      return 'Failed to launch installer: $e';
     }
   }
 
