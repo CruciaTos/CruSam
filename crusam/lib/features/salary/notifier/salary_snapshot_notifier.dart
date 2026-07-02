@@ -203,6 +203,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       clientGstin: n.clientGstin,
       deptCode: n.deptCode,
       selectedCompanyCode: sc.selectedCompanyCode,
+      itemDescription: n.itemDescription,
       employees: employeeData,
     );
   }
@@ -254,6 +255,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
     n.setClientAddr(payload.clientAddr);
     n.setClientGstin(payload.clientGstin);
     n.setDeptCode(payload.deptCode);
+    n.setItemDescription(payload.itemDescription);
     sc.setCompanyCode(payload.selectedCompanyCode);
 
     // 3. Restore per-employee attendance, syncing any already-cached

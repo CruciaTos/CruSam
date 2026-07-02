@@ -393,6 +393,7 @@ Bill No: ${dataNotifier.billNo}
 PO No: ${dataNotifier.poNo}
 Client Name: ${dataNotifier.clientName}
 Dept Code: ${dataNotifier.deptCode}
+Item Description: ${dataNotifier.itemDescription}
 
 --- Days Present ---
 $employeeLines

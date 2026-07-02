@@ -1,4 +1,4 @@
-// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
+﻿// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
 //
 // Features:
 //  1. _activeFileContext         — persists last uploaded file across follow‑ups
@@ -1173,7 +1173,8 @@ The [ACTION] block will be stripped from the chat, but a confirmation dialog wil
 5. set_month_year    – Required: month (int 1‑12 or name "March"), year (int).
 6. set_days_present  – Required: employeeId (int), days (int ≥ 0).
 7. set_salary_meta   – Required: field (billNo | poNo | clientName |
-                       clientAddr | clientGstin | deptCode), value (string).
+                       clientAddr | clientGstin | deptCode |
+                       itemDescription), value (string).
 8. set_voucher_field – Required: field (title | deptCode | date | billNo |
                        poNo | itemDescription | clientName | clientAddress |
                        clientGstin), value (string).

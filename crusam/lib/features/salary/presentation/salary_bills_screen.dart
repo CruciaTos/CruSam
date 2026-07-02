@@ -34,8 +34,6 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   bool _exporting          = false;
   bool _finalisingInvoice  = false;
 
-  String _itemDescription = 'Manpower Supply Charges';
-
   final _billNoCtrl     = TextEditingController(text: 'AE/-/25-26');
   final _poNoCtrl       = TextEditingController(text: '-');
   final _clientNameCtrl = TextEditingController(
@@ -155,6 +153,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     showLoader(context, message: 'Generating salary invoice PDF…');
     try {
       final sc = SalaryStateController.instance;
+      final n  = SalaryDataNotifier.instance;
       await PdfExportService.exportWidgets(
         context: context,
         pages: SalaryBillPreview.buildPdfPages(
@@ -163,7 +162,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:            _billNoCtrl.text,
           date:              _dateCtrl.text,
           poNo:              _poNoCtrl.text,
-          itemDescription:   _itemDescription,
+          itemDescription:   n.itemDescription,
           customerName:      _clientNameCtrl.text,
           customerAddress:   _clientAddrCtrl.text,
           customerGst:       _clientGstCtrl.text,
@@ -214,7 +213,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:            _billNoCtrl.text,
           date:              _dateCtrl.text,
           poNo:              _poNoCtrl.text,
-          itemDescription:   _itemDescription,
+          itemDescription:   n.itemDescription,
           customerName:      _clientNameCtrl.text,
           customerAddress:   _clientAddrCtrl.text,
           customerGst:       _clientGstCtrl.text,
@@ -229,7 +228,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:          _billNoCtrl.text,
           date:            _dateCtrl.text,
           poNo:            _poNoCtrl.text,
-          itemDescription: _itemDescription,
+          itemDescription: n.itemDescription,
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
@@ -241,7 +240,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:          _billNoCtrl.text,
           date:            _dateCtrl.text,
           poNo:            _poNoCtrl.text,
-          itemDescription: _itemDescription,
+          itemDescription: n.itemDescription,
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
@@ -375,7 +374,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                     color: Colors.grey[200],
                     child: _LeftPane(
                       descNotifier:    _descNotifier,
-                      itemDescription: _itemDescription,
+                      itemDescription: n.itemDescription,
                       billNoCtrl:      _billNoCtrl,
                       poNoCtrl:        _poNoCtrl,
                       clientNameCtrl:  _clientNameCtrl,
@@ -384,8 +383,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                       dateCtrl:        _dateCtrl,
                       sc:              sc,
                       marginNotifier:  _marginNotifier,
-                      onDescChanged:
-                          (v) => setState(() => _itemDescription = v),
+                      onDescChanged:   n.setItemDescription,
                       onPickDate: () => _pickDate(context),
                     ),
                   ),
@@ -419,7 +417,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                               billNo:            _billNoCtrl.text,
                               date:              _dateCtrl.text,
                               poNo:              _poNoCtrl.text,
-                              itemDescription:   _itemDescription,
+                              itemDescription:   n.itemDescription,
                               invoiceBaseAmount: sc.invoiceTotal,
                             ),
                           ),

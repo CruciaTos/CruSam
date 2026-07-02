@@ -29,7 +29,6 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
 
-  String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
@@ -105,7 +104,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
         pages: AttachmentBPreview.buildPdfPages(
           config:          _config,
           margins:         _margins,
-          itemDescription: _itemDescription,
+          itemDescription: n.itemDescription,
           billNo:          n.billNo,
           poNo:            n.poNo,
           employeeCount:   sc.employeeCount,
@@ -208,12 +207,11 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                     padding: const EdgeInsets.all(AppSpacing.md),
                     child: _LeftPane(
                       descNotifier:    _descNotifier,
-                      itemDescription: _itemDescription,
+                      itemDescription: n.itemDescription,
                       billNoCtrl:      _billNoCtrl,
                       sc:              sc,
                       marginNotifier:  _marginNotifier,
-                      onDescChanged:
-                          (v) => setState(() => _itemDescription = v),
+                      onDescChanged:   n.setItemDescription,
                     ),
                   ),
                   Container(
@@ -238,7 +236,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                             builder: (_, _) => AttachmentBPreview(
                               config:          _config,
                               margins:         _margins,
-                              itemDescription: _itemDescription,
+                              itemDescription: n.itemDescription,
                               billNo:          n.billNo,
                               poNo:            n.poNo,
                               employeeCount:   sc.employeeCount,

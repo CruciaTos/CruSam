@@ -17,6 +17,12 @@ class SalaryDataNotifier extends ChangeNotifier {
   String _clientAddr = AppConstants.defaultClientAddress;
   String _clientGstin = AppConstants.defaultClientGstin;
   String _deptCode = '';
+  // Shared "Item Description" for the Salary Bills group (Salary Invoice,
+  // Attachment A, Attachment B). Living here — alongside billNo/poNo/client
+  // fields — means it survives navigating between those screens (they all
+  // get destroyed/recreated by go_router) and gets captured/restored by
+  // SalarySnapshotNotifier just like the rest of the bill header.
+  String _itemDescription = 'Manpower Supply Charges';
 
   final Map<int, int> _days = {};
   final Map<int, TextEditingController> _controllers = {};
@@ -34,6 +40,7 @@ class SalaryDataNotifier extends ChangeNotifier {
   String get clientAddr => _clientAddr;
   String get clientGstin => _clientGstin;
   String get deptCode => _deptCode;
+  String get itemDescription => _itemDescription;
 
   static const _monthNames = [
     'January',
@@ -190,6 +197,12 @@ class SalaryDataNotifier extends ChangeNotifier {
   void setDeptCode(String v) {
     if (_deptCode == v) return;
     _deptCode = v;
+    _safeNotify();
+  }
+
+  void setItemDescription(String v) {
+    if (_itemDescription == v) return;
+    _itemDescription = v;
     _safeNotify();
   }
 

@@ -29,7 +29,6 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
 
-  String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
@@ -110,7 +109,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
           billNo:          n.billNo,
           date:            n.dateDisplay,
           poNo:            n.poNo,
-          itemDescription: _itemDescription,
+          itemDescription: n.itemDescription,
           customerName:    n.clientName,
           customerAddress: n.clientAddr,
           customerGst:     n.clientGstin,
@@ -208,12 +207,11 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                     padding: const EdgeInsets.all(AppSpacing.md),
                     child: _LeftPane(
                       descNotifier:    _descNotifier,
-                      itemDescription: _itemDescription,
+                      itemDescription: n.itemDescription,
                       billNoCtrl:      _billNoCtrl,
                       sc:              sc,
                       marginNotifier:  _marginNotifier,
-                      onDescChanged:
-                          (v) => setState(() => _itemDescription = v),
+                      onDescChanged:   n.setItemDescription,
                     ),
                   ),
                   Container(
@@ -238,7 +236,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                             builder: (_, _) => AttachmentAPreview(
                               config:          _config,
                               margins:         _margins,
-                              itemDescription: _itemDescription,
+                              itemDescription: n.itemDescription,
                               billNo:          n.billNo,
                               poNo:            n.poNo,
                               date:            date,

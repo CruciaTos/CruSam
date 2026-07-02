@@ -962,6 +962,9 @@ class AiToolExecutor {
       case 'deptCode':
         notifier.setDeptCode(value);
         break;
+      case 'itemDescription':
+        notifier.setItemDescription(value);
+        break;
       default:
         return AiToolFailure('Unsupported salary field "$field".');
     }

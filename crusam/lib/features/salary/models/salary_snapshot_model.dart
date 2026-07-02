@@ -90,7 +90,7 @@ class SalarySnapshotEmployeeData {
 /// Full serialized salary-month state. This is what gets stored (as JSON)
 /// inside `salary_month_snapshots.payload`.
 class SalarySnapshotPayload {
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
 
   final int version;
   final int month;
@@ -103,6 +103,7 @@ class SalarySnapshotPayload {
   final String clientGstin;
   final String deptCode;
   final String selectedCompanyCode;
+  final String itemDescription;
   final List<SalarySnapshotEmployeeData> employees;
 
   const SalarySnapshotPayload({
@@ -117,6 +118,7 @@ class SalarySnapshotPayload {
     required this.clientGstin,
     required this.deptCode,
     required this.selectedCompanyCode,
+    this.itemDescription = 'Manpower Supply Charges',
     required this.employees,
   });
 
@@ -132,6 +134,7 @@ class SalarySnapshotPayload {
     'clientGstin': clientGstin,
     'deptCode': deptCode,
     'selectedCompanyCode': selectedCompanyCode,
+    'itemDescription': itemDescription,
     'employees': employees.map((e) => e.toJson()).toList(),
   };
 
@@ -152,6 +155,8 @@ class SalarySnapshotPayload {
       clientGstin: (m['clientGstin'] as String?) ?? '',
       deptCode: (m['deptCode'] as String?) ?? '',
       selectedCompanyCode: (m['selectedCompanyCode'] as String?) ?? 'All',
+      itemDescription:
+          (m['itemDescription'] as String?) ?? 'Manpower Supply Charges',
       employees:
           empList
               .whereType<Map>()
