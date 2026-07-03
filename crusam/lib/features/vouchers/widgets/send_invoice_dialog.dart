@@ -82,11 +82,11 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
           ' — ${widget.config.companyName}',
     );
     _bodyCtrl = TextEditingController(
-      text: 'Dear ${v.clientName.isNotEmpty ? v.clientName : "Sir/Madam"},\n\n'
+      text: 'Dear Sir,\n\n'
           'Please find attached the tax invoice'
           '${v.billNo.isNotEmpty ? " (Bill No. ${v.billNo})" : ""} '
           'for an amount of Rs. ${v.finalTotal.toStringAsFixed(2)}.\n\n'
-          'Regards,\n${widget.config.companyName}',
+          'Regards,\nBharat Boridkar',
     );
 
     _checkPriorSends();

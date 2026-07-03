@@ -15,7 +15,6 @@ import '../../../data/models/employee_model.dart';
 ///  8  Basic         9  Other         10  Arrears        11  Gross
 /// 12  PF            13  MSW           14  ESIC P        15  P Tax
 /// 16  Total Ded.    17  Net Salary
-
 class SalaryStatementPreview extends StatelessWidget {
   // ── Page dimensions (landscape A4) ────────────────────────────────────────
   static const double pageWidth  = 1122.5;
@@ -56,7 +55,9 @@ class SalaryStatementPreview extends StatelessWidget {
   final String              monthName;
   final int                 year;
   final bool                isMsw;
+  final double              mswAmount;
   final bool                isFeb;
+  final bool                applyMsw;          // ← NEW: respects the user toggle
 
   /// Maps employee ID → days present.  Absent / 0 → all columns show 0.
   final Map<int, int> daysMap;
@@ -75,7 +76,9 @@ class SalaryStatementPreview extends StatelessWidget {
     required this.monthName,
     required this.year,
     this.isMsw        = false,
+    this.mswAmount    = 6,
     this.isFeb        = false,
+    this.applyMsw     = true,     // ← defaults to true (backward compatible)
     this.daysMap      = const {},
     this.daysInMonth  = 0,
     this.columnWidths = const {},
@@ -125,7 +128,10 @@ class SalaryStatementPreview extends StatelessWidget {
     return eg == 0 ? 0 : (eg * 0.0075).ceil();
   }
 
-  int _msw() => isMsw ? 6 : 0;
+  int _msw() {
+    // Only deduct MSW if both the month is eligible AND the user has applied it.
+    return (isMsw && applyMsw) ? mswAmount.round() : 0;
+  }
 
   int _pt(EmployeeModel e) {
     final eg = _earnedGross(e);
@@ -162,7 +168,9 @@ class SalaryStatementPreview extends StatelessWidget {
     required String              monthName,
     required int                 year,
     bool                         isMsw        = false,
+    double                       mswAmount    = 6,
     bool                         isFeb        = false,
+    bool                         applyMsw     = true,    // ← NEW parameter
     Map<int, int>                daysMap      = const {},
     int                          daysInMonth  = 0,
     Map<int, double>             columnWidths = const {},
@@ -178,6 +186,7 @@ class SalaryStatementPreview extends StatelessWidget {
       year:         year,
       isMsw:        isMsw,
       isFeb:        isFeb,
+      applyMsw:     applyMsw,           // ← pass it through
       daysMap:      daysMap,
       daysInMonth:  daysInMonth,
       columnWidths: columnWidths,
@@ -212,6 +221,7 @@ class SalaryStatementPreview extends StatelessWidget {
       year:         year,
       isMsw:        isMsw,
       isFeb:        isFeb,
+      applyMsw:     applyMsw,          // ← pass it here as well
       daysMap:      daysMap,
       daysInMonth:  daysInMonth,
       columnWidths: columnWidths,
@@ -382,7 +392,7 @@ class _SalaryTable extends StatelessWidget {
       sumOther  += preview._earnedOther(e);
       sumGross  += preview._earnedGross(e);
       sumPf     += preview._pf(e);
-      sumMsw    += preview._msw();
+      sumMsw    += preview._msw();      // now respects applyMsw
       sumEsicP  += preview._esicInt(e);
       sumPt     += preview._pt(e);
       sumTd     += preview._totalDed(e);
@@ -438,7 +448,7 @@ class _SalaryTable extends StatelessWidget {
               // ── Deductions (zero when no days) ───────────────────────────
               final pf  = preview._pf(e);
               final eP  = preview._esicInt(e);
-              final msw = preview._msw();
+              final msw = preview._msw();      // now respects applyMsw
               final pt  = preview._pt(e);
               final td  = preview._totalDed(e);
               final net = preview._net(e);

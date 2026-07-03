@@ -123,9 +123,9 @@ class SalaryPdfExportService {
     for (int i = 0; i < employees.length; i += 2) {
       final emp1  = employees[i];
       final emp2  = (i + 1 < employees.length) ? employees[i + 1] : null;
-      final calc1 = _calc(emp: emp1, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb);
+      final calc1 = _calc(emp: emp1, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb, mswAmount: n.mswAmount);
       final calc2 = emp2 != null
-          ? _calc(emp: emp2, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb)
+          ? _calc(emp: emp2, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb, mswAmount: n.mswAmount)
           : null;
 
       doc.addPage(pw.Page(
@@ -179,9 +179,9 @@ class SalaryPdfExportService {
     for (int i = 0; i < employees.length; i += 2) {
       final emp1  = employees[i];
       final emp2  = (i + 1 < employees.length) ? employees[i + 1] : null;
-      final calc1 = _calc(emp: emp1, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb);
+      final calc1 = _calc(emp: emp1, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb, mswAmount: n.mswAmount);
       final calc2 = emp2 != null
-          ? _calc(emp: emp2, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb)
+          ? _calc(emp: emp2, n: n, daysInMonth: daysInMonth, isMsw: isMsw, isFeb: isFeb, mswAmount: n.mswAmount)
           : null;
 
       doc.addPage(pw.Page(
@@ -803,6 +803,7 @@ class SalaryPdfExportService {
     required int                daysInMonth,
     required bool               isMsw,
     required bool               isFeb,
+    required double             mswAmount,
   }) {
     final days   = n.getDays(emp.id ?? 0);
     final eB     = daysInMonth == 0 ? 0.0 : emp.basicCharges * days / daysInMonth;
@@ -810,7 +811,7 @@ class SalaryPdfExportService {
     final eG     = eB + eO;
     final pf     = eB >= 15000 ? 1800.0 : (eB * 0.12).round().toDouble();
     final esic   = emp.grossSalary <= 21000 ? (eG * 0.0075).ceil().toDouble() : 0.0;
-    final msw    = isMsw ? 6.0 : 0.0;
+    final msw    = isMsw ? mswAmount : 0.0;
     final female = emp.gender.toUpperCase() == 'F';
     double pt;
     if (female) {

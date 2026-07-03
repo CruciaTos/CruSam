@@ -135,6 +135,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
     final n = SalaryDataNotifier.instance;
     final sc = SalaryStateController.instance;
     final isMsw = n.isMsw;
+    final mswAmount = n.mswAmount;
     final isFeb = n.isFeb;
     final totalDays = n.totalDays;
 
@@ -152,7 +153,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
 
       final pf = earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round();
       final esic = e.grossSalary <= 21000 ? (earnedGross * 0.0075).ceil() : 0;
-      final msw = isMsw ? 6 : 0;
+      final msw = isMsw ? mswAmount.round() : 0;
 
       final isFemale = e.gender.toUpperCase() == 'F';
       int pt;

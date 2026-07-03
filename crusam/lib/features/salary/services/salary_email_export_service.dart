@@ -126,6 +126,7 @@ class SalaryEmailExportService {
       monthName: n.monthName,
       year: n.year,
       isMsw: n.isMsw,
+      mswAmount: n.mswAmount,
       isFeb: n.isFeb,
       daysMap: daysMap,
       daysInMonth: n.totalDays,

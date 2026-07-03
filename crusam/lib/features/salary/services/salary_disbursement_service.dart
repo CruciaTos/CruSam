@@ -97,6 +97,7 @@ class SalaryDisbursementService {
     required int days,
     required int daysInMonth,
     required bool isMsw,
+    required double mswAmount,
     required bool isFeb,
   }) {
     if (days == 0 || daysInMonth == 0) return 0;
@@ -106,7 +107,7 @@ class SalaryDisbursementService {
     final esic   = employee.grossSalary <= 21000
         ? (eGross * 0.0075).ceilToDouble()
         : 0.0;
-    final msw    = isMsw ? 6.0 : 0.0;
+    final msw    = isMsw ? mswAmount : 0.0;
     final female = employee.gender.toUpperCase() == 'F';
     double pt;
     if (female) {
@@ -140,6 +141,7 @@ class SalaryDisbursementService {
         days:        days,
         daysInMonth: salaryData.totalDays,
         isMsw:       salaryData.isMsw,
+        mswAmount:   salaryData.mswAmount,
         isFeb:       salaryData.isFeb,
       );
 

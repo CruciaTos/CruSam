@@ -185,10 +185,10 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
 
   String _buildBody() {
     final period = widget.summary.periodLabel;
-    return 'Dear Sir/Madam,\n\n'
+    return 'Dear Sir,\n\n'
         'Please find attached the ${_docType.label.toLowerCase()} '
         'for $period.\n\n'
-        'Regards,\n${_config.companyName}';
+        'Regards,\nBharat Boridkar';
   }
 
   void _refreshAutoFill() {

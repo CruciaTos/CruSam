@@ -56,6 +56,7 @@ class ExcelExportService {
     required String              monthName,
     required int                 year,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -108,7 +109,7 @@ class ExcelExportService {
       final esicInt = e.grossSalary <= 21000
           ? (earnedGross * 0.0075).ceil()
           : 0;
-      final mswVal        = isMsw ? 6 : 0;
+      final mswVal        = isMsw ? mswAmount.round() : 0;
       final displayedMsw  = hasDays ? mswVal : 0;
       final pt            = _calculatePT(earnedGross, e.gender, isFeb);
       final totalDed      = pf + esicInt + mswVal + pt;

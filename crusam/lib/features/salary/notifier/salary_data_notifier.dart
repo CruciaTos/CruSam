@@ -24,13 +24,26 @@ class SalaryDataNotifier extends ChangeNotifier {
   // SalarySnapshotNotifier just like the rest of the bill header.
   String _itemDescription = 'Manpower Supply Charges';
 
+  // MSW (June/December welfare deduction) is split into two concepts:
+  //  - isMswEligibleMonth: whether the selected month is June or December.
+  //  - applyMsw: whether the (user-toggleable) deduction should actually be
+  //    applied for an eligible month. Defaults to on, matching the old
+  //    always-on behaviour for eligible months.
+  //  - mswAmount: the per-employee deduction amount, editable while
+  //    applyMsw is on. Defaults to the historical hardcoded ₹6.
+  bool _applyMsw = true;
+  double _mswAmount = 6;
+
   final Map<int, int> _days = {};
   final Map<int, TextEditingController> _controllers = {};
 
   int get month => _month;
   int get year => _year;
   int get totalDays => DateTime(_year, _month + 1, 0).day;
-  bool get isMsw => _month == 6 || _month == 12;
+  bool get isMswEligibleMonth => _month == 6 || _month == 12;
+  bool get applyMsw => _applyMsw;
+  double get mswAmount => _mswAmount;
+  bool get isMsw => isMswEligibleMonth && _applyMsw;
   bool get isFeb => _month == 2;
   String get dateIso => _dateIso;
   String get dateDisplay => _formatDisplayDate(_dateIso);
@@ -203,6 +216,18 @@ class SalaryDataNotifier extends ChangeNotifier {
   void setItemDescription(String v) {
     if (_itemDescription == v) return;
     _itemDescription = v;
+    _safeNotify();
+  }
+
+  void setApplyMsw(bool v) {
+    if (_applyMsw == v) return;
+    _applyMsw = v;
+    _safeNotify();
+  }
+
+  void setMswAmount(double v) {
+    if (_mswAmount == v) return;
+    _mswAmount = v;
     _safeNotify();
   }
 

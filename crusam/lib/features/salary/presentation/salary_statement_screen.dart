@@ -41,6 +41,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
   static const String _prefsKey = 'salary_statement_column_widths';
 
+  // ── Track route visibility for MSW‑only refresh ──────────────────────────
+  bool _isRouteCurrent = false;
+
   @override
   void initState() {
     super.initState();
@@ -60,6 +63,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
     _loadColumnWidths();
 
+    // Lazy-load employees only if the list is empty (original behaviour)
     if (_stateCtrl.employees.isEmpty) _stateCtrl.loadEmployees();
     _loadConfig();
   }
@@ -69,11 +73,11 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       return Map.of(SalaryStatementPreview.defaultColumnWidths);
     } catch (e) {
       return {
-        0: 26.0, 1: 124.0, 2: 84.0,  3: 92.0,
-        4: 30.0, 5: 38.0,  6: 74.0,  7: 104.0,
+        0: 26.0, 1: 124.0, 2: 84.0, 3: 92.0,
+        4: 30.0, 5: 38.0, 6: 74.0, 7: 104.0,
         8: 50.0, 9: 50.0, 10: 38.0, 11: 54.0,
-       12: 36.0,13: 30.0, 14: 30.0, 15: 36.0,
-       16: 50.0,17: 56.0,
+        12: 36.0, 13: 30.0, 14: 30.0, 15: 36.0,
+        16: 50.0, 17: 56.0,
       };
     }
   }
@@ -86,6 +90,26 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  // ── Auto‑refresh MSW (and any other notifier data) when screen returns ───
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) {
+      final isCurrent = route.isCurrent;
+      if (isCurrent && !_isRouteCurrent) {
+        // Schedule the refresh for after the current frame to avoid
+        // calling setState during build.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            SalaryDataNotifier.instance.notifyListeners();
+          }
+        });
+      }
+      _isRouteCurrent = isCurrent;
+    }
   }
 
   Future<void> _loadColumnWidths() async {
@@ -144,7 +168,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
   Future<void> _exportPdf() async {
     if (_exporting) return;
-    final n         = SalaryDataNotifier.instance;
+    final n = SalaryDataNotifier.instance;
     final employees = _stateCtrl.filteredEmployees;
 
     if (employees.isEmpty) {
@@ -163,14 +187,15 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       }
 
       await SalaryStatementPdfService.exportSalaryStatement(
-        config:       _config,
-        employees:    employees,
-        monthName:    n.monthName,
-        year:         n.year,
-        isMsw:        n.isMsw,
-        isFeb:        n.isFeb,
-        daysMap:      daysMap,
-        daysInMonth:  n.totalDays,
+        config: _config,
+        employees: employees,
+        monthName: n.monthName,
+        year: n.year,
+        isMsw: n.isMsw,
+        mswAmount: n.mswAmount,
+        isFeb: n.isFeb,
+        daysMap: daysMap,
+        daysInMonth: n.totalDays,
         columnWidths: Map.of(_columnWidths),
       );
     } catch (e) {
@@ -190,7 +215,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   Future<void> _exportExcel() async {
     if (_exportingExcel) return;
 
-    final n         = SalaryDataNotifier.instance;
+    final n = SalaryDataNotifier.instance;
     final employees = _stateCtrl.filteredEmployees;
 
     if (employees.isEmpty) {
@@ -209,13 +234,14 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       }
 
       final path = await ExcelExportService.exportSalaryStatement(
-        config:      _config,
-        employees:   employees,
-        monthName:   n.monthName,
-        year:        n.year,
-        isMsw:       n.isMsw,
-        isFeb:       n.isFeb,
-        daysMap:     daysMap,
+        config: _config,
+        employees: employees,
+        monthName: n.monthName,
+        year: n.year,
+        isMsw: n.isMsw,
+        mswAmount: n.mswAmount,
+        isFeb: n.isFeb,
+        daysMap: daysMap,
         daysInMonth: n.totalDays,
         columnWidths: Map.of(_columnWidths),
       );
@@ -239,25 +265,11 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
   }
 
   // ── Generate Disbursement Excel ───────────────────────────────────────────
-  //
-  // Uses whichever employees are currently visible (filtered by the active
-  // company-code chip).  The code is embedded in both deptCode (stored in
-  // the DB batch) and the Excel filename so you always know which filter
-  // produced the file:
-  //
-  //   All selected   →  Salary_Disbursement_June_2025.xlsx
-  //   F&B selected   →  Salary_Disbursement_June_F&B_2025.xlsx
-  //   I&L selected   →  Salary_Disbursement_June_I&L_2025.xlsx
-  //
-  // The trick for the filename: generateExcel() builds the name from the
-  // monthName argument.  We pass a decorated monthName that already contains
-  // the code suffix (e.g. "June_F&B").  The service sanitises slashes etc.
-  // but ampersands are fine and underscores are left as-is.
   Future<void> _generateDisbursement() async {
     if (_generatingDisbursement) return;
 
-    final n          = SalaryDataNotifier.instance;
-    final employees  = _stateCtrl.filteredEmployees;
+    final n = SalaryDataNotifier.instance;
+    final employees = _stateCtrl.filteredEmployees;
     final filterCode = _stateCtrl.selectedCompanyCode; // 'All' | 'F&B' | …
 
     if (employees.isEmpty) {
@@ -271,11 +283,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     showLoader(context, message: 'Generating salary disbursement…');
 
     try {
-      // 1. Build candidate items from the currently visible (filtered) employees.
-      //    alreadyDisbursedIds is empty — no tick-box gatekeeping.
       final candidates = await SalaryDisbursementService.buildCandidateItems(
-        employees:           employees,
-        salaryData:          n,
+        employees: employees,
+        salaryData: n,
         alreadyDisbursedIds: {},
       );
 
@@ -291,61 +301,44 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         return;
       }
 
-      // 2. Persist the batch.
-      //    deptCode stores exactly the active filter ('All', 'F&B', etc.)
-      //    so history cards in the disbursement screen show the right label.
       final disbursement = await SalaryDisbursementService.createDisbursement(
-        month:    n.month,
-        year:     n.year,
+        month: n.month,
+        year: n.year,
         deptCode: filterCode,
-        items:    candidates,
+        items: candidates,
       );
 
-      // 3. Fetch persisted items directly — DatabaseHelper has no
-      //    getDisbursementItems wrapper, so we query the table ourselves.
-      final db       = await DatabaseHelper.instance.database;
+      final db = await DatabaseHelper.instance.database;
       final itemMaps = await db.query(
         'salary_disbursement_items',
-        where:     'disbursement_id = ?',
+        where: 'disbursement_id = ?',
         whereArgs: [disbursement.id!],
       );
       final persistedItems = itemMaps
           .map(SalaryDisbursementItemModel.fromDbMap)
           .toList();
 
-      // 4. Build the decorated monthName that carries the filter code.
-      //
-      //    generateExcel() uses monthName in:
-      //      'Salary_Disbursement_${monthName}_${year}.xlsx'
-      //    so we embed the code directly:
-      //      filterCode == 'All'  →  'June'          → Salary_Disbursement_June_2025.xlsx
-      //      filterCode == 'F&B'  →  'June_F&B'      → Salary_Disbursement_June_F&B_2025.xlsx
-      //
-      //    The service's _saveExcelFileWithIncrement replaces nothing that
-      //    would break here — only [/\\?*:[]] are stripped, & is kept as-is.
       final String monthNameForFile = filterCode == 'All'
           ? n.monthName
           : '${n.monthName}_$filterCode';
 
-      // 5. Generate + save Excel.
       final path = await SalaryDisbursementService.generateExcel(
         disbursement: disbursement,
-        items:        persistedItems,
-        config:       _config,
-        monthName:    monthNameForFile,
+        items: persistedItems,
+        config: _config,
+        monthName: monthNameForFile,
       );
 
-      // 6. Mark the batch as exported.
       if (path != null) {
         final updated = disbursement.copyWith(
-          status:     SalaryDisbursementStatus.exported,
+          status: SalaryDisbursementStatus.exported,
           exportedAt: DateTime.now().toIso8601String(),
         );
         final rowMap = updated.toDbMap()..remove('id');
         await db.update(
           'salary_disbursements',
           rowMap,
-          where:     'id = ?',
+          where: 'id = ?',
           whereArgs: [disbursement.id!],
         );
       }
@@ -380,10 +373,10 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     return ListenableBuilder(
       listenable: Listenable.merge([_stateCtrl, SalaryDataNotifier.instance]),
       builder: (context, _) {
-        final n         = SalaryDataNotifier.instance;
+        final n = SalaryDataNotifier.instance;
         final employees = _stateCtrl.filteredEmployees;
-        final code      = _stateCtrl.selectedCompanyCode;
-        final title     = getTitle('Salary Statement', code == 'All' ? null : code);
+        final code = _stateCtrl.selectedCompanyCode;
+        final title = getTitle('Salary Statement', code == 'All' ? null : code);
 
         final daysMap = <int, int>{};
         for (final e in employees) {
@@ -396,24 +389,23 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _Toolbar(
-                title:          title,
-                monthName:      n.monthName,
-                year:           n.year,
-                isMsw:          n.isMsw,
-                isFeb:          n.isFeb,
-                employees:      employees,
-                exportingPdf:   _exporting,
+                title: title,
+                monthName: n.monthName,
+                year: n.year,
+                isMsw: n.isMsw,
+                isFeb: n.isFeb,
+                employees: employees,
+                exportingPdf: _exporting,
                 exportingExcel: _exportingExcel,
-                onExportPdf:    _exportPdf,
-                onExportExcel:  _exportExcel,
-                selectedCode:   code,
-                onCodeChanged:  (c) => _stateCtrl.setCompanyCode(c ?? 'All'),
+                onExportPdf: _exportPdf,
+                onExportExcel: _exportExcel,
+                selectedCode: code,
+                mswAmount: n.mswAmount,
+                onCodeChanged: (c) => _stateCtrl.setCompanyCode(c ?? 'All'),
                 generatingDisbursement: _generatingDisbursement,
                 onGenerateDisbursement: _generateDisbursement,
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
               Expanded(
                 child: _stateCtrl.isLoading
                     ? const Center(child: CircularProgressIndicator())
@@ -426,16 +418,17 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                               color: Colors.grey[200],
                               padding: const EdgeInsets.all(AppSpacing.md),
                               child: _LeftPane(
-                                employees:   employees,
-                                isMsw:       n.isMsw,
-                                isFeb:       n.isFeb,
-                                daysMap:     daysMap,
+                                employees: employees,
+                                isMsw: n.isMsw,
+                                isFeb: n.isFeb,
+                                daysMap: daysMap,
                                 daysInMonth: n.totalDays,
-                                colCtrls:    _colCtrls,
+                                colCtrls: _colCtrls,
                                 onColChanged: (i, v) {
                                   setState(() => _columnWidths[i] = v);
                                   _saveColumnWidths();
                                 },
+                                mswAmount: n.mswAmount,
                                 onColReset: () {
                                   setState(() {
                                     for (int i = 0;
@@ -453,25 +446,24 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                               ),
                             ),
                           ),
-
                           Container(
                             width: 1,
                             margin: const EdgeInsets.symmetric(horizontal: 16),
                             color: AppColors.slate200,
                           ),
-
                           Expanded(
                             child: employees.isEmpty
                                 ? _EmptyState(
                                     hasEmployees: _stateCtrl.employees.isNotEmpty)
                                 : _PreviewPane(
-                                    config:       _config,
-                                    employees:    employees,
-                                    n:            n,
-                                    daysMap:      daysMap,
+                                    config: _config,
+                                    employees: employees,
+                                    n: n,
+                                    daysMap: daysMap,
                                     columnWidths: Map.of(_columnWidths),
-                                    vScroll:      _vScroll,
-                                    hScroll:      _hScroll,
+                                    mswAmount: n.mswAmount,
+                                    vScroll: _vScroll,
+                                    hScroll: _hScroll,
                                   ),
                           ),
                         ],
@@ -492,17 +484,18 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 class _Toolbar extends StatelessWidget {
   final String title;
   final String monthName;
-  final int    year;
-  final bool   isMsw;
-  final bool   isFeb;
+  final int year;
+  final bool isMsw;
+  final double mswAmount;
+  final bool isFeb;
   final List<EmployeeModel> employees;
-  final bool   exportingPdf;
-  final bool   exportingExcel;
+  final bool exportingPdf;
+  final bool exportingExcel;
   final VoidCallback onExportPdf;
   final VoidCallback onExportExcel;
   final String selectedCode;
   final void Function(String?) onCodeChanged;
-  final bool         generatingDisbursement;
+  final bool generatingDisbursement;
   final VoidCallback onGenerateDisbursement;
 
   const _Toolbar({
@@ -510,6 +503,7 @@ class _Toolbar extends StatelessWidget {
     required this.monthName,
     required this.year,
     required this.isMsw,
+    required this.mswAmount,
     required this.isFeb,
     required this.employees,
     required this.exportingPdf,
@@ -524,8 +518,6 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Build a human-readable label for the disbursement button so the user
-    // always knows exactly which scope will be exported.
     final disbLabel = selectedCode == 'All'
         ? 'Disbursement'
         : 'Disbursement ($selectedCode)';
@@ -541,11 +533,13 @@ class _Toolbar extends StatelessWidget {
             const Spacer(),
             if (employees.isNotEmpty) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: AppColors.indigo600.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.3)),
+                  border: Border.all(
+                      color: AppColors.indigo600.withValues(alpha: 0.3)),
                 ),
                 child: Text(
                   '${employees.length} employee${employees.length == 1 ? '' : 's'}',
@@ -559,7 +553,7 @@ class _Toolbar extends StatelessWidget {
             ],
             if (isMsw) ...[
               _FlagBadge(
-                  label: 'MSW month  ₹6 active',
+                  label: 'MSW month  ₹${mswAmount.toStringAsFixed(0)} active',
                   bg: AppColors.amber100,
                   fg: AppColors.amber700),
               const SizedBox(width: 8),
@@ -573,11 +567,13 @@ class _Toolbar extends StatelessWidget {
             ],
             exportingPdf
                 ? const SizedBox(
-                    width: 24, height: 24,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : OutlinedButton.icon(
                     onPressed: onExportPdf,
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                    icon:
+                        const Icon(Icons.picture_as_pdf_outlined, size: 16),
                     label: const Text('Download PDF'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red.shade700,
@@ -587,7 +583,8 @@ class _Toolbar extends StatelessWidget {
             const SizedBox(width: 8),
             exportingExcel
                 ? const SizedBox(
-                    width: 24, height: 24,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : OutlinedButton.icon(
@@ -600,15 +597,17 @@ class _Toolbar extends StatelessWidget {
                     ),
                   ),
             const SizedBox(width: 8),
-            // ── Disbursement button — label updates with active filter ──────
             generatingDisbursement
                 ? const SizedBox(
-                    width: 24, height: 24,
+                    width: 24,
+                    height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : OutlinedButton.icon(
-                    onPressed: employees.isEmpty ? null : onGenerateDisbursement,
-                    icon: const Icon(Icons.account_balance_outlined, size: 16),
+                    onPressed:
+                        employees.isEmpty ? null : onGenerateDisbursement,
+                    icon: const Icon(Icons.account_balance_outlined,
+                        size: 16),
                     label: Text(disbLabel),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.teal.shade700,
@@ -622,7 +621,8 @@ class _Toolbar extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
-              _codeChip('All', selectedCode == 'All', () => onCodeChanged(null)),
+              _codeChip(
+                  'All', selectedCode == 'All', () => onCodeChanged(null)),
               ...['F&B', 'I&L', 'P&S', 'A&P'].map((c) =>
                   _codeChip(c, selectedCode == c, () => onCodeChanged(c))),
             ],
@@ -665,6 +665,7 @@ class _LeftPane extends StatefulWidget {
   final List<EmployeeModel> employees;
   final bool isMsw;
   final bool isFeb;
+  final double mswAmount;
   final Map<int, int> daysMap;
   final int daysInMonth;
   final List<TextEditingController> colCtrls;
@@ -675,6 +676,7 @@ class _LeftPane extends StatefulWidget {
     required this.employees,
     required this.isMsw,
     required this.isFeb,
+    required this.mswAmount,
     required this.daysMap,
     required this.daysInMonth,
     required this.colCtrls,
@@ -689,7 +691,6 @@ class _LeftPane extends StatefulWidget {
 class _LeftPaneState extends State<_LeftPane> {
   bool _showColWidths = false;
 
-  // ── Statutory helpers (prorated) ──────────────────────────────────────────
   int _days(EmployeeModel e) => widget.daysMap[e.id ?? -1] ?? 0;
 
   double _earnedGross(EmployeeModel e) {
@@ -721,7 +722,7 @@ class _LeftPaneState extends State<_LeftPane> {
     return eg == 0 ? 0 : (eg * 0.0075).ceil();
   }
 
-  int _msw() => widget.isMsw ? 6 : 0;
+  int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;
 
   int _pt(EmployeeModel e) {
     final eg = _earnedGross(e);
@@ -742,64 +743,59 @@ class _LeftPaneState extends State<_LeftPane> {
 
   @override
   Widget build(BuildContext context) {
-    // ── Aggregates ────────────────────────────────────────────────────────
     double sumBasic = 0, sumOther = 0, sumGross = 0, sumNet = 0;
     double sumEarnedBasic = 0, sumEarnedOther = 0, sumEarnedGross = 0;
     int sumPf = 0, sumEsic = 0, sumMsw = 0, sumPt = 0, sumTd = 0;
     int withDays = 0;
 
     for (final e in widget.employees) {
-      sumBasic       += e.basicCharges;
-      sumOther       += e.otherCharges;
-      sumGross       += e.grossSalary;
+      sumBasic += e.basicCharges;
+      sumOther += e.otherCharges;
+      sumGross += e.grossSalary;
       sumEarnedBasic += _earnedBasic(e);
       sumEarnedOther += _earnedOther(e);
       sumEarnedGross += _earnedGross(e);
-      sumPf   += _pf(e);
+      sumPf += _pf(e);
       sumEsic += _esic(e);
-      sumMsw  += _msw();
-      sumPt   += _pt(e);
-      sumTd   += _td(e);
-      sumNet  += _net(e);
+      sumMsw += _msw();
+      sumPt += _pt(e);
+      sumTd += _td(e);
+      sumNet += _net(e);
       if (_days(e) > 0) withDays++;
     }
 
     return ListView(
       children: [
-        // ── Full Earnings ─────────────────────────────────────────────────
         Text('Salary Aggregates', style: AppTextStyles.h4),
         const SizedBox(height: AppSpacing.lg),
-
         _row('Employees', '${widget.employees.length}', AppColors.indigo600),
-        _row('With Days Entered', '$withDays / ${widget.employees.length}',
+        _row(
+            'With Days Entered',
+            '$withDays / ${widget.employees.length}',
             withDays == widget.employees.length
                 ? AppColors.emerald700
                 : AppColors.amber700),
         const Divider(height: AppSpacing.lg),
-
         Text('Earnings',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
-        _row('Total Basic', '₹${sumBasic.toStringAsFixed(0)}', AppColors.indigo600),
-        _row('Total Other', '₹${sumOther.toStringAsFixed(0)}', AppColors.indigo600),
-        _row('Total Gross', '₹${sumGross.toStringAsFixed(0)}', AppColors.indigo600, bold: true),
+        _row('Total Basic', '₹${sumBasic.toStringAsFixed(0)}',
+            AppColors.indigo600),
+        _row('Total Other', '₹${sumOther.toStringAsFixed(0)}',
+            AppColors.indigo600),
+        _row('Total Gross', '₹${sumGross.toStringAsFixed(0)}',
+            AppColors.indigo600, bold: true),
         const Divider(height: AppSpacing.lg),
-
         Text('Earned Salary (Prorated)',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
-        _row('Earned Basic',
-            '₹${sumEarnedBasic.toStringAsFixed(0)}',
+        _row('Earned Basic', '₹${sumEarnedBasic.toStringAsFixed(0)}',
             AppColors.indigo600),
-        _row('Earned Other',
-            '₹${sumEarnedOther.toStringAsFixed(0)}',
+        _row('Earned Other', '₹${sumEarnedOther.toStringAsFixed(0)}',
             AppColors.indigo600),
-        _row('Earned Gross',
-            '₹${sumEarnedGross.toStringAsFixed(0)}',
-            AppColors.emerald700,
-            bold: true),
+        _row('Earned Gross', '₹${sumEarnedGross.toStringAsFixed(0)}',
+            AppColors.emerald700, bold: true),
         const Divider(height: AppSpacing.lg),
-
         Text('Deductions (Prorated)',
             style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
         const SizedBox(height: AppSpacing.sm),
@@ -811,20 +807,20 @@ class _LeftPaneState extends State<_LeftPane> {
         const Divider(height: AppSpacing.md),
         _row('Total Deductions', '₹$sumTd', Colors.red.shade700, bold: true),
         const Divider(height: AppSpacing.lg),
-
         _row('Net Payable', '₹${sumNet.toStringAsFixed(0)}',
             AppColors.emerald700, bold: true, fontSize: 14),
-
         if (withDays < widget.employees.length) ...[
           const SizedBox(height: AppSpacing.md),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.amber100,
               borderRadius: BorderRadius.circular(AppSpacing.radius),
             ),
             child: Row(children: [
-              const Icon(Icons.info_outline, size: 13, color: AppColors.amber700),
+              const Icon(Icons.info_outline,
+                  size: 13, color: AppColors.amber700),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
@@ -838,20 +834,22 @@ class _LeftPaneState extends State<_LeftPane> {
             ]),
           ),
         ],
-
         if (widget.isMsw) ...[
           const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.amber100,
               borderRadius: BorderRadius.circular(AppSpacing.radius),
             ),
             child: Row(children: [
-              const Icon(Icons.info_outline, size: 13, color: AppColors.amber700),
+              const Icon(Icons.info_outline,
+                  size: 13, color: AppColors.amber700),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('MSW month — ₹6 deduction active',
+                child: Text(
+                    'MSW month — ₹${widget.mswAmount.toStringAsFixed(0)} deduction active',
                     style: AppTextStyles.small.copyWith(
                         color: AppColors.amber700,
                         fontWeight: FontWeight.w500)),
@@ -862,16 +860,19 @@ class _LeftPaneState extends State<_LeftPane> {
         if (widget.isFeb) ...[
           const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: AppColors.indigo50,
               borderRadius: BorderRadius.circular(AppSpacing.radius),
             ),
             child: Row(children: [
-              const Icon(Icons.info_outline, size: 13, color: AppColors.indigo600),
+              const Icon(Icons.info_outline,
+                  size: 13, color: AppColors.indigo600),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('February — PT ₹300 for eligible employees',
+                child: Text(
+                    'February — PT ₹300 for eligible employees',
                     style: AppTextStyles.small.copyWith(
                         color: AppColors.indigo600,
                         fontWeight: FontWeight.w500)),
@@ -879,12 +880,9 @@ class _LeftPaneState extends State<_LeftPane> {
             ]),
           ),
         ],
-
         const SizedBox(height: AppSpacing.xl),
         const Divider(),
         const SizedBox(height: AppSpacing.sm),
-
-        // ── Column Width Adjustments ───────────────────────────────────────
         GestureDetector(
           onTap: () => setState(() => _showColWidths = !_showColWidths),
           child: Row(
@@ -918,7 +916,6 @@ class _LeftPaneState extends State<_LeftPane> {
             ],
           ),
         ),
-
         if (_showColWidths) ...[
           const SizedBox(height: AppSpacing.sm),
           for (int i = 0; i < widget.colCtrls.length; i++)
@@ -971,8 +968,8 @@ class _LeftPaneState extends State<_LeftPane> {
   static Widget _row(
     String label,
     String value,
-    Color  color, {
-    bool   bold     = false,
+    Color color, {
+    bool bold = false,
     double fontSize = 12,
   }) =>
       Padding(
@@ -983,9 +980,9 @@ class _LeftPaneState extends State<_LeftPane> {
             Text(label, style: AppTextStyles.small),
             Text(value,
                 style: AppTextStyles.small.copyWith(
-                  color:      color,
+                  color: color,
                   fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
-                  fontSize:   bold ? fontSize : 12,
+                  fontSize: bold ? fontSize : 12,
                 )),
           ],
         ),
@@ -1002,6 +999,7 @@ class _PreviewPane extends StatelessWidget {
   final SalaryDataNotifier n;
   final Map<int, int> daysMap;
   final Map<int, double> columnWidths;
+  final double mswAmount;
   final ScrollController vScroll;
   final ScrollController hScroll;
 
@@ -1011,6 +1009,7 @@ class _PreviewPane extends StatelessWidget {
     required this.n,
     required this.daysMap,
     required this.columnWidths,
+    required this.mswAmount,
     required this.vScroll,
     required this.hScroll,
   });
@@ -1053,13 +1052,12 @@ class _PreviewPane extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: AppSpacing.sm),
-
         Expanded(
           child: LayoutBuilder(
             builder: (context, viewportConstraints) {
               final viewportW = viewportConstraints.maxWidth;
-              final previewW  = _previewWidth();
-              final scrollW   = previewW > viewportW ? previewW : viewportW;
+              final previewW = _previewWidth();
+              final scrollW = previewW > viewportW ? previewW : viewportW;
 
               return Container(
                 decoration: BoxDecoration(
@@ -1093,14 +1091,16 @@ class _PreviewPane extends StatelessWidget {
                                 child: Align(
                                   alignment: Alignment.topCenter,
                                   child: SalaryStatementPreview(
-                                    config:       config,
-                                    employees:    employees,
-                                    monthName:    n.monthName,
-                                    year:         n.year,
-                                    isMsw:        n.isMsw,
-                                    isFeb:        n.isFeb,
-                                    daysMap:      daysMap,
-                                    daysInMonth:  n.totalDays,
+                                    config: config,
+                                    employees: employees,
+                                    monthName: n.monthName,
+                                    year: n.year,
+                                    isMsw: n.isMsw,
+                                    isFeb: n.isFeb,
+                                    mswAmount: n.mswAmount, // <-- ADDED
+                                    applyMsw: n.applyMsw,   // <-- ADDED (the toggle fix)
+                                    daysMap: daysMap,
+                                    daysInMonth: n.totalDays,
                                     columnWidths: columnWidths,
                                   ),
                                 ),
@@ -1162,7 +1162,7 @@ class _EmptyState extends StatelessWidget {
 
 class _MonthBadge extends StatelessWidget {
   final String monthName;
-  final int    year;
+  final int year;
   const _MonthBadge({required this.monthName, required this.year});
 
   @override
@@ -1188,8 +1188,8 @@ class _MonthBadge extends StatelessWidget {
 
 class _FlagBadge extends StatelessWidget {
   final String label;
-  final Color  bg;
-  final Color  fg;
+  final Color bg;
+  final Color fg;
   const _FlagBadge({required this.label, required this.bg, required this.fg});
 
   @override

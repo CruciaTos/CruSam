@@ -6,7 +6,7 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
-import '../../../shared/widgets/full_screen_loader.dart'; // Added
+import '../../../shared/widgets/full_screen_loader.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_pdf_export_service.dart';
@@ -109,7 +109,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
       return;
     }
     setState(() => _exporting = true);
-    showLoader(context, message: 'Generating salary slips…'); // Added
+    showLoader(context, message: 'Generating salary slips…');
     try {
       final n = SalaryDataNotifier.instance;
       await SalaryPdfExportService.exportSalarySlips(
@@ -127,7 +127,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           content: Text('Export failed: $e'),
           backgroundColor: Colors.red.shade700));
     } finally {
-      hideLoader(context); // Added
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -154,7 +154,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                     children: [
                       Text(
                         title,
-                        style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                        style: AppTextStyles.h3.copyWith(color: Colors.white),
                       ),
                       const SizedBox(width: AppSpacing.md),
                       _MonthBadge(monthName: n.monthName, year: n.year),
@@ -332,6 +332,7 @@ class _ScrollablePageState extends State<_ScrollablePage> {
               daysInMonth: n.totalDays,
               isMsw: n.isMsw,
               isFeb: n.isFeb,
+              mswAmount: n.mswAmount,   // ← added missing required parameter
             ),
           ),
         ),
@@ -481,7 +482,6 @@ class _GroupedEmpTile extends StatelessWidget {
         border: Border.fromBorderSide(
             BorderSide(color: _kHighlightBorder, width: 1)),
       ),
-      // ClipRRect keeps InkWell splash inside the rounded corners
       child: ClipRRect(
         borderRadius: _kBorderRadius,
         child: Material(
@@ -576,7 +576,7 @@ class _EmpRow extends StatelessWidget {
   const _EmpRow({
     required this.employee,
     required this.days,
-    this.isSelected = true, // grouped tiles are always highlighted
+    this.isSelected = true,
   });
 
   String get _initials {

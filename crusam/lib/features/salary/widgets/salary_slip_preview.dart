@@ -33,6 +33,7 @@ class SalarySlipPreview extends StatelessWidget {
   final String year;
   final int daysInMonth;
   final int daysPresent;
+  final double mswAmount;
   final double basicSalary;
   final double otherAllowances;
   final double pfDeduction;
@@ -58,6 +59,7 @@ class SalarySlipPreview extends StatelessWidget {
     this.year = '2026',
     this.daysInMonth = 31,
     this.daysPresent = 31,
+    this.mswAmount = 6,
     this.basicSalary = 0,
     this.otherAllowances = 0,
     this.pfDeduction = 0,
@@ -100,6 +102,7 @@ class SalarySlipPreview extends StatelessWidget {
     required int daysInMonth,
     required bool isMsw,
     required bool isFeb,
+    double mswAmount = 6,
     EdgeInsets margins = const EdgeInsets.all(24),
   }) {
     final pages = <Widget>[];
@@ -115,6 +118,7 @@ class SalarySlipPreview extends StatelessWidget {
           year: year.toString(),
           daysInMonth: daysInMonth,
           isMsw: isMsw,
+          mswAmount: mswAmount,
           isFeb: isFeb,
         ),
       );
@@ -606,6 +610,7 @@ class SalarySlipPairPage extends StatelessWidget {
   final String year;
   final int daysInMonth;
   final bool isMsw;
+  final double mswAmount;
   final bool isFeb;
 
   const SalarySlipPairPage({
@@ -617,6 +622,7 @@ class SalarySlipPairPage extends StatelessWidget {
     required this.year,
     required this.daysInMonth,
     required this.isMsw,
+    required this.mswAmount,
     required this.isFeb,
   }) : assert(employees.length <= 2, 'At most two employees per page');
 
@@ -659,7 +665,7 @@ class SalarySlipPairPage extends StatelessWidget {
     final pf = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).roundToDouble();
     final esicApplicable = emp.grossSalary <= 21000;
     final esic = esicApplicable ? (eGross * 0.0075).ceilToDouble() : 0.0;
-    final msw = isMsw ? 6.0 : 0.0;
+    final msw = isMsw ? mswAmount : 0.0;
     final isFemale = emp.gender.toUpperCase() == 'F';
     double pt;
     if (isFemale) {
