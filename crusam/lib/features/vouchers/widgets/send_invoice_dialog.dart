@@ -9,6 +9,8 @@
 // PDF/send work so a crash mid-send still leaves a trace instead of
 // silently losing the attempt.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -23,6 +25,10 @@ import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
 import '../../../data/models/voucher_model.dart';
+import '../../../shared/models/generated_document.dart';
+import '../../../shared/models/output_format.dart';
+import '../../../shared/widgets/output_format_picker.dart';
+import '../services/excel_export_service.dart';
 import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
 
 class SendInvoiceDialog extends StatefulWidget {
@@ -68,6 +74,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
   EmailLogModel? _alreadySentLog;
   bool           _confirmedResend = false;
   List<String>   _suggestions = const [];
+  Set<OutputFormat> _formats = {OutputFormat.pdf};
 
   @override
   void initState() {
@@ -169,30 +176,55 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         recipientCc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
         sentBy: GoogleAuthService.instance.userEmail ?? '',
+        attachmentFormats: _formats.map((f) => f.name).join(','),
       ));
 
-      // 2. Build the client-facing PDF — full bundle (tax invoice + voucher
-      //    pages), same as "Save PDF" produces to disk. Widget-based
-      //    generator (vector pw.Widget tree), not the screenshot-based one —
-      //    used here regardless of the 'useWidgetPdfForInvoiceVoucher'
-      //    toggle, which only controls the separate "Save PDF" button.
-      final pdfBytes = await WidgetPdfExportService.buildInvoiceBundleBytes(
-        voucher: widget.voucher,
-        config: widget.config,
-        taxMargins: widget.taxInvoiceMargins,
-      );
-
-      // 3. Send.
+      // 2. Build whichever document(s) the format picker has selected.
       final slug = widget.voucher.billNo.isEmpty
           ? 'invoice'
           : widget.voucher.billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
-      final messageId = await GmailService.instance.sendPdfEmail(
+      final docs = <GeneratedDocument>[];
+
+      if (_formats.contains(OutputFormat.pdf)) {
+        // Full bundle (tax invoice + voucher pages), same as "Save PDF"
+        // produces to disk. Widget-based generator (vector pw.Widget tree),
+        // not the screenshot-based one — used here regardless of the
+        // 'useWidgetPdfForInvoiceVoucher' toggle, which only controls the
+        // separate "Save PDF" button.
+        final pdfBytes = await WidgetPdfExportService.buildInvoiceBundleBytes(
+          voucher: widget.voucher,
+          config: widget.config,
+          taxMargins: widget.taxInvoiceMargins,
+        );
+        docs.add(GeneratedDocument(
+          bytes: pdfBytes,
+          filename: 'tax_invoice_voucher_$slug.pdf',
+          mimeType: GeneratedDocument.pdfMime,
+        ));
+      }
+
+      if (_formats.contains(OutputFormat.excel)) {
+        // ExcelExportService.exportTaxInvoice writes to disk today — read
+        // it back, same pattern SalaryEmailExportService.buildDisbursementExcel
+        // already uses on the salary side.
+        final path = await ExcelExportService.exportTaxInvoice(
+          widget.voucher,
+          widget.config,
+        );
+        docs.add(GeneratedDocument(
+          bytes: await File(path).readAsBytes(),
+          filename: path.split(Platform.pathSeparator).last,
+          mimeType: GeneratedDocument.xlsxMime,
+        ));
+      }
+
+      // 3. Send — one email, every selected format attached.
+      final messageId = await GmailService.instance.sendAttachmentsEmail(
         to: to,
         cc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
         bodyText: _bodyCtrl.text,
-        pdfBytes: pdfBytes,
-        attachmentFilename: 'tax_invoice_voucher_$slug.pdf',
+        attachments: docs,
       );
 
       // 4. Mark sent.
@@ -305,6 +337,19 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
                 enabled: !_sending,
                 maxLines: 6,
                 decoration: const InputDecoration(labelText: 'Message'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text('Attach as', style: AppTextStyles.label),
+              const SizedBox(height: AppSpacing.xs),
+              IgnorePointer(
+                ignoring: _sending,
+                child: Opacity(
+                  opacity: _sending ? 0.6 : 1,
+                  child: OutputFormatPicker(
+                    selected: _formats,
+                    onChanged: (s) => setState(() => _formats = s),
+                  ),
+                ),
               ),
 
               if (_error != null) ...[

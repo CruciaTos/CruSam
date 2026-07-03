@@ -29,6 +29,7 @@ class EmailLogModel {
   final String          sentBy;
   final String          attemptedAt;
   final String?         sentAt;
+  final String          attachmentFormats;
 
   const EmailLogModel({
     this.id,
@@ -44,6 +45,7 @@ class EmailLogModel {
     this.sentBy         = '',
     this.attemptedAt    = '',
     this.sentAt,
+    this.attachmentFormats = 'pdf',
   });
 
   EmailLogModel copyWith({
@@ -67,6 +69,7 @@ class EmailLogModel {
         sentBy:         sentBy,
         attemptedAt:    attemptedAt,
         sentAt:         sentAt ?? this.sentAt,
+        attachmentFormats: attachmentFormats,
       );
 
   Map<String, dynamic> toDbMap() => {
@@ -83,6 +86,7 @@ class EmailLogModel {
         'sent_by':          sentBy,
         if (attemptedAt.isNotEmpty) 'attempted_at': attemptedAt,
         'sent_at':          sentAt,
+        'attachment_formats': attachmentFormats,
       };
 
   factory EmailLogModel.fromDbMap(Map<String, dynamic> m) => EmailLogModel(
@@ -99,5 +103,6 @@ class EmailLogModel {
         sentBy:         (m['sent_by']          as String?) ?? '',
         attemptedAt:    (m['attempted_at']     as String?) ?? '',
         sentAt:         m['sent_at']           as String?,
+        attachmentFormats: (m['attachment_formats'] as String?) ?? 'pdf',
       );
 }

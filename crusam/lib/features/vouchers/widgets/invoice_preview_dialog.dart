@@ -480,6 +480,16 @@ class _HeaderBar extends StatelessWidget {
                   side: BorderSide(color: Colors.red.shade400),
                 ),
               ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: onExportExcel,
+                icon:  const Icon(Icons.table_chart_outlined, size: 16),
+                label: const Text('Save Excel'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.green.shade700,
+                  side: BorderSide(color: Colors.green.shade400),
+                ),
+              ),
               if (onSendEmail != null) ...[
                 const SizedBox(width: 8),
                 OutlinedButton.icon(

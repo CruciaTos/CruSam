@@ -92,6 +92,12 @@ class DatabaseHelper {
     await _ensureColumn(db, 'salary_disbursement_items', 'sb_code', "TEXT NOT NULL DEFAULT ''");
     await _ensureColumn(db, 'salary_disbursement_items', 'branch', "TEXT NOT NULL DEFAULT ''");
 
+    // Tracks which format(s) (pdf, excel, or pdf,excel) an email actually
+    // sent, so the "Already emailed to X" notices in the send dialogs can
+    // say which one instead of being generic. See output-format-selector
+    // blueprint §3.4.
+    await _ensureColumn(db, 'email_log', 'attachment_formats', "TEXT NOT NULL DEFAULT 'pdf'");
+
     await _normalizeEmployeeCodes(db);
     await _backfillEmployeeCharges(db);
   }

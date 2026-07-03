@@ -30,6 +30,9 @@ import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
 import '../../../data/models/margin_settings_model.dart';
+import '../../../shared/models/generated_document.dart';
+import '../../../shared/models/output_format.dart';
+import '../../../shared/widgets/output_format_picker.dart';
 import '../models/salary_snapshot_model.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 import '../notifier/salary_state_controller.dart';
@@ -67,6 +70,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   SalaryDocumentType _docType     = SalaryDocumentType.salarySlips;
   List<String>       _deptCodes   = const ['All'];
   String             _selectedDept = 'All';
+  Set<OutputFormat>  _formats     = {OutputFormat.pdf};
 
   // ── Async state ───────────────────────────────────────────────────────────
   bool           _initialising    = true;
