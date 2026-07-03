@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'core/migration/data_migration_service.dart';
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/app_paths.dart';
@@ -37,16 +38,10 @@ Future<void> main() async {
     // database. If a previous build left aarti.db / semantic_index.db
     // sitting next to the executable (the old, buggy default), carry it
     // forward once so existing users don't appear to lose their data on
-    // this update.
+    // this update. Must run before databaseFactory.setDatabasesPath()
+    // below — see DataMigrationService's doc comment for why.
     final appDataDir = await AppPaths.directory;
-    await AppPaths.migrateLegacyFileIfNeeded(
-      legacyDir: Directory.current,
-      fileName: 'aarti.db',
-    );
-    await AppPaths.migrateLegacyFileIfNeeded(
-      legacyDir: Directory.current,
-      fileName: 'semantic_index.db',
-    );
+    await DataMigrationService.runIfNeeded();
 
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;

@@ -33,9 +33,11 @@
 //
 // ── Legacy migration ─────────────────────────────────────────────────────
 //
-//   Call migrateLegacyFileIfNeeded() once at startup to copy any existing
-//   database files from the old install‑folder location into the new safe
-//   directory. It never overwrites or deletes anything.
+//   Carrying aarti.db / semantic_index.db forward from the old install-
+//   folder location into the directory this file resolves is handled by
+//   DataMigrationService (lib/core/migration/data_migration_service.dart),
+//   called once at startup from main.dart. It never overwrites or deletes
+//   anything, and is marker-gated so it only ever runs once per install.
 
 import 'dart:io';
 
@@ -148,31 +150,6 @@ class AppPaths {
   static Future<String> childPath(String name) async {
     final dir = await directory;
     return p.join(dir.path, name);
-  }
-
-  // ── One-time legacy-location migration ──────────────────────────────────
-
-  /// Copies [fileName] from [legacyDir] into the new app-data directory if,
-  /// and only if, it doesn't already exist at the new location.
-  static Future<void> migrateLegacyFileIfNeeded({
-    required Directory legacyDir,
-    required String fileName,
-  }) async {
-    try {
-      final newPath = await childPath(fileName);
-      final newFile = File(newPath);
-      if (await newFile.exists()) return;
-
-      final oldFile = File(p.join(legacyDir.path, fileName));
-      if (!await oldFile.exists()) return;
-
-      await oldFile.copy(newPath);
-      debugPrint(
-        'AppPaths: migrated $fileName from ${legacyDir.path} to $newPath',
-      );
-    } catch (e) {
-      debugPrint('AppPaths: migration of $fileName failed (non-fatal): $e');
-    }
   }
 
   // ── Diagnostic snapshot (used by DataLocationCard) ─────────────────────
