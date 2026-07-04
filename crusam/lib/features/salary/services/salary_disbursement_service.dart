@@ -121,6 +121,45 @@ class SalaryDisbursementService {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Bank Transfer Split — classify each item as IDBI→IDBI or IDBI→Other
+  // (same rule as VoucherNotifier._isCompanyBankTransfer, kept in sync here
+  // since the salary module has no dependency on the vouchers notifier).
+  // ─────────────────────────────────────────────────────────────────────────
+  static String _companyIfscPrefix(CompanyConfigModel config) {
+    final ifsc = config.ifscCode.trim().toUpperCase();
+    if (ifsc.length >= 4) return ifsc.substring(0, 4);
+    if (config.bankName.toLowerCase().contains('idbi')) return 'IBKL';
+    return ifsc;
+  }
+
+  static bool _isIdbiToIdbi(
+    SalaryDisbursementItemModel item,
+    CompanyConfigModel config,
+  ) {
+    final itemIfsc = item.ifscCode.trim().toUpperCase();
+    final bankName = item.bankName.trim().toLowerCase();
+    final prefix    = _companyIfscPrefix(config);
+    return (prefix.isNotEmpty && itemIfsc.startsWith(prefix)) ||
+        bankName.contains('idbi');
+  }
+
+  static double _sumIdbiToIdbi(
+    List<SalaryDisbursementItemModel> items,
+    CompanyConfigModel config,
+  ) =>
+      items
+          .where((i) => _isIdbiToIdbi(i, config))
+          .fold(0.0, (a, i) => a + i.amount);
+
+  static double _sumIdbiToOther(
+    List<SalaryDisbursementItemModel> items,
+    CompanyConfigModel config,
+  ) =>
+      items
+          .where((i) => !_isIdbiToIdbi(i, config))
+          .fold(0.0, (a, i) => a + i.amount);
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Build candidate items
   // ─────────────────────────────────────────────────────────────────────────
   static Future<List<SalaryDisbursementItemModel>> buildCandidateItems({
@@ -160,7 +199,8 @@ class SalaryDisbursementService {
         bankName:       emp.bankDetails,   // bank name
         accountNumber:  emp.accountNumber,
         ifscCode:       emp.ifscCode,
-        amount:         double.parse(net.toStringAsFixed(2)),
+        // Whole-rupee amount — bank transfer sheets don't carry paise.
+        amount:         net.roundToDouble(),
         sbCode:         '10',              // not used in Excel; Code column is always 10
         branch:         branch,            // actual branch
       ));
@@ -203,10 +243,20 @@ class SalaryDisbursementService {
     required List<SalaryDisbursementItemModel> items,
     required CompanyConfigModel                config,
     required String                            monthName,
-    double idbiToOther = 0.0,
-    double idbiToIdbi  = 0.0,
+    double? idbiToOther,
+    double? idbiToIdbi,
   }) async {
     if (items.isEmpty) return null;
+
+    // Auto-compute the IDBI↔IDBI / IDBI↔Other split from the items' own
+    // bank details when the caller doesn't explicitly supply one. Every
+    // current call site omits these params, so without this the Bank
+    // Transfer Split box always printed 0.00 / 0.00 regardless of the
+    // employees' actual banks.
+    final double resolvedIdbiToOther =
+        idbiToOther ?? _sumIdbiToOther(items, config);
+    final double resolvedIdbiToIdbi =
+        idbiToIdbi ?? _sumIdbiToIdbi(items, config);
 
     final Workbook  workbook  = Workbook();
     workbook.worksheets.clear();
@@ -251,8 +301,8 @@ class SalaryDisbursementService {
         sheet,
         startRow:    totalRowExcel + _bankSplitOffset,
         baseTotal:   total,
-        idbiToOther: idbiToOther,
-        idbiToIdbi:  idbiToIdbi,
+        idbiToOther: resolvedIdbiToOther,
+        idbiToIdbi:  resolvedIdbiToIdbi,
       );
     }
 
@@ -348,7 +398,7 @@ class SalaryDisbursementService {
         cell.setText('');
       } else if (isNumber) {
         cell.setNumber((value as num).toDouble());
-        cell.numberFormat = '#,##0.00';
+        cell.numberFormat = '#,##0';
       } else {
         cell.setText(value.toString());
       }
@@ -391,7 +441,7 @@ class SalaryDisbursementService {
     } else {
       sumCell.setNumber(0);
     }
-    sumCell.numberFormat = '#,##0.00';
+    sumCell.numberFormat = '#,##0';
     _applyCellStyle(sumCell, bold: true, hAlign: HAlignType.center, border: true);
 
     // Words merged over Debit A/C, IFSC, Credit A/C (3 columns)
@@ -474,7 +524,7 @@ class SalaryDisbursementService {
 
     final Range totalValue = sheet.getRangeByIndex(row, valueCol);
     totalValue.setNumber(baseTotal);
-    totalValue.numberFormat = '#,##0.00';
+    totalValue.numberFormat = '#,##0';
     _applyCellStyle(totalValue,
         bold: true, fontSize: 12, hAlign: HAlignType.right, border: true);
     if (_splitBoxUseBackground) {
@@ -510,7 +560,7 @@ class SalaryDisbursementService {
 
     final Range valueCell = sheet.getRangeByIndex(row, valueCol);
     valueCell.setNumber(value);
-    valueCell.numberFormat = '#,##0.00';
+    valueCell.numberFormat = '#,##0';
     _applyCellStyle(valueCell,
         fontSize: 11, hAlign: HAlignType.right, border: true);
     if (_splitBoxUseBackground) {

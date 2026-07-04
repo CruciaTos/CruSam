@@ -781,7 +781,7 @@ class _PreviewRow extends StatelessWidget {
   // Matches Excel column order exactly:
   // Amount | Debit A/C | IFSC | Credit A/C | Code | Beneficiary | Branch | Bank Details
   List<String> get _cells => [
-    '₹${item.amount.toStringAsFixed(2)}',  // Amount
+    '₹${item.amount.toStringAsFixed(0)}',  // Amount
     debitAccount,                           // Debit A/C (config.accountNo)
     item.ifscCode,                          // IFSC
     item.accountNumber,                     // Credit A/C
@@ -869,7 +869,7 @@ class _TotalRow extends StatelessWidget {
     // 8 columns — put total in col 0, "TOTAL" label in col 5 (Beneficiary)
     // put selected amount in col 0 context below
     final cells = List<String>.filled(8, '');
-    cells[0] = '₹${total.toStringAsFixed(2)}';
+    cells[0] = '₹${total.toStringAsFixed(0)}';
     cells[5] = 'TOTAL ($totalCount employees)';
 
     return Container(

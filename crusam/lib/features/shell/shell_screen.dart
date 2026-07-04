@@ -47,7 +47,8 @@ abstract class _NavItem { const _NavItem(); }
 class _Route extends _NavItem {
   final String path, label;
   final IconData icon;
-  const _Route(this.path, this.icon, this.label);
+  final int? badge; // optional trailing count – layout slot only, wire up when real counts exist
+  const _Route(this.path, this.icon, this.label, {this.badge});
 }
 
 class _Group extends _NavItem {
@@ -68,12 +69,11 @@ const _kNav = <_NavItem>[
   _Route('/saved-salary',     Icons.history_outlined,         'Saved Salary'),
   _Group(Icons.payments_outlined, 'Salary-Output', [
     _Route('/salary-slips',        Icons.receipt_long_outlined,     'Salary Slips'),
-    _Group(Icons.request_quote_outlined, 'Salary Bills', [
-      _Route('/salary-invoice',        Icons.description_outlined,   'Salary Invoice'),
-      _Group(Icons.folder_outlined, 'Corroborating Doc.', [
-        _Route('/salary-attachment-a', Icons.attach_file,            'Attachment A'),
-        _Route('/salary-attachment-b', Icons.attach_file,            'Attachment B'),
-      ]),
+    // Salary Invoice moved out of the "Salary Bills" folder – now a direct item
+    _Route('/salary-invoice',      Icons.description_outlined,      'Salary Invoice'),
+    _Group(Icons.folder_outlined, 'Corroborating Doc.', [
+      _Route('/salary-attachment-a', Icons.attach_file,            'Attachment A'),
+      _Route('/salary-attachment-b', Icons.attach_file,            'Attachment B'),
     ]),
     _Route('/salary-statement',    Icons.summarize_outlined,        'Salary Statement'),
   ]),
@@ -343,15 +343,15 @@ class _ExpandedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: true),
-    const SizedBox(height: 4),
+    const SizedBox(height: 8),
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         children: _buildItems(_kNav, 0),
       ),
     ),
     Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
       ),
@@ -366,23 +366,31 @@ class _ExpandedSidebar extends StatelessWidget {
         out.add(_NavTile(
           icon: item.icon,
           label: item.label,
+          badge: item.badge,
           selected: active == item.path,
           depth: depth,
           onTap: () => onNavigate(item.path),
         ));
+        out.add(const SizedBox(height: 2));
       } else if (item is _Group) {
         final isOpen = openGroups.contains(item.label);
         final hasActive = _groupContainsActiveStatic(item.children, active);
+        // Only top-level groups read as a new "section" – that's the only
+        // place the reference uses a hairline rule + extra vertical gap.
+        // Nested groups (e.g. Corroborating Doc. inside Salary-Output) just get a
+        // small gap so they still feel part of the same list.
         if (out.isNotEmpty) {
-          out.add(const SizedBox(height: 1));
-          out.add(Divider(
-            color: _ShellColors.divider.withOpacity(0.3),
-            indent: 10,
-            endIndent: 10,
-            height: 1,
-            thickness: 0.5,
-          ));
-          out.add(const SizedBox(height: 1));
+          out.add(SizedBox(height: depth == 0 ? 10 : 4));
+          if (depth == 0) {
+            out.add(Divider(
+              color: _ShellColors.divider.withOpacity(0.4),
+              indent: 2,
+              endIndent: 2,
+              height: 1,
+              thickness: 1,
+            ));
+            out.add(const SizedBox(height: 10));
+          }
         }
         out.add(_GroupTile(
           icon: item.icon,
@@ -392,6 +400,7 @@ class _ExpandedSidebar extends StatelessWidget {
           depth: depth,
           onTap: () => onToggle(item.label),
         ));
+        out.add(const SizedBox(height: 2));
         if (isOpen) out.addAll(_buildItems(item.children, depth + 1));
       }
     }
@@ -424,10 +433,10 @@ class _CollapsedSidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(children: [
     const _SidebarHeader(expanded: false),
-    const SizedBox(height: 4),
+    const SizedBox(height: 8),
     Expanded(
       child: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         children: _kNav.map((item) {
           if (item is _Route) {
             return _CollapsedTile(
@@ -448,7 +457,7 @@ class _CollapsedSidebar extends StatelessWidget {
       ),
     ),
     Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
       ),
@@ -473,6 +482,7 @@ class _NavTile extends StatelessWidget {
   final String label;
   final bool selected;
   final int depth;
+  final int? badge;
   final VoidCallback onTap;
 
   const _NavTile({
@@ -481,80 +491,85 @@ class _NavTile extends StatelessWidget {
     required this.selected,
     required this.depth,
     required this.onTap,
+    this.badge,
   });
 
   @override
   Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: depth == 0 ? 40 : 32,
-            padding: EdgeInsets.only(left: 6 + indent, right: 6),
-            decoration: BoxDecoration(
-              color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-              border: selected
-                  ? Border.all(color: _ShellColors.primary.withOpacity(0.2), width: 1)
-                  : null,
+    // Depth 0 sits flush with the list padding; each nested level steps in
+    // just enough to align under the parent's label, not its icon –
+    // matching the shallow, consistent indent in the reference.
+    final leftInset = 8.0 + depth * 16.0;
+    final rowHeight = depth == 0 ? 38.0 : 34.0;
+    final iconSize = depth == 0 ? 18.0 : 16.0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: _ShellColors.hoverOverlay,
+        child: Container(
+          height: rowHeight,
+          padding: EdgeInsets.only(left: leftInset, right: 8),
+          decoration: BoxDecoration(
+            color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            Icon(
+              icon,
+              size: iconSize,
+              color: selected ? _ShellColors.primaryLight : _ShellColors.iconDefault,
             ),
-            child: Row(children: [
-              if (depth == 0) ...[
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? _ShellColors.primary.withOpacity(0.15)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: selected ? _ShellColors.primary : _ShellColors.iconDefault,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ] else
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Container(
-                    width: 2,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? _ShellColors.primary.withOpacity(0.6)
-                          : _ShellColors.divider,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: depth == 0 ? 13 : 12,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                    color: selected ? _ShellColors.textPrimary : _ShellColors.textSecondary,
-                  ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? _ShellColors.textPrimary : _ShellColors.textSecondary,
                 ),
               ),
-              if (selected)
-                Icon(Icons.chevron_right,
-                    size: 14, color: _ShellColors.primary.withOpacity(0.8)),
-            ]),
-          ),
+            ),
+            if (badge != null) ...[
+              const SizedBox(width: 8),
+              _NavBadge(count: badge!, emphasized: selected),
+            ],
+          ]),
         ),
       ),
     );
   }
+}
+
+// ───── Trailing counter chip – right-aligned layout slot mirroring the
+// reference's "Drafts 10 / Dashboards 2" badge placement. Uses only
+// existing tokens (divider + text colors), no new palette entries. ─────────
+class _NavBadge extends StatelessWidget {
+  final int count;
+  final bool emphasized;
+  const _NavBadge({required this.count, required this.emphasized});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: _ShellColors.divider.withOpacity(emphasized ? 0.5 : 0.3),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            height: 1,
+            color: emphasized ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+          ),
+        ),
+      );
 }
 
 class _GroupTile extends StatelessWidget {
@@ -575,82 +590,85 @@ class _GroupTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final indent = depth == 0 ? 0.0 : depth * 14.0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Material(
+  Widget build(BuildContext context) =>
+      depth == 0 ? _buildSectionHeader() : _buildNestedRow();
+
+  // Top-level groups read as section captions – bold, uppercase, muted,
+  // with a small caret – mirroring "WEBSITE 2.0" / "Posts" in the
+  // reference, rather than being styled like a clickable nav item.
+  Widget _buildSectionHeader() => Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            height: depth == 0 ? 40 : 32,
-            padding: EdgeInsets.only(left: 6 + indent, right: 6),
-            decoration: BoxDecoration(
-              color: hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
             child: Row(children: [
-              if (depth == 0) ...[
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: hasActive
-                        ? _ShellColors.primary.withOpacity(0.1)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 16,
-                    color: hasActive ? _ShellColors.primary : _ShellColors.iconDefault,
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ] else
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: Container(
-                    width: 2,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: _ShellColors.divider,
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
-                ),
               Expanded(
                 child: Text(
-                  label,
+                  label.toUpperCase(),
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: depth == 0 ? 13 : 12,
-                    fontWeight: FontWeight.w600,
-                    color: hasActive ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    color: hasActive
+                        ? _ShellColors.textSecondary
+                        : _ShellColors.sectionHeader,
                   ),
                 ),
               ),
               AnimatedRotation(
-                turns: isOpen ? 0.25 : 0,
+                turns: isOpen ? 0.5 : 0,
                 duration: const Duration(milliseconds: 200),
-                child: Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: isOpen ? _ShellColors.primary.withOpacity(0.1) : Colors.transparent,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: Icon(
-                    Icons.chevron_right,
-                    size: 14,
-                    color: isOpen ? _ShellColors.primary : _ShellColors.textDisabled,
-                  ),
-                ),
+                child: Icon(Icons.keyboard_arrow_down,
+                    size: 15, color: _ShellColors.sectionHeader),
               ),
             ]),
           ),
+        ),
+      );
+
+  // Nested groups (e.g. Corroborating Doc. inside Salary-Output) stay visually
+  // consistent with the routes around them – same row height, icon, and
+  // type scale – just with a trailing caret instead of a badge.
+  Widget _buildNestedRow() {
+    final leftInset = 8.0 + depth * 16.0;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        hoverColor: _ShellColors.hoverOverlay,
+        child: Container(
+          height: 34,
+          padding: EdgeInsets.only(left: leftInset, right: 8),
+          decoration: BoxDecoration(
+            color: hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            Icon(icon,
+                size: 16,
+                color: hasActive ? _ShellColors.primaryLight : _ShellColors.iconDefault),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: hasActive ? _ShellColors.textPrimary : _ShellColors.textSecondary,
+                ),
+              ),
+            ),
+            AnimatedRotation(
+              turns: isOpen ? 0.25 : 0,
+              duration: const Duration(milliseconds: 200),
+              child: Icon(Icons.chevron_right, size: 15, color: _ShellColors.textDisabled),
+            ),
+          ]),
         ),
       ),
     );
@@ -672,40 +690,29 @@ class _CollapsedTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Tooltip(
           message: label,
           preferBelow: false,
+          waitDuration: const Duration(milliseconds: 300),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(10),
+              hoverColor: _ShellColors.hoverOverlay,
               child: Container(
+                width: 40,
                 height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: selected ? _ShellColors.selectedOverlay : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
-                  border: selected
-                      ? Border.all(color: _ShellColors.primary.withOpacity(0.3), width: 1)
-                      : null,
                 ),
-                child: Center(
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? _ShellColors.primary.withOpacity(0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 18,
-                      color: selected ? _ShellColors.primary : _ShellColors.iconDefault,
-                    ),
-                  ),
+                child: Icon(
+                  icon,
+                  size: 19,
+                  color: selected ? _ShellColors.primaryLight : _ShellColors.iconDefault,
                 ),
               ),
             ),
@@ -789,34 +796,25 @@ class _CollapsedGroupTileState extends State<_CollapsedGroupTile> {
         onEnter: (_) => _show(),
         onExit: (_) => _scheduleHide(),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: () {},
               borderRadius: BorderRadius.circular(10),
+              hoverColor: _ShellColors.hoverOverlay,
               child: Container(
+                width: 40,
                 height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: _hasActive ? _ShellColors.hoverOverlay : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Center(
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: _hasActive
-                          ? _ShellColors.primary.withOpacity(0.1)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      widget.group.icon,
-                      size: 18,
-                      color: _hasActive ? _ShellColors.primary : _ShellColors.iconDefault,
-                    ),
-                  ),
+                child: Icon(
+                  widget.group.icon,
+                  size: 19,
+                  color: _hasActive ? _ShellColors.primaryLight : _ShellColors.iconDefault,
                 ),
               ),
             ),
@@ -949,11 +947,20 @@ class _SidebarHeader extends StatelessWidget {
   const _SidebarHeader({required this.expanded});
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) => Container(
         height: AppSpacing.headerHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(children: [
+        padding: EdgeInsets.symmetric(horizontal: expanded ? 8 : 0, vertical: 12),
+        decoration: expanded
+            ? BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: _ShellColors.divider.withOpacity(0.5)),
+                ),
+              )
+            : null,
+        child: Row(
+          mainAxisAlignment:
+              expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
+          children: [
             Container(
               width: 32,
               height: 32,
@@ -979,7 +986,7 @@ class _SidebarHeader extends StatelessWidget {
                   style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
-                      fontSize: 16)),
+                      fontSize: 14)),
             ),
             if (expanded) ...[
               const SizedBox(width: 10),
@@ -994,7 +1001,7 @@ class _SidebarHeader extends StatelessWidget {
                     overflow: TextOverflow.ellipsis),
               ),
             ],
-          ]),
+          ],
         ),
       );
 }

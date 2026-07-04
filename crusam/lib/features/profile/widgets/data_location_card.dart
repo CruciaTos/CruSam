@@ -1,11 +1,8 @@
 // lib/features/profile/widgets/data_location_card.dart
 //
 // Shows the ACTUAL, live, on-disk location of CruSam's local data (SQLite
-// database + AI semantic index) directly in the Profile screen, instead of
-// the old static "Local SQLite (per Windows user)" placeholder text.
-//
-// Purely diagnostic / read-only. Does not move, migrate, or touch anything
-// on disk — it only reports what AppPaths.resolveStorageInfo() finds.
+// database + AI semantic index) directly in the Profile screen.
+// Visual styling now matches the indigo theme used across the app.
 
 import 'dart:io';
 
@@ -13,9 +10,66 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/storage/app_paths.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – consistent with the indigo theme
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink        = Color(0xFF1E1B4B);
+  static const inkLight   = Color(0xFF3730A3);
+  static const inkMuted   = Color(0xFF818CF8);
+  static const border     = Color(0xFFC7D2FE);
+  static const divider    = Color(0xFFE0E7FF);
+  static const surface    = Color(0xFFFFFFFF);
+  static const surfaceAlt = Color(0xFFEEF2FF);
+
+  static const fbody = 'NotoSans';
+  static const fcond = 'NotoSansCondensed';
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsBody = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+  );
+
+  static const tsSmall = TextStyle(
+    fontFamily : fcond,
+    fontWeight : FontWeight.w500,
+    fontSize   : 11,
+    color      : inkMuted,
+  );
+
+  static const tsMono = TextStyle(
+    fontFamily: 'RobotoMono', // monospace font — keep as-is or replace if you have one
+    fontWeight: FontWeight.w400,
+    fontSize  : 12,
+    color     : ink,
+  );
+
+  static const double radius  = 6.0;
+  static const double cRadius = 10.0;
+  static const double padH    = 18.0;
+  static const double padV    = 16.0;
+}
 
 class DataLocationCard extends StatefulWidget {
   const DataLocationCard({super.key});
@@ -55,12 +109,8 @@ class _DataLocationCardState extends State<DataLocationCard> {
   Future<void> _openFolder(String path) async {
     if (!Platform.isWindows) return;
     try {
-      // explorer.exe returns a non-zero exit code even on success in some
-      // cases, so we don't check the result — just fire and forget.
       await Process.run('explorer.exe', [path]);
-    } catch (_) {
-      // Folder may not exist yet on a completely fresh install; non-fatal.
-    }
+    } catch (_) {}
   }
 
   Future<void> _copy(String text, String label) async {
@@ -76,41 +126,77 @@ class _DataLocationCardState extends State<DataLocationCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Themed card wrapper — same style as the other profile cards
     return Container(
-      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppColors.slate200),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        color: _Tok.surface,
+        border: Border.all(color: _Tok.border),
+        borderRadius: BorderRadius.circular(_Tok.cRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            const Icon(Icons.dns_outlined, size: 18, color: AppColors.slate500),
-            const SizedBox(width: 8),
-            Text('Data Storage Location', style: AppTextStyles.h4),
-          ]),
-          const SizedBox(height: 4),
-          Text(
-            'Exact on-disk location of your employees, vouchers, salary '
-            'records and AI index — read live from this PC, right now.',
-            style: AppTextStyles.small.copyWith(color: AppColors.slate500),
-          ),
-          const SizedBox(height: 16),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+          // Header bar
+          Container(
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: _Tok.padH),
+            decoration: const BoxDecoration(
+              color: _Tok.surfaceAlt,
+              border: Border(bottom: BorderSide(color: _Tok.divider)),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(_Tok.cRadius),
+                topRight: Radius.circular(_Tok.cRadius),
               ),
-            )
-          else if (_error != null)
-            _errorBox(_error!)
-          else if (_info != null)
-            ..._buildContent(_info!),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: _Tok.ink,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(Icons.dns_outlined, size: 12, color: Colors.white),
+                ),
+                const SizedBox(width: 8),
+                Text('DATA STORAGE', style: _Tok.tsCardTitle.copyWith(fontSize: 12)),
+              ],
+            ),
+          ),
+
+          // Body content
+          Padding(
+            padding: const EdgeInsets.all(_Tok.padV),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Exact on-disk location of your employees, vouchers, salary '
+                  'records and AI index — read live from this PC, right now.',
+                  style: _Tok.tsSmall,
+                ),
+                const SizedBox(height: 16),
+                if (_loading)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (_error != null)
+                  _errorBox(_error!)
+                else if (_info != null)
+                  ..._buildContent(_info!),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -119,7 +205,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
   List<Widget> _buildContent(AppStorageInfo info) => [
         _pathBlock(
           icon: Icons.folder_outlined,
-          iconColor: AppColors.indigo600,
+          iconColor: _Tok.inkLight,
           label: 'Database folder',
           path: info.databaseDirectory,
           trailing: Row(
@@ -142,23 +228,23 @@ class _DataLocationCardState extends State<DataLocationCard> {
         const SizedBox(height: 14),
         _fileRow(
           icon: Icons.storage_outlined,
-          iconColor: const Color(0xFF2563EB),
+          iconColor: _Tok.inkLight,
           label: 'Main database (aarti.db)',
           file: info.database,
         ),
         const SizedBox(height: 10),
         _fileRow(
           icon: Icons.auto_awesome_outlined,
-          iconColor: const Color(0xFF059669),
+          iconColor: const Color(0xFF065F46), // keep a green accent for AI
           label: 'AI semantic index (semantic_index.db)',
           file: info.semanticIndex,
         ),
         const SizedBox(height: 16),
-        const Divider(height: 1),
+        const Divider(height: 1, color: _Tok.divider),
         const SizedBox(height: 14),
         _pathBlock(
           icon: Icons.apps_outlined,
-          iconColor: AppColors.slate400,
+          iconColor: _Tok.inkMuted,
           label: 'Application program folder (not your data)',
           path: info.executableDirectory,
           trailing: _iconButton(
@@ -172,9 +258,8 @@ class _DataLocationCardState extends State<DataLocationCard> {
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             onPressed: () => _copy(info.toDiagnosticText(), 'Diagnostic info'),
-            icon: const Icon(Icons.bug_report_outlined, size: 15),
-            label:
-                const Text('Copy diagnostic info', style: TextStyle(fontSize: 13)),
+            icon: const Icon(Icons.bug_report_outlined, size: 15, color: _Tok.inkLight),
+            label: Text('Copy diagnostic info', style: _Tok.tsLabel.copyWith(fontSize: 12)),
           ),
         ),
       ];
@@ -194,10 +279,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
             const SizedBox(width: 6),
             Text(
               label,
-              style: AppTextStyles.small.copyWith(
-                fontWeight: FontWeight.w600,
-                color: AppColors.slate700,
-              ),
+              style: _Tok.tsBody.copyWith(fontWeight: FontWeight.w600),
             ),
           ]),
           const SizedBox(height: 4),
@@ -205,7 +287,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: SelectableText(path, style: AppTextStyles.monoSm),
+                child: SelectableText(path, style: _Tok.tsMono),
               ),
               trailing,
             ],
@@ -230,24 +312,21 @@ class _DataLocationCardState extends State<DataLocationCard> {
               children: [
                 Text(
                   label,
-                  style: AppTextStyles.small.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.slate700,
-                  ),
+                  style: _Tok.tsBody.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
-                // ---------- THE ACTUAL FULL PATH ----------
+                // ── Full file path ─────────────────────────────────
                 Row(
                   children: [
                     Expanded(
                       child: SelectableText(
                         file.path,
-                        style: AppTextStyles.monoSm,
+                        style: _Tok.tsMono,
                       ),
                     ),
                     GestureDetector(
                       onTap: () => _copy(file.path, 'File path'),
-                      child: Icon(Icons.copy, size: 12, color: AppColors.slate400),
+                      child: const Icon(Icons.copy, size: 12, color: _Tok.inkMuted),
                     ),
                   ],
                 ),
@@ -256,8 +335,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
                   file.exists
                       ? '${file.sizeLabel} · updated ${_formatDate(file.lastModified)}'
                       : 'Not created yet',
-                  style: AppTextStyles.small
-                      .copyWith(fontSize: 11, color: AppColors.slate400),
+                  style: _Tok.tsSmall.copyWith(fontSize: 10, color: _Tok.inkMuted),
                 ),
               ],
             ),
@@ -265,10 +343,10 @@ class _DataLocationCardState extends State<DataLocationCard> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: file.exists ? AppColors.emerald50 : AppColors.slate100,
+              color: file.exists ? const Color(0xFFD1FAE5) : _Tok.surfaceAlt,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: file.exists ? AppColors.emerald100 : AppColors.slate200,
+                color: file.exists ? const Color(0xFFA7F3D0) : _Tok.border,
               ),
             ),
             child: Text(
@@ -276,7 +354,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
-                color: file.exists ? AppColors.emerald700 : AppColors.slate500,
+                color: file.exists ? const Color(0xFF065F46) : _Tok.inkMuted,
               ),
             ),
           ),
@@ -287,7 +365,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
       Tooltip(
         message: tooltip,
         child: IconButton(
-          icon: Icon(icon, size: 16, color: AppColors.slate500),
+          icon: Icon(icon, size: 16, color: _Tok.inkLight),
           onPressed: onPressed,
           padding: const EdgeInsets.all(6),
           constraints: const BoxConstraints(),
@@ -300,7 +378,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
         decoration: BoxDecoration(
           color: const Color(0xFFFEF2F2),
           border: Border.all(color: const Color(0xFFFECACA)),
-          borderRadius: BorderRadius.circular(AppSpacing.radius),
+          borderRadius: BorderRadius.circular(_Tok.radius),
         ),
         child: Row(children: [
           const Icon(Icons.error_outline, size: 15, color: Color(0xFFDC2626)),
