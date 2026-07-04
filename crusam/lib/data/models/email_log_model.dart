@@ -4,6 +4,8 @@
 // entity_type/entity_id point back at the source record — e.g.
 // entity_type='invoice', entity_id=<vouchers.id> for Phase 1.
 
+import '../../shared/models/output_format.dart';
+
 enum EmailLogStatus {
   pending,
   sent,
@@ -30,6 +32,26 @@ class EmailLogModel {
   final String          attemptedAt;
   final String?         sentAt;
   final String          attachmentFormats;
+
+  /// Human-readable form of [attachmentFormats] for "already sent" notices
+  /// — e.g. "PDF", "Excel", or "PDF + Excel" — so those notices can say
+  /// what actually went out, not just that something did. Falls back to
+  /// the raw stored value for anything that doesn't match a known
+  /// [OutputFormat] (defensive against future format names or old rows).
+  String get attachmentFormatsLabel {
+    final labels = attachmentFormats
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .map((s) {
+          for (final f in OutputFormat.values) {
+            if (f.name == s) return f.label;
+          }
+          return s;
+        })
+        .toList();
+    return labels.isEmpty ? attachmentFormats : labels.join(' + ');
+  }
 
   const EmailLogModel({
     this.id,

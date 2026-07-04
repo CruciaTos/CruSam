@@ -8,9 +8,11 @@
 // blueprint §3.2.
 //
 // Promoted out of salary_email_export_service.dart, which previously
-// defined the identical shape as SalaryDocumentBytes — that name now lives
-// on as a typedef alias there (see that file) so existing call sites keep
-// compiling unchanged.
+// defined the identical shape as SalaryDocumentBytes. That name lived on
+// briefly as a typedef alias so existing call sites could keep compiling
+// unchanged; every call site has since been migrated to GeneratedDocument
+// directly and the typedef has been removed (output-format-selector
+// blueprint §5, Phase 4).
 
 import 'dart:typed_data';
 

@@ -1,18 +1,20 @@
-// lib/features/vouchers/widgets/send_invoice_dialog.dart
+// lib/features/salary/widgets/send_disbursement_dialog.dart
 //
-// Compose-and-send dialog for emailing a saved invoice. Opened from
-// InvoicePreviewDialog's "Send Email" button.
+// Compose-and-send dialog for emailing a disbursement batch's Excel sheet.
+// Opened from SalaryDisbursementsScreen's "Send Email" action on a history
+// card (the Disbursement screen's own entry point — see
+// output-format-selector blueprint §4.3.A; the Saved Salary dropdown's
+// "Disbursement" entry, §4.3.B, reuses the same build/send path via
+// SalaryEmailExportService.buildDisbursementExcel).
 //
-// Flow: validate → log a 'pending' email_log row → build the full invoice
-// bundle (tax invoice + voucher pages, no disk write) → send via Gmail →
-// mark the log row sent/failed. The pending row is inserted *before* the
-// PDF/send work so a crash mid-send still leaves a trace instead of
-// silently losing the attempt.
-
-import 'dart:io';
+// Modeled closely on SendInvoiceDialog (same To/Cc/Subject/Body/
+// prior-send-notice/resend-confirmation shape), but simpler: there's only
+// one possible format here — no PDF generator exists for disbursements —
+// so unlike Invoices and Salary Statement, no OutputFormatPicker is shown.
+// A locked chip that can't be unchecked would just be a tap that does
+// nothing; a plain "Attached as" line says the same thing for free.
 
 import 'package:flutter/material.dart';
-import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/email/email_suggestions_cache.dart';
@@ -22,48 +24,37 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/db/email_log_repository.dart';
-import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../shared/models/generated_document.dart';
 import '../../../shared/models/output_format.dart';
-import '../../../shared/widgets/output_format_picker.dart';
-import '../services/excel_export_service.dart';
-import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
+import '../models/salary_disbursement_model.dart';
+import '../services/salary_email_export_service.dart';
 
-class SendInvoiceDialog extends StatefulWidget {
-  final VoucherModel       voucher;
-  final CompanyConfigModel config;
-  final pw.EdgeInsets?     taxInvoiceMargins;
+class SendDisbursementDialog extends StatefulWidget {
+  final SalaryDisbursementModel disbursement;
 
-  const SendInvoiceDialog({
-    super.key,
-    required this.voucher,
-    required this.config,
-    this.taxInvoiceMargins,
-  });
+  const SendDisbursementDialog({super.key, required this.disbursement});
 
   static Future<void> show(
     BuildContext context, {
-    required VoucherModel       voucher,
-    required CompanyConfigModel config,
-    pw.EdgeInsets?              taxInvoiceMargins,
+    required SalaryDisbursementModel disbursement,
   }) =>
       showDialog(
         context: context,
         barrierColor: Colors.black54,
-        builder: (_) => SendInvoiceDialog(
-          voucher: voucher,
-          config: config,
-          taxInvoiceMargins: taxInvoiceMargins,
-        ),
+        builder: (_) => SendDisbursementDialog(disbursement: disbursement),
       );
 
   @override
-  State<SendInvoiceDialog> createState() => _SendInvoiceDialogState();
+  State<SendDisbursementDialog> createState() =>
+      _SendDisbursementDialogState();
 }
 
-class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
+class _SendDisbursementDialogState extends State<SendDisbursementDialog> {
+  static const _monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
   late final TextEditingController _toCtrl;
   late final TextEditingController _ccCtrl;
   late final TextEditingController _subjectCtrl;
@@ -74,25 +65,24 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
   EmailLogModel? _alreadySentLog;
   bool           _confirmedResend = false;
   List<String>   _suggestions = const [];
-  Set<OutputFormat> _formats = {OutputFormat.pdf};
+
+  String get _periodLabel {
+    final month = _monthNames[(widget.disbursement.month - 1).clamp(0, 11)];
+    return '$month ${widget.disbursement.year}';
+  }
 
   @override
   void initState() {
     super.initState();
-    final v = widget.voucher;
 
-    _toCtrl = TextEditingController(text: v.clientEmail);
+    _toCtrl = TextEditingController();
     _ccCtrl = TextEditingController();
-    _subjectCtrl = TextEditingController(
-      text: 'Tax Invoice'
-          '${v.billNo.isNotEmpty ? " ${v.billNo}" : ""}'
-          ' — ${widget.config.companyName}',
-    );
+    _subjectCtrl =
+        TextEditingController(text: 'Salary Disbursement — $_periodLabel');
     _bodyCtrl = TextEditingController(
       text: 'Dear Sir,\n\n'
-          'Please find attached the tax invoice'
-          '${v.billNo.isNotEmpty ? " (Bill No. ${v.billNo})" : ""} '
-          'for an amount of Rs. ${v.finalTotal.toStringAsFixed(2)}.\n\n'
+          'Please find attached the salary disbursement sheet for '
+          '$_periodLabel.\n\n'
           'Regards,\nBharat Boridkar',
     );
 
@@ -113,10 +103,12 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
   }
 
   Future<void> _checkPriorSends() async {
-    final id = widget.voucher.id;
+    final id = widget.disbursement.id;
     if (id == null) return;
-    final log =
-        await DatabaseHelper.instance.getLatestSentEmailLogFor('invoice', id);
+    final log = await DatabaseHelper.instance.getLatestSentEmailLogFor(
+      SalaryDocumentType.disbursement.entityType,
+      id,
+    );
     if (mounted) setState(() => _alreadySentLog = log);
   }
 
@@ -136,9 +128,9 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
       RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(s);
 
   Future<void> _send() async {
-    final voucherId = widget.voucher.id;
-    if (voucherId == null) {
-      setState(() => _error = "This invoice hasn't been saved yet.");
+    final disbursementId = widget.disbursement.id;
+    if (disbursementId == null) {
+      setState(() => _error = "This disbursement hasn't been saved yet.");
       return;
     }
 
@@ -170,61 +162,33 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
     try {
       // 1. Log the attempt before doing anything that can fail.
       logId = await DatabaseHelper.instance.insertEmailLog(EmailLogModel(
-        entityType: 'invoice',
-        entityId: voucherId,
+        entityType: SalaryDocumentType.disbursement.entityType,
+        entityId: disbursementId,
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
         sentBy: GoogleAuthService.instance.userEmail ?? '',
-        attachmentFormats: _formats.map((f) => f.name).join(','),
+        attachmentFormats: OutputFormat.excel.name,
       ));
 
-      // 2. Build whichever document(s) the format picker has selected.
-      final slug = widget.voucher.billNo.isEmpty
-          ? 'invoice'
-          : widget.voucher.billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
-      final docs = <GeneratedDocument>[];
-
-      if (_formats.contains(OutputFormat.pdf)) {
-        // Full bundle (tax invoice + voucher pages), same as "Save PDF"
-        // produces to disk. Widget-based generator (vector pw.Widget tree),
-        // not the screenshot-based one — used here regardless of the
-        // 'useWidgetPdfForInvoiceVoucher' toggle, which only controls the
-        // separate "Save PDF" button.
-        final pdfBytes = await WidgetPdfExportService.buildInvoiceBundleBytes(
-          voucher: widget.voucher,
-          config: widget.config,
-          taxMargins: widget.taxInvoiceMargins,
-        );
-        docs.add(GeneratedDocument(
-          bytes: pdfBytes,
-          filename: 'tax_invoice_voucher_$slug.pdf',
-          mimeType: GeneratedDocument.pdfMime,
-        ));
+      // 2. Re-export bytes for this batch's existing Excel sheet — never
+      //    generates a new batch, just reads the same file the screen's own
+      //    "Export Excel" button produces (also marks it exported, same as
+      //    that button does).
+      final doc = await SalaryEmailExportService.buildDisbursementExcel(
+        widget.disbursement,
+      );
+      if (doc == null) {
+        throw Exception('Excel export returned no data.');
       }
 
-      if (_formats.contains(OutputFormat.excel)) {
-        // ExcelExportService.exportTaxInvoice writes to disk today — read
-        // it back, same pattern SalaryEmailExportService.buildDisbursementExcel
-        // already uses on the salary side.
-        final path = await ExcelExportService.exportTaxInvoice(
-          widget.voucher,
-          widget.config,
-        );
-        docs.add(GeneratedDocument(
-          bytes: await File(path).readAsBytes(),
-          filename: path.split(Platform.pathSeparator).last,
-          mimeType: GeneratedDocument.xlsxMime,
-        ));
-      }
-
-      // 3. Send — one email, every selected format attached.
+      // 3. Send.
       final messageId = await GmailService.instance.sendAttachmentsEmail(
         to: to,
         cc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
         bodyText: _bodyCtrl.text,
-        attachments: docs,
+        attachments: [doc],
       );
 
       // 4. Mark sent.
@@ -237,7 +201,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Invoice emailed to $to')),
+        SnackBar(content: Text('Disbursement emailed to $to')),
       );
     } catch (e) {
       if (logId != null) {
@@ -270,8 +234,15 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Send Invoice by Email',
-                        style: AppTextStyles.h4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Send Disbursement by Email',
+                            style: AppTextStyles.h4),
+                        const SizedBox(height: 2),
+                        Text(_periodLabel, style: AppTextStyles.small),
+                      ],
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
@@ -289,8 +260,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
 
               if (_alreadySentLog != null) ...[
                 _Notice(
-                  text: 'Already emailed as ${_alreadySentLog!.attachmentFormatsLabel} '
-                      'to ${_alreadySentLog!.recipientTo}'
+                  text: 'Already emailed to ${_alreadySentLog!.recipientTo}'
                       '${_alreadySentLog!.sentAt != null ? " on ${_alreadySentLog!.sentAt!.split('T').first}" : ""}.',
                 ),
               ],
@@ -340,24 +310,28 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
                 decoration: const InputDecoration(labelText: 'Message'),
               ),
               const SizedBox(height: AppSpacing.sm),
-              Text('Attach as', style: AppTextStyles.label),
-              const SizedBox(height: AppSpacing.xs),
-              IgnorePointer(
-                ignoring: _sending,
-                child: Opacity(
-                  opacity: _sending ? 0.6 : 1,
-                  child: OutputFormatPicker(
-                    selected: _formats,
-                    onChanged: (s) => setState(() => _formats = s),
+
+              // Only one possible format here — no picker, just a plain
+              // statement of what goes out. See file header.
+              Row(
+                children: [
+                  const Icon(Icons.table_chart_outlined,
+                      size: 16, color: AppColors.slate500),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Attached as Excel',
+                    style: AppTextStyles.small
+                        .copyWith(color: AppColors.slate600),
                   ),
-                ),
+                ],
               ),
 
               if (_error != null) ...[
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   _error!,
-                  style: AppTextStyles.small.copyWith(color: Colors.red.shade700),
+                  style:
+                      AppTextStyles.small.copyWith(color: Colors.red.shade700),
                 ),
               ],
 

@@ -63,16 +63,6 @@ extension SalaryDocumentTypeX on SalaryDocumentType {
   bool get usesDepartmentFilter => this != SalaryDocumentType.disbursement;
 }
 
-/// A generated document ready to attach to an email.
-///
-/// Was its own class here; now a typedef over the shared
-/// [GeneratedDocument] (lib/shared/models/generated_document.dart) so
-/// Invoices can reuse the identical shape without duplicating it. Kept as
-/// an alias — rather than renaming every call site to GeneratedDocument
-/// right away — for one release, per output-format-selector blueprint
-/// §3.2; drop this typedef once nothing references the old name.
-typedef SalaryDocumentBytes = GeneratedDocument;
-
 class SalaryEmailExportService {
   SalaryEmailExportService._();
 
@@ -83,7 +73,7 @@ class SalaryEmailExportService {
   static const String _defaultItemDescription = 'Manpower Supply Charges';
 
   // ── Salary Slips ───────────────────────────────────────────────────────
-  static Future<SalaryDocumentBytes> buildSalarySlips({
+  static Future<GeneratedDocument> buildSalarySlips({
     required CompanyConfigModel config,
     required String deptCode,
   }) async {
@@ -101,7 +91,7 @@ class SalaryEmailExportService {
       isFeb: n.isFeb,
     );
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: 'salary_slips_${n.monthName.toLowerCase()}_${n.year}.pdf',
       mimeType: pdfMimeType,
@@ -109,7 +99,7 @@ class SalaryEmailExportService {
   }
 
   // ── Salary Statement ───────────────────────────────────────────────────
-  static Future<SalaryDocumentBytes> buildSalaryStatement({
+  static Future<GeneratedDocument> buildSalaryStatement({
     required CompanyConfigModel config,
     required String deptCode,
   }) async {
@@ -130,7 +120,7 @@ class SalaryEmailExportService {
       daysInMonth: n.totalDays,
     );
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: 'salary_statement_${n.monthName.toLowerCase()}_${n.year}.pdf',
       mimeType: pdfMimeType,
@@ -144,7 +134,7 @@ class SalaryEmailExportService {
   // hood) — reads the file back into bytes, same read-back pattern as
   // buildDisbursementExcel below. First time this generator has been wired
   // into the email path.
-  static Future<SalaryDocumentBytes> buildSalaryStatementExcel({
+  static Future<GeneratedDocument> buildSalaryStatementExcel({
     required CompanyConfigModel config,
     required String deptCode,
   }) async {
@@ -166,7 +156,7 @@ class SalaryEmailExportService {
     if (path == null) throw Exception('Excel export returned no data.');
 
     final bytes = await File(path).readAsBytes();
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: path.split(Platform.pathSeparator).last,
       mimeType: xlsxMimeType,
@@ -181,7 +171,7 @@ class SalaryEmailExportService {
   // picks that chip themselves on the Salary Bills screen — then restores
   // whatever was selected before, so this never leaves global state changed
   // behind the scenes.
-  static Future<SalaryDocumentBytes> buildSalaryBill({
+  static Future<GeneratedDocument> buildSalaryBill({
     required BuildContext context,
     required CompanyConfigModel config,
     required EdgeInsets margins,
@@ -266,7 +256,7 @@ class SalaryEmailExportService {
               : n.billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
       final prefix = finalised ? 'final_invoice' : 'salary_invoice';
 
-      return SalaryDocumentBytes(
+      return GeneratedDocument(
         bytes: bytes,
         filename: '${prefix}_$slug.pdf',
         mimeType: pdfMimeType,
@@ -283,7 +273,7 @@ class SalaryEmailExportService {
   // select workflow. This never generates a new batch — it only re-exports
   // bytes for one that already exists, the same way that screen's own
   // "Export Excel" button does (including marking it exported).
-  static Future<SalaryDocumentBytes?> buildDisbursementExcel(
+  static Future<GeneratedDocument?> buildDisbursementExcel(
     SalaryDisbursementModel disbursement,
   ) async {
     final path = await SalaryDisbursementNotifier.instance
@@ -293,7 +283,7 @@ class SalaryEmailExportService {
     final bytes = await File(path).readAsBytes();
     final filename = path.split(Platform.pathSeparator).last;
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: filename,
       mimeType: xlsxMimeType,
