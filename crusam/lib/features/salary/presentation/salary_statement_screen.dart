@@ -19,6 +19,63 @@ import '../services/salary_disbursement_service.dart';
 import '../models/salary_disbursement_model.dart';
 import '../widgets/salary_statement_preview.dart';
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – matching the InvoicesScreen theme
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+  static const badgeBg     = Color(0xFF1E1B4B);
+  static const badgeFg     = Color(0xFFFFFFFF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+  static const fxcond = 'NotoSansExtraCondensed';
+
+  static const double radius   = 6.0;
+  static const double cRadius  = 10.0;
+  static const double padH     = 18.0;
+  static const double padV     = 16.0;
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsInput = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+    height    : 1.4,
+  );
+
+  static const tsMeta = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    color        : inkMuted,
+  );
+}
+
 class SalaryStatementScreen extends StatefulWidget {
   const SalaryStatementScreen({super.key});
 
@@ -63,7 +120,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
     _loadColumnWidths();
 
-    // Lazy-load employees only if the list is empty (original behaviour)
     if (_stateCtrl.employees.isEmpty) _stateCtrl.loadEmployees();
     _loadConfig();
   }
@@ -92,7 +148,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     super.dispose();
   }
 
-  // ── Auto‑refresh MSW (and any other notifier data) when screen returns ───
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -100,8 +155,6 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     if (route != null) {
       final isCurrent = route.isCurrent;
       if (isCurrent && !_isRouteCurrent) {
-        // Schedule the refresh for after the current frame to avoid
-        // calling setState during build.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             SalaryDataNotifier.instance.notifyListeners();
@@ -264,13 +317,12 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
     }
   }
 
-  // ── Generate Disbursement Excel ───────────────────────────────────────────
   Future<void> _generateDisbursement() async {
     if (_generatingDisbursement) return;
 
     final n = SalaryDataNotifier.instance;
     final employees = _stateCtrl.filteredEmployees;
-    final filterCode = _stateCtrl.selectedCompanyCode; // 'All' | 'F&B' | …
+    final filterCode = _stateCtrl.selectedCompanyCode;
 
     if (employees.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -412,11 +464,23 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                     : Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // ── Themed left pane ─────────────────────────────
                           SizedBox(
                             width: 272,
                             child: Container(
-                              color: Colors.grey[200],
-                              padding: const EdgeInsets.all(AppSpacing.md),
+                              padding: const EdgeInsets.all(_Tok.padV),
+                              decoration: BoxDecoration(
+                                color: _Tok.surface,
+                                border: Border.all(color: _Tok.border),
+                                borderRadius: BorderRadius.circular(_Tok.cRadius),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.04),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
                               child: _LeftPane(
                                 employees: employees,
                                 isMsw: n.isMsw,
@@ -527,7 +591,7 @@ class _Toolbar extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text(title, style: AppTextStyles.h3),
+            Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
             const SizedBox(width: AppSpacing.md),
             _MonthBadge(monthName: monthName, year: year),
             const Spacer(),
@@ -658,7 +722,7 @@ class _Toolbar extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _LeftPane
+// _LeftPane (now styled with _Tok tokens)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _LeftPane extends StatefulWidget {
@@ -766,67 +830,78 @@ class _LeftPaneState extends State<_LeftPane> {
 
     return ListView(
       children: [
-        Text('Salary Aggregates', style: AppTextStyles.h4),
-        const SizedBox(height: AppSpacing.lg),
-        _row('Employees', '${widget.employees.length}', AppColors.indigo600),
+        Text('Salary Aggregates',
+            style: _Tok.tsCardTitle.copyWith(fontSize: 15)),
+        const SizedBox(height: 16),
+        _row('Employees', '${widget.employees.length}', _Tok.inkLight),
         _row(
             'With Days Entered',
             '$withDays / ${widget.employees.length}',
             withDays == widget.employees.length
-                ? AppColors.emerald700
-                : AppColors.amber700),
-        const Divider(height: AppSpacing.lg),
+                ? const Color(0xFF065F46)  // emerald
+                : const Color(0xFF92400E)), // amber
+        const SizedBox(height: 12),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 8),
         Text('Earnings',
-            style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
-        const SizedBox(height: AppSpacing.sm),
+            style: _Tok.tsMeta.copyWith(fontSize: 12)),
+        const SizedBox(height: 8),
         _row('Total Basic', '₹${sumBasic.toStringAsFixed(0)}',
-            AppColors.indigo600),
+            _Tok.inkLight),
         _row('Total Other', '₹${sumOther.toStringAsFixed(0)}',
-            AppColors.indigo600),
+            _Tok.inkLight),
         _row('Total Gross', '₹${sumGross.toStringAsFixed(0)}',
-            AppColors.indigo600, bold: true),
-        const Divider(height: AppSpacing.lg),
+            _Tok.inkLight, bold: true),
+        const SizedBox(height: 12),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 8),
         Text('Earned Salary (Prorated)',
-            style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
-        const SizedBox(height: AppSpacing.sm),
+            style: _Tok.tsMeta.copyWith(fontSize: 12)),
+        const SizedBox(height: 8),
         _row('Earned Basic', '₹${sumEarnedBasic.toStringAsFixed(0)}',
-            AppColors.indigo600),
+            _Tok.inkLight),
         _row('Earned Other', '₹${sumEarnedOther.toStringAsFixed(0)}',
-            AppColors.indigo600),
+            _Tok.inkLight),
         _row('Earned Gross', '₹${sumEarnedGross.toStringAsFixed(0)}',
-            AppColors.emerald700, bold: true),
-        const Divider(height: AppSpacing.lg),
+            const Color(0xFF065F46), bold: true),
+        const SizedBox(height: 12),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 8),
         Text('Deductions (Prorated)',
-            style: AppTextStyles.label.copyWith(color: AppColors.slate500)),
-        const SizedBox(height: AppSpacing.sm),
+            style: _Tok.tsMeta.copyWith(fontSize: 12)),
+        const SizedBox(height: 8),
         _row('PF (12% earned basic)', '₹$sumPf', Colors.red.shade400),
         _row('ESIC (0.75% earned)', '₹$sumEsic', Colors.red.shade400),
         if (widget.isMsw)
-          _row('MSW', '₹$sumMsw', AppColors.amber700),
+          _row('MSW', '₹$sumMsw', const Color(0xFF92400E)),
         _row('Prof. Tax', '₹$sumPt', Colors.red.shade400),
-        const Divider(height: AppSpacing.md),
+        const SizedBox(height: 8),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 4),
         _row('Total Deductions', '₹$sumTd', Colors.red.shade700, bold: true),
-        const Divider(height: AppSpacing.lg),
+        const SizedBox(height: 12),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 8),
         _row('Net Payable', '₹${sumNet.toStringAsFixed(0)}',
-            AppColors.emerald700, bold: true, fontSize: 14),
+            const Color(0xFF065F46), bold: true, fontSize: 14),
         if (withDays < widget.employees.length) ...[
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.amber100,
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+              border: Border.all(color: const Color(0xFFFDE68A)),
             ),
             child: Row(children: [
               const Icon(Icons.info_outline,
-                  size: 13, color: AppColors.amber700),
+                  size: 13, color: Color(0xFF92400E)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   '${widget.employees.length - withDays} employee(s) have no days entered — deductions show as 0.',
-                  style: AppTextStyles.small.copyWith(
-                    color: AppColors.amber700,
+                  style: _Tok.tsMeta.copyWith(
+                    color: const Color(0xFF92400E),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -837,21 +912,21 @@ class _LeftPaneState extends State<_LeftPane> {
         if (widget.isMsw) ...[
           const SizedBox(height: 8),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.amber100,
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+              border: Border.all(color: const Color(0xFFFDE68A)),
             ),
             child: Row(children: [
               const Icon(Icons.info_outline,
-                  size: 13, color: AppColors.amber700),
+                  size: 13, color: Color(0xFF92400E)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                     'MSW month — ₹${widget.mswAmount.toStringAsFixed(0)} deduction active',
-                    style: AppTextStyles.small.copyWith(
-                        color: AppColors.amber700,
+                    style: _Tok.tsMeta.copyWith(
+                        color: const Color(0xFF92400E),
                         fontWeight: FontWeight.w500)),
               ),
             ]),
@@ -860,36 +935,35 @@ class _LeftPaneState extends State<_LeftPane> {
         if (widget.isFeb) ...[
           const SizedBox(height: 8),
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.indigo50,
-              borderRadius: BorderRadius.circular(AppSpacing.radius),
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+              border: Border.all(color: _Tok.border),
             ),
             child: Row(children: [
               const Icon(Icons.info_outline,
-                  size: 13, color: AppColors.indigo600),
+                  size: 13, color: _Tok.inkLight),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                     'February — PT ₹300 for eligible employees',
-                    style: AppTextStyles.small.copyWith(
-                        color: AppColors.indigo600,
+                    style: _Tok.tsMeta.copyWith(
+                        color: _Tok.inkLight,
                         fontWeight: FontWeight.w500)),
               ),
             ]),
           ),
         ],
-        const SizedBox(height: AppSpacing.xl),
-        const Divider(),
-        const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: 16),
+        const Divider(color: _Tok.divider),
+        const SizedBox(height: 8),
         GestureDetector(
           onTap: () => setState(() => _showColWidths = !_showColWidths),
           child: Row(
             children: [
               Text('Column Widths',
-                  style: AppTextStyles.label.copyWith(
-                    color: AppColors.slate600,
+                  style: _Tok.tsLabel.copyWith(
                     fontWeight: FontWeight.w600,
                   )),
               const Spacer(),
@@ -902,8 +976,8 @@ class _LeftPaneState extends State<_LeftPane> {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text('Reset',
-                      style: AppTextStyles.small.copyWith(
-                          color: AppColors.indigo600)),
+                      style: _Tok.tsMeta.copyWith(
+                          color: _Tok.inkLight)),
                 ),
               const SizedBox(width: 4),
               Icon(
@@ -911,13 +985,13 @@ class _LeftPaneState extends State<_LeftPane> {
                     ? Icons.keyboard_arrow_up
                     : Icons.keyboard_arrow_down,
                 size: 16,
-                color: AppColors.slate500,
+                color: _Tok.inkMuted,
               ),
             ],
           ),
         ),
         if (_showColWidths) ...[
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 8),
           for (int i = 0; i < widget.colCtrls.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -929,7 +1003,7 @@ class _LeftPaneState extends State<_LeftPane> {
                       i < SalaryStatementPreview.columnLabels.length
                           ? SalaryStatementPreview.columnLabels[i]
                           : 'Col $i',
-                      style: AppTextStyles.small,
+                      style: _Tok.tsMeta,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -940,13 +1014,23 @@ class _LeftPaneState extends State<_LeftPane> {
                         controller: widget.colCtrls[i],
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
-                        style: AppTextStyles.input.copyWith(fontSize: 12),
+                        style: _Tok.tsInput.copyWith(fontSize: 12),
                         textAlign: TextAlign.right,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           isDense: true,
                           suffixText: 'px',
-                          contentPadding: EdgeInsets.symmetric(
+                          suffixStyle: _Tok.tsMeta,
+                          contentPadding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 6),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: const BorderSide(color: _Tok.border),
+                            borderRadius: BorderRadius.circular(_Tok.radius),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide:
+                                const BorderSide(color: _Tok.inkLight),
+                            borderRadius: BorderRadius.circular(_Tok.radius),
+                          ),
                         ),
                         onChanged: (v) {
                           final val = double.tryParse(v);
@@ -977,9 +1061,9 @@ class _LeftPaneState extends State<_LeftPane> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: AppTextStyles.small),
+            Text(label, style: _Tok.tsMeta),
             Text(value,
-                style: AppTextStyles.small.copyWith(
+                style: _Tok.tsInput.copyWith(
                   color: color,
                   fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
                   fontSize: bold ? fontSize : 12,
@@ -1097,8 +1181,8 @@ class _PreviewPane extends StatelessWidget {
                                     year: n.year,
                                     isMsw: n.isMsw,
                                     isFeb: n.isFeb,
-                                    mswAmount: n.mswAmount, // <-- ADDED
-                                    applyMsw: n.applyMsw,   // <-- ADDED (the toggle fix)
+                                    mswAmount: n.mswAmount,
+                                    applyMsw: n.applyMsw,
                                     daysMap: daysMap,
                                     daysInMonth: n.totalDays,
                                     columnWidths: columnWidths,

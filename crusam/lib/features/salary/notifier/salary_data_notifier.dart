@@ -17,12 +17,32 @@ class SalaryDataNotifier extends ChangeNotifier {
   String _clientAddr = AppConstants.defaultClientAddress;
   String _clientGstin = AppConstants.defaultClientGstin;
   String _deptCode = '';
-  // Shared "Item Description" for the Salary Bills group (Salary Invoice,
-  // Attachment A, Attachment B). Living here — alongside billNo/poNo/client
-  // fields — means it survives navigating between those screens (they all
-  // get destroyed/recreated by go_router) and gets captured/restored by
-  // SalarySnapshotNotifier just like the rest of the bill header.
+  // "Item Description" for the Salary Invoice screen only. Living here —
+  // alongside billNo/poNo/client fields — means it survives navigating
+  // between screens (they all get destroyed/recreated by go_router) and
+  // gets captured/restored by SalarySnapshotNotifier just like the rest of
+  // the bill header.
+  //
+  // NOTE: Attachment A and Attachment B used to read/write this exact same
+  // field, so editing the description on any one of the three screens
+  // silently changed it on the other two. They now have their own
+  // independent fields below (_itemDescriptionAttachmentARaw /
+  // _itemDescriptionAttachmentBRaw) — this field is Salary Invoice-only.
   String _itemDescription = 'Manpower Supply Charges';
+
+  // Attachment A / Attachment B item descriptions — independent of each
+  // other and of the Salary Invoice's _itemDescription above (no more
+  // cross-screen sync). Both screens dropped the "saved descriptions"
+  // dropdown in favour of a plain editable field, so there's no preset
+  // list backing these.
+  //
+  // Empty string means "not customised — show the computed month/year
+  // default". Setting a value equal to the *current* computed default is
+  // treated the same as clearing it, so the field keeps tracking the
+  // active period automatically until the user actually types something
+  // different. See itemDescriptionAttachmentA/B getters below.
+  String _itemDescriptionAttachmentARaw = '';
+  String _itemDescriptionAttachmentBRaw = '';
 
   // MSW (June/December welfare deduction) is split into two concepts:
   //  - isMswEligibleMonth: whether the selected month is June or December.
@@ -54,6 +74,34 @@ class SalaryDataNotifier extends ChangeNotifier {
   String get clientGstin => _clientGstin;
   String get deptCode => _deptCode;
   String get itemDescription => _itemDescription;
+
+  /// Computed defaults, e.g. "Salary for the month of June 2026-2027" /
+  /// "Service charges for the month of June 2026-2027" for the currently
+  /// active month/year.
+  String get defaultItemDescriptionAttachmentA =>
+      'Salary for the month of $monthName $year-${year + 1}';
+  String get defaultItemDescriptionAttachmentB =>
+      'Service charges for the month of $monthName $year-${year + 1}';
+
+  /// Effective description shown/used for each attachment: the user's
+  /// literal override if they've set one, otherwise the computed default
+  /// above (which stays in sync with month/year until the user types
+  /// something else).
+  String get itemDescriptionAttachmentA =>
+      _itemDescriptionAttachmentARaw.isEmpty
+          ? defaultItemDescriptionAttachmentA
+          : _itemDescriptionAttachmentARaw;
+  String get itemDescriptionAttachmentB =>
+      _itemDescriptionAttachmentBRaw.isEmpty
+          ? defaultItemDescriptionAttachmentB
+          : _itemDescriptionAttachmentBRaw;
+
+  /// Raw literal override (may be empty) — used by SalarySnapshotNotifier
+  /// so saved snapshots can distinguish "user left this on the default" from
+  /// "user typed something specific", and correctly recompute the default
+  /// for whatever month/year the snapshot restores to.
+  String get itemDescriptionAttachmentARaw => _itemDescriptionAttachmentARaw;
+  String get itemDescriptionAttachmentBRaw => _itemDescriptionAttachmentBRaw;
 
   static const _monthNames = [
     'January',
@@ -216,6 +264,25 @@ class SalaryDataNotifier extends ChangeNotifier {
   void setItemDescription(String v) {
     if (_itemDescription == v) return;
     _itemDescription = v;
+    _safeNotify();
+  }
+
+  /// Setting a value equal to the *currently computed* default collapses
+  /// back to '' (i.e. "follow the default"), rather than locking in that
+  /// exact string. This is what lets the field keep tracking month/year
+  /// changes made elsewhere (e.g. on the Employee Salary screen) right up
+  /// until the user actually types something different from the default.
+  void setItemDescriptionAttachmentA(String v) {
+    final next = v == defaultItemDescriptionAttachmentA ? '' : v;
+    if (_itemDescriptionAttachmentARaw == next) return;
+    _itemDescriptionAttachmentARaw = next;
+    _safeNotify();
+  }
+
+  void setItemDescriptionAttachmentB(String v) {
+    final next = v == defaultItemDescriptionAttachmentB ? '' : v;
+    if (_itemDescriptionAttachmentBRaw == next) return;
+    _itemDescriptionAttachmentBRaw = next;
     _safeNotify();
   }
 

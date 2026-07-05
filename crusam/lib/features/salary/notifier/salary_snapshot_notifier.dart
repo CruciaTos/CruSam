@@ -205,6 +205,8 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       deptCode: n.deptCode,
       selectedCompanyCode: sc.selectedCompanyCode,
       itemDescription: n.itemDescription,
+      itemDescriptionAttachmentA: n.itemDescriptionAttachmentARaw,
+      itemDescriptionAttachmentB: n.itemDescriptionAttachmentBRaw,
       employees: employeeData,
     );
   }
@@ -257,6 +259,11 @@ class SalarySnapshotNotifier extends ChangeNotifier {
     n.setClientGstin(payload.clientGstin);
     n.setDeptCode(payload.deptCode);
     n.setItemDescription(payload.itemDescription);
+    // Applied after setMonthYear so an empty override correctly recomputes
+    // against the *restored* month/year rather than whatever was active
+    // before the load.
+    n.setItemDescriptionAttachmentA(payload.itemDescriptionAttachmentA);
+    n.setItemDescriptionAttachmentB(payload.itemDescriptionAttachmentB);
     sc.setCompanyCode(payload.selectedCompanyCode);
 
     // 3. Restore per-employee attendance, syncing any already-cached

@@ -90,7 +90,7 @@ class SalarySnapshotEmployeeData {
 /// Full serialized salary-month state. This is what gets stored (as JSON)
 /// inside `salary_month_snapshots.payload`.
 class SalarySnapshotPayload {
-  static const int currentVersion = 2;
+  static const int currentVersion = 3;
 
   final int version;
   final int month;
@@ -104,6 +104,14 @@ class SalarySnapshotPayload {
   final String deptCode;
   final String selectedCompanyCode;
   final String itemDescription;
+  // Raw overrides for Attachment A / Attachment B item descriptions — empty
+  // means "no override, follow the computed month/year default" (see
+  // SalaryDataNotifier.itemDescriptionAttachmentA/B). Absent on snapshots
+  // saved before version 3, in which case fromJson defaults them to '' so
+  // old snapshots simply pick up the live default for whatever month/year
+  // they're loaded into.
+  final String itemDescriptionAttachmentA;
+  final String itemDescriptionAttachmentB;
   final List<SalarySnapshotEmployeeData> employees;
 
   const SalarySnapshotPayload({
@@ -119,6 +127,8 @@ class SalarySnapshotPayload {
     required this.deptCode,
     required this.selectedCompanyCode,
     this.itemDescription = 'Manpower Supply Charges',
+    this.itemDescriptionAttachmentA = '',
+    this.itemDescriptionAttachmentB = '',
     required this.employees,
   });
 
@@ -135,6 +145,8 @@ class SalarySnapshotPayload {
     'deptCode': deptCode,
     'selectedCompanyCode': selectedCompanyCode,
     'itemDescription': itemDescription,
+    'itemDescriptionAttachmentA': itemDescriptionAttachmentA,
+    'itemDescriptionAttachmentB': itemDescriptionAttachmentB,
     'employees': employees.map((e) => e.toJson()).toList(),
   };
 
@@ -157,6 +169,10 @@ class SalarySnapshotPayload {
       selectedCompanyCode: (m['selectedCompanyCode'] as String?) ?? 'All',
       itemDescription:
           (m['itemDescription'] as String?) ?? 'Manpower Supply Charges',
+      itemDescriptionAttachmentA:
+          (m['itemDescriptionAttachmentA'] as String?) ?? '',
+      itemDescriptionAttachmentB:
+          (m['itemDescriptionAttachmentB'] as String?) ?? '',
       employees:
           empList
               .whereType<Map>()

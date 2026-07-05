@@ -8,16 +8,71 @@ import '../../../data/models/company_config_model.dart';
 import '../../../data/models/margin_settings_model.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
-import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
 import '../../vouchers/services/pdf_export_service.dart';
-import '../../vouchers/widgets/item_description_field.dart';
 import '../widgets/attachment_a_preview.dart';
 import '../widgets/attachment_b_preview.dart';
 import '../widgets/salary_bill_preview.dart';
 import '../widgets/salary_statement_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – matching the InvoicesScreen theme
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+  static const badgeBg     = Color(0xFF1E1B4B);
+  static const badgeFg     = Color(0xFFFFFFFF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+  static const fxcond = 'NotoSansExtraCondensed';
+
+  static const double radius   = 6.0;
+  static const double cRadius  = 10.0;
+  static const double padH     = 18.0;
+  static const double padV     = 16.0;
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsInput = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+    height    : 1.4,
+  );
+
+  static const tsMeta = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    color        : inkMuted,
+  );
+}
 
 class SalaryBillsScreen extends StatefulWidget {
   const SalaryBillsScreen({super.key});
@@ -28,7 +83,6 @@ class SalaryBillsScreen extends StatefulWidget {
 class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   static final _dateFormat = DateFormat('dd/MM/yyyy');
 
-  final _descNotifier   = ItemDescriptionNotifier();
   final _marginNotifier = MarginSettingsNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting          = false;
@@ -44,12 +98,13 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   final _clientGstCtrl  = TextEditingController(text: '27AABCC1597Q1Z2');
   final _dateCtrl       = TextEditingController(
       text: DateFormat('dd/MM/yyyy').format(DateTime.now()));
+  final _descCtrl       = TextEditingController();
 
   static const List<String> _companyCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
   late final Listenable _fieldListenable = Listenable.merge([
     _billNoCtrl, _poNoCtrl, _clientNameCtrl,
-    _clientAddrCtrl, _clientGstCtrl, _dateCtrl,
+    _clientAddrCtrl, _clientGstCtrl, _dateCtrl, _descCtrl,
   ]);
 
   void _setControllerText(TextEditingController ctrl, String value) {
@@ -68,6 +123,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     _setControllerText(_clientAddrCtrl, n.clientAddr);
     _setControllerText(_clientGstCtrl,  n.clientGstin);
     _setControllerText(_dateCtrl,       n.dateDisplay);
+    _setControllerText(_descCtrl,       n.itemDescription);
   }
 
   void _onBillNoChanged()     => SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text);
@@ -76,11 +132,11 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   void _onClientAddrChanged() => SalaryDataNotifier.instance.setClientAddr(_clientAddrCtrl.text);
   void _onClientGstChanged()  => SalaryDataNotifier.instance.setClientGstin(_clientGstCtrl.text);
   void _onDateChanged()       => SalaryDataNotifier.instance.setDateDisplay(_dateCtrl.text);
+  void _onDescChanged()       => SalaryDataNotifier.instance.setItemDescription(_descCtrl.text);
 
   @override
   void initState() {
     super.initState();
-    _descNotifier.load();
     _marginNotifier.load();
     _loadConfig();
     _syncFromSalaryData();
@@ -92,6 +148,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     _clientAddrCtrl.addListener(_onClientAddrChanged);
     _clientGstCtrl.addListener(_onClientGstChanged);
     _dateCtrl.addListener(_onDateChanged);
+    _descCtrl.addListener(_onDescChanged);
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
@@ -106,11 +163,11 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     _clientAddrCtrl.removeListener(_onClientAddrChanged);
     _clientGstCtrl.removeListener(_onClientGstChanged);
     _dateCtrl.removeListener(_onDateChanged);
-    _descNotifier.dispose();
+    _descCtrl.removeListener(_onDescChanged);
     _marginNotifier.dispose();
     for (final c in [
       _billNoCtrl, _poNoCtrl, _clientNameCtrl,
-      _clientAddrCtrl, _clientGstCtrl, _dateCtrl,
+      _clientAddrCtrl, _clientGstCtrl, _dateCtrl, _descCtrl,
     ]) {
       c.dispose();
     }
@@ -228,7 +285,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:          _billNoCtrl.text,
           date:            _dateCtrl.text,
           poNo:            _poNoCtrl.text,
-          itemDescription: n.itemDescription,
+          itemDescription: n.itemDescriptionAttachmentA,
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
@@ -240,7 +297,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           billNo:          _billNoCtrl.text,
           date:            _dateCtrl.text,
           poNo:            _poNoCtrl.text,
-          itemDescription: n.itemDescription,
+          itemDescription: n.itemDescriptionAttachmentB,
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
@@ -310,7 +367,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                   Row(children: [
                     Text(
                       title,
-                      style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                      style: AppTextStyles.h3.copyWith(color: Colors.white),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     SalaryMonthBadge(
@@ -369,22 +426,36 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                  // ── Themed left pane ──────────────────────────────────────────
                   Container(
                     width: 272,
-                    color: Colors.grey[200],
-                    child: _LeftPane(
-                      descNotifier:    _descNotifier,
-                      itemDescription: n.itemDescription,
-                      billNoCtrl:      _billNoCtrl,
-                      poNoCtrl:        _poNoCtrl,
-                      clientNameCtrl:  _clientNameCtrl,
-                      clientAddrCtrl:  _clientAddrCtrl,
-                      clientGstCtrl:   _clientGstCtrl,
-                      dateCtrl:        _dateCtrl,
-                      sc:              sc,
-                      marginNotifier:  _marginNotifier,
-                      onDescChanged:   n.setItemDescription,
-                      onPickDate: () => _pickDate(context),
+                    margin: const EdgeInsets.only(right: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(_Tok.padV),
+                      decoration: BoxDecoration(
+                        color: _Tok.surface,
+                        border: Border.all(color: _Tok.border),
+                        borderRadius: BorderRadius.circular(_Tok.cRadius),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: _LeftPane(
+                        descCtrl:        _descCtrl,
+                        billNoCtrl:      _billNoCtrl,
+                        poNoCtrl:        _poNoCtrl,
+                        clientNameCtrl:  _clientNameCtrl,
+                        clientAddrCtrl:  _clientAddrCtrl,
+                        clientGstCtrl:   _clientGstCtrl,
+                        dateCtrl:        _dateCtrl,
+                        sc:              sc,
+                        marginNotifier:  _marginNotifier,
+                        onPickDate: () => _pickDate(context),
+                      ),
                     ),
                   ),
                   Container(
@@ -433,21 +504,17 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
       );
 }
 
-// ── Left pane ─────────────────────────────────────────────────────────────────
-
+// ── Themed left pane ──────────────────────────────────────────────────────────
 class _LeftPane extends StatelessWidget {
-  final ItemDescriptionNotifier descNotifier;
-  final String                  itemDescription;
+  final TextEditingController   descCtrl;
   final TextEditingController   billNoCtrl, poNoCtrl, clientNameCtrl,
                                 clientAddrCtrl, clientGstCtrl, dateCtrl;
   final SalaryStateController   sc;
   final MarginSettingsNotifier  marginNotifier;
-  final void Function(String)   onDescChanged;
   final VoidCallback            onPickDate;
 
   const _LeftPane({
-    required this.descNotifier,
-    required this.itemDescription,
+    required this.descCtrl,
     required this.billNoCtrl,
     required this.poNoCtrl,
     required this.clientNameCtrl,
@@ -456,20 +523,20 @@ class _LeftPane extends StatelessWidget {
     required this.dateCtrl,
     required this.sc,
     required this.marginNotifier,
-    required this.onDescChanged,
     required this.onPickDate,
   });
 
   @override
   Widget build(BuildContext context) => ListView(
-        padding: const EdgeInsets.all(AppSpacing.md),
+        padding: EdgeInsets.zero,
         children: [
-          Text('Invoice Details', style: AppTextStyles.h4),
-          const SizedBox(height: AppSpacing.lg),
+          Text('Invoice Details',
+              style: _Tok.tsCardTitle.copyWith(fontSize: 15)),
+          const SizedBox(height: 16),
           _label('Bill No.'),
           const SizedBox(height: 4),
           _field(billNoCtrl),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('Date'),
           const SizedBox(height: 4),
           SizedBox(
@@ -478,107 +545,135 @@ class _LeftPane extends StatelessWidget {
               controller: dateCtrl,
               readOnly: true,
               onTap: onPickDate,
-              style: AppTextStyles.input,
-              decoration: const InputDecoration(
+              style: _Tok.tsInput,
+              decoration: InputDecoration(
                 isDense: true,
                 contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                suffixIcon:
-                    Icon(Icons.calendar_today, size: 16),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                suffixIcon: Icon(Icons.calendar_today,
+                    size: 16, color: _Tok.inkLight),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: _Tok.border),
+                  borderRadius: BorderRadius.circular(_Tok.radius),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: _Tok.inkLight),
+                  borderRadius: BorderRadius.circular(_Tok.radius),
+                ),
               ),
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('PO No.'),
           const SizedBox(height: 4),
           _field(poNoCtrl),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: 16),
           Text('Client',
-              style: AppTextStyles.label
-                  .copyWith(color: AppColors.slate500)),
-          const SizedBox(height: AppSpacing.sm),
+              style: _Tok.tsMeta.copyWith(fontSize: 12)),
+          const SizedBox(height: 8),
           _label('Client Name'),
           const SizedBox(height: 4),
           _field(clientNameCtrl),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('Client GSTIN'),
           const SizedBox(height: 4),
           _field(clientGstCtrl),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('Client Address'),
           const SizedBox(height: 4),
           _field(clientAddrCtrl),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             '//  or  /n  creates a new line in the PDF',
-            style: AppTextStyles.small.copyWith(
-              color: AppColors.slate500,
+            style: _Tok.tsMeta.copyWith(
               fontStyle: FontStyle.italic,
               fontSize: 10,
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('Item Description'),
           const SizedBox(height: 4),
-          ItemDescriptionField(
-            value:     itemDescription,
-            onChanged: onDescChanged,
-            notifier:  descNotifier,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          const Divider(),
-          const SizedBox(height: AppSpacing.sm),
+          _descriptionField(descCtrl),
+          const SizedBox(height: 16),
+          const Divider(color: _Tok.divider),
+          const SizedBox(height: 8),
           Text('Invoice Totals',
-              style: AppTextStyles.label
-                  .copyWith(color: AppColors.slate500)),
-          const SizedBox(height: AppSpacing.sm),
+              style: _Tok.tsMeta.copyWith(fontSize: 12)),
+          const SizedBox(height: 8),
           _summaryRow('Attachment A',
               '₹${sc.attachmentATotal.toStringAsFixed(0)}',
-              AppColors.indigo600),
+              _Tok.inkLight),
           _summaryRow('Attachment B',
               '₹${sc.attachmentBTotal.toStringAsFixed(0)}',
-              AppColors.indigo600),
-          const Divider(height: AppSpacing.lg),
+              _Tok.inkLight),
+          const Divider(color: _Tok.divider, height: 20),
           _summaryRow('Invoice Base',
               '₹${sc.invoiceTotal.toStringAsFixed(0)}',
-              AppColors.emerald700,
+              _Tok.ink,
               bold: true),
           const SizedBox(height: 4),
           _summaryRow('CGST (9%)',
               '₹${(sc.invoiceTotal * 0.09).toStringAsFixed(2)}',
-              AppColors.slate500),
+              _Tok.inkMuted),
           _summaryRow('SGST (9%)',
               '₹${(sc.invoiceTotal * 0.09).toStringAsFixed(2)}',
-              AppColors.slate500),
-          const Divider(height: AppSpacing.md),
+              _Tok.inkMuted),
+          const Divider(color: _Tok.divider, height: 16),
           _summaryRow(
             'Grand Total',
             '₹${(sc.invoiceTotal * 1.18).roundToDouble().toStringAsFixed(0)}',
-            AppColors.emerald700,
+            _Tok.ink,
             bold: true,
           ),
-          const SizedBox(height: AppSpacing.xl),
-          const Divider(),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 16),
+          const Divider(color: _Tok.divider),
+          const SizedBox(height: 8),
           SalaryMarginSection(notifier: marginNotifier),
         ],
       );
 
   static Widget _label(String t) => Text(
         t,
-        style: AppTextStyles.smallMedium.copyWith(
-            color: AppColors.slate600, fontWeight: FontWeight.w600),
+        style: _Tok.tsLabel,
       );
 
   static Widget _field(TextEditingController ctrl) => SizedBox(
         height: 38,
         child: TextField(
           controller: ctrl,
-          style: AppTextStyles.input,
-          decoration: const InputDecoration(
+          style: _Tok.tsInput,
+          decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            enabledBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: _Tok.border),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: _Tok.inkLight),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+            ),
+          ),
+        ),
+      );
+
+  static Widget _descriptionField(TextEditingController ctrl) => TextField(
+        controller: ctrl,
+        minLines: 1,
+        maxLines: 3,
+        style: _Tok.tsInput,
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          enabledBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: _Tok.border),
+            borderRadius: BorderRadius.circular(_Tok.radius),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: _Tok.inkLight),
+            borderRadius: BorderRadius.circular(_Tok.radius),
           ),
         ),
       );
@@ -594,13 +689,12 @@ class _LeftPane extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: AppTextStyles.small),
+            Text(label, style: _Tok.tsMeta),
             Text(
               value,
-              style: AppTextStyles.small.copyWith(
+              style: _Tok.tsInput.copyWith(
                 color: color,
-                fontWeight:
-                    bold ? FontWeight.w700 : FontWeight.w600,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
                 fontSize: bold ? 13 : 12,
               ),
             ),
