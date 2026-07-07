@@ -27,6 +27,10 @@ class AttachmentBPreview extends StatelessWidget {
   final String ifscCode;
 
   final int employeeCount;
+
+  // NEW: department code displayed below GST in billing info
+  final String departmentCode;
+
   static const double _ratePerEmployee = 1753.0;
 
   const AttachmentBPreview({
@@ -48,6 +52,7 @@ class AttachmentBPreview extends StatelessWidget {
     this.accountNo       = '0680651100000338',
     this.ifscCode        = 'IBKL0000680',
     this.employeeCount   = 0,
+    this.departmentCode  = '',   // default empty
   });
 
   double get _totalAmount => employeeCount * _ratePerEmployee;
@@ -74,12 +79,20 @@ class AttachmentBPreview extends StatelessWidget {
     String customerName    = 'M/s Diversey India Hygiene Private Ltd.',
     String customerAddress = '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093',
     String customerGst     = '27AABCC1597Q1Z2',
+    String departmentCode  = '',   // NEW parameter
   }) {
     final preview = AttachmentBPreview(
-      config: config, margins: margins, employeeCount: employeeCount,
-      billNo: billNo, date: date, poNo: poNo,
-      itemDescription: itemDescription, customerName: customerName,
-      customerAddress: customerAddress, customerGst: customerGst,
+      config: config,
+      margins: margins,
+      employeeCount: employeeCount,
+      billNo: billNo,
+      date: date,
+      poNo: poNo,
+      itemDescription: itemDescription,
+      customerName: customerName,
+      customerAddress: customerAddress,
+      customerGst: customerGst,
+      departmentCode: departmentCode,
     );
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
@@ -164,7 +177,7 @@ class AttachmentBPreview extends StatelessWidget {
         Expanded(
           flex: 70,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // reduced
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('BILL To,', style: _body),
               const SizedBox(height: 4),
@@ -172,8 +185,14 @@ class AttachmentBPreview extends StatelessWidget {
                   style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 11.5)),
               const SizedBox(height: 2),
               Text(_multiline(customerAddress), style: _body),
-              const SizedBox(height: 8), // reduced from 10
+              const SizedBox(height: 8),
               Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+              // ── Department code below GST ──
+              if (departmentCode.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('Department Code: $departmentCode',
+                    style: _body.copyWith(fontWeight: FontWeight.w700)),
+              ],
             ]),
           ),
         ),

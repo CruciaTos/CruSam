@@ -32,6 +32,9 @@ class SalaryBillPreview extends StatelessWidget {
   /// Base invoice amount = Attachment A total + Attachment B total
   final double invoiceBaseAmount;
 
+  // NEW: department code displayed in billing info
+  final String departmentCode;
+
   const SalaryBillPreview({
     super.key,
     required this.config,
@@ -51,6 +54,7 @@ class SalaryBillPreview extends StatelessWidget {
     this.accountNo            = '0680651100000338',
     this.ifscCode             = 'IBKL0000680',
     this.invoiceBaseAmount    = 0,
+    this.departmentCode       = '',   // default empty
   });
 
   // ── Tax calculations ───────────────────────────────────────────────────────
@@ -83,11 +87,13 @@ class SalaryBillPreview extends StatelessWidget {
     String customerName         = 'M/s Diversey India Hygiene Private Ltd.',
     String customerAddress      = '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093',
     String customerGst          = '27AABCC1597Q1Z2',
+    String departmentCode       = '',   // NEW parameter
   }) {
     final preview = SalaryBillPreview(
       config: config, margins: margins, invoiceBaseAmount: invoiceBaseAmount,
       billNo: billNo, date: date, poNo: poNo, itemDescription: itemDescription,
       customerName: customerName, customerAddress: customerAddress, customerGst: customerGst,
+      departmentCode: departmentCode,
     );
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
@@ -112,15 +118,15 @@ class SalaryBillPreview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(),
-                const SizedBox(height: 4),   // reduced from 6
+                const SizedBox(height: 4),
                 _divider(0.75),
-                const SizedBox(height: 8),   // reduced from 12
+                const SizedBox(height: 8),
                 _centreLabel('Salary Invoice'),
-                const SizedBox(height: 8),   // reduced from 12
+                const SizedBox(height: 8),
                 _billingInfo(),
-                const SizedBox(height: 8),   // reduced from 12
+                const SizedBox(height: 8),
                 _mainTable(),
-                const SizedBox(height: 4),   // reduced from 6
+                const SizedBox(height: 4),
                 _footer(),
               ],
             ),
@@ -172,7 +178,7 @@ class SalaryBillPreview extends StatelessWidget {
         Expanded(
           flex: 70,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // reduced vertical
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('BILL To,', style: _body),
               const SizedBox(height: 4),
@@ -180,8 +186,14 @@ class SalaryBillPreview extends StatelessWidget {
                   style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 11.5)),
               const SizedBox(height: 2),
               Text(_multiline(customerAddress), style: _body),
-              const SizedBox(height: 8), // reduced from 10
+              const SizedBox(height: 8),
               Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+              // ── Department code below GST ──
+              if (departmentCode.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('Department Code: $departmentCode',
+                    style: _body.copyWith(fontWeight: FontWeight.w700)),
+              ],
             ]),
           ),
         ),
@@ -231,7 +243,7 @@ class SalaryBillPreview extends StatelessWidget {
 
       IntrinsicHeight(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 130), // reduced from 180
+          constraints: const BoxConstraints(minHeight: 130),
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             _itemCell('1', 5),
             _itemCellDesc(itemDescription, 65, align: Alignment.topLeft),
@@ -251,7 +263,7 @@ class SalaryBillPreview extends StatelessWidget {
           Expanded(
             flex: 70,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // reduced from 6
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('PAN NO :-  $panNo', style: _body.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
@@ -260,10 +272,10 @@ class SalaryBillPreview extends StatelessWidget {
                   const SizedBox(width: 40),
                   Text('HSN: $hsnCode', style: _body.copyWith(fontWeight: FontWeight.w700)),
                 ]),
-                const SizedBox(height: 8), // reduced from 12
+                const SizedBox(height: 8),
                 Text('Bank Details for  :  RTGS / NEFT',
                     style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 12)),
-                const SizedBox(height: 4), // reduced from 6
+                const SizedBox(height: 4),
                 _bankRow('Bank Name', bankName),
                 _bankRow('Branch', bankBranch),
                 _bankRow('Account No.', accountNo),
@@ -300,7 +312,7 @@ class SalaryBillPreview extends StatelessWidget {
 
       Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), // reduced from 4
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         child: Text('Certified that particulars given above are true and correct.',
             style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 10)),
       ),
@@ -314,7 +326,7 @@ class SalaryBillPreview extends StatelessWidget {
         color: _hdrBg,
         border: rightBorder ? const Border(right: _bSide) : null,
       ),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), // reduced from 8
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       alignment: Alignment.center,
       child: Text(text, textAlign: TextAlign.center,
           style: _body.copyWith(fontWeight: FontWeight.w800, fontSize: 10)),
@@ -327,7 +339,7 @@ class SalaryBillPreview extends StatelessWidget {
         flex: flex,
         child: Container(
           decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), // reduced from 8
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           alignment: align,
           child: Text(text, style: _body.copyWith(fontSize: 12)),
         ),
@@ -341,7 +353,7 @@ class SalaryBillPreview extends StatelessWidget {
       flex: flex,
       child: Container(
         decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8), // reduced from 8
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         alignment: align,
         child: parts.length > 1
             ? RichText(text: TextSpan(style: _body.copyWith(fontSize: 12), children: [
@@ -373,7 +385,7 @@ class SalaryBillPreview extends StatelessWidget {
           child: Row(children: [
             Expanded(flex: 1,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                 alignment: Alignment.centerRight,
                 child: Text(label, textAlign: TextAlign.right,
                     style: _body.copyWith(fontSize: 10,
@@ -383,7 +395,7 @@ class SalaryBillPreview extends StatelessWidget {
             Container(width: 0.75, color: _black),
             Expanded(flex: 1,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                 alignment: Alignment.centerRight,
                 child: Text(value,
                     style: _body.copyWith(fontSize: 11,

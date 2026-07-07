@@ -88,6 +88,12 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
 
+  /// Derive department code from selected company code for display
+  String get _departmentCode {
+    final code = SalaryStateController.instance.selectedCompanyCode;
+    return code == 'All' ? '' : code;
+  }
+
   void _setControllerText(TextEditingController ctrl, String value) {
     if (ctrl.text == value) return;
     ctrl.value = TextEditingValue(
@@ -184,6 +190,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
           customerName:    n.clientName,
           customerAddress: n.clientAddr,
           customerGst:     n.clientGstin,
+          departmentCode:  _departmentCode,   // NEW
         ),
         fileNameSlug:         'attachment_b',
         filePrefix:           'attachment_b',
@@ -328,6 +335,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                               customerName:    n.clientName,
                               customerAddress: n.clientAddr,
                               customerGst:     n.clientGstin,
+                              departmentCode:  _departmentCode,   // NEW
                             ),
                           ),
                         ),

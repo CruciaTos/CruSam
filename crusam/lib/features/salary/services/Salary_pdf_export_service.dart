@@ -4,6 +4,8 @@
 // • Header: aarti_logo.png (left) + letterhead.png (right)
 // • Signature always visible: image + "For AARTI ENTERPRISES / Authorised Signatory" below
 // • All sizes/fonts/padding are ~20% smaller than the SalarySlipPreview widget values
+// • Updated to match the new SalarySlipPreview: removed full salary rows,
+//   removed days rows, show department abbreviation only.
 
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -25,7 +27,7 @@ const _altBg = PdfColor.fromInt(0xFFF8FAFC);
 const _red   = PdfColor.fromInt(0xFFDC2626);
 const _slate = PdfColor.fromInt(0xFF475569);
 
-// ── 20% reduction reference table ─────────────────────────────────────────────
+// ── 20% reduction reference table (unchanged) ────────────────────────────────
 //  Logo          120×72  → 96×58
 //  Logo gap      20      → 16
 //  Inner pad     h:24 v:10 → h:19 v:8
@@ -160,8 +162,6 @@ class SalaryPdfExportService {
 
   // ══════════════════════════════════════════════════════════════════════════
   // PUBLIC: Salary Slips — bytes only, no disk write (for email sending).
-  // Mirrors exportSalarySlips exactly, just returns the encoded PDF instead
-  // of saving it — same reasoning as PdfExportService.buildTaxInvoiceBytes.
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Uint8List> buildSalarySlipsBytes({
     required CompanyConfigModel  config,
@@ -213,7 +213,7 @@ class SalaryPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PUBLIC: Attachment A
+  // PUBLIC: Attachment A (placeholder – unchanged)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<void> exportAttachmentA({
     required CompanyConfigModel config,
@@ -251,7 +251,7 @@ class SalaryPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PUBLIC: Attachment B
+  // PUBLIC: Attachment B (placeholder – unchanged)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<void> exportAttachmentB({
     required CompanyConfigModel config,
@@ -285,7 +285,7 @@ class SalaryPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PUBLIC: Salary Invoice
+  // PUBLIC: Salary Invoice (placeholder – unchanged)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<void> exportSalaryInvoice({
     required CompanyConfigModel config,
@@ -327,7 +327,7 @@ class SalaryPdfExportService {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // SINGLE SLIP  (half A4 height, all values ×0.80 vs widget)
+  // SINGLE SLIP  (half A4 height, now matches new preview layout)
   // ══════════════════════════════════════════════════════════════════════════
   static pw.Widget _singleSlip({
     required CompanyConfigModel config,
@@ -340,11 +340,10 @@ class SalaryPdfExportService {
     const bs   = pw.BorderSide(color: _black, width: 0.75);
     final bAll = pw.BoxDecoration(border: pw.Border.all(color: _black, width: 0.75));
 
+    // UPDATED: only earned rows, renamed to "Basic Salary" and "Other Allowances"
     final earnings = <(String, String)>[
-      ('Basic Salary (Full)',     _fmt(emp.basicCharges)),
-      ('Other Allowances (Full)', _fmt(emp.otherCharges)),
-      ('Earned Basic',            _fmt(calc.eBasic)),
-      ('Earned Allowances',       _fmt(calc.eOther)),
+      ('Basic Salary',      _fmt(calc.eBasic)),
+      ('Other Allowances',  _fmt(calc.eOther)),
     ];
     final deductions = <(String, String)>[
       ('Provident Fund (12%)', _fmt(calc.pf)),
@@ -352,6 +351,10 @@ class SalaryPdfExportService {
       ('MSW',                  _fmt(calc.msw)),
       ('Professional Tax',     _fmt(calc.pt)),
     ];
+
+    final maxRows = earnings.length > deductions.length
+        ? earnings.length
+        : deductions.length;
 
     return pw.Container(
       constraints: const pw.BoxConstraints(minHeight: double.infinity),
@@ -446,7 +449,8 @@ class SalaryPdfExportService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           _detailRow('Employee Name', _sanitize(emp.name)),
-                          _detailRow('Dept / Code',   '${_codeToDept(emp.code)} (${emp.code})'),
+                          // UPDATED: show department abbreviation only (no expansion)
+                          _detailRow('Dept / Code',   emp.code),
                           _detailRow('Designation',   'Technician'),
                           _detailRow('PF No.',        emp.pfNo.isEmpty  ? '-' : emp.pfNo),
                           _detailRow('UAN No.',       emp.uanNo.isEmpty ? '-' : emp.uanNo),
@@ -461,8 +465,7 @@ class SalaryPdfExportService {
                           _detailRow('Bank Name',     _sanitize(emp.bankDetails.isEmpty   ? '-' : emp.bankDetails)),
                           _detailRow('Account No.',   emp.accountNumber.isEmpty ? '-' : emp.accountNumber),
                           _detailRow('IFSC Code',     emp.ifscCode.isEmpty      ? '-' : emp.ifscCode),
-                          _detailRow('Days in Month', daysInMonth.toString()),
-                          _detailRow('Days Present',  calc.days.toString()),
+                          // REMOVED: Days in Month / Days Present rows
                         ],
                       ),
                     ),
@@ -499,16 +502,18 @@ class SalaryPdfExportService {
                 ],
               ),
 
-              // Data rows
-              ...List.generate(4, (i) {
+              // Data rows – generate exactly maxRows times
+              ...List.generate(maxRows, (i) {
                 final bg = i.isOdd ? _altBg : PdfColors.white;
+                final e = i < earnings.length ? earnings[i] : ('', '');
+                final d = i < deductions.length ? deductions[i] : ('', '');
                 return pw.TableRow(
                   decoration: pw.BoxDecoration(color: bg),
                   children: [
-                    _dataCell(earnings[i].$1),
-                    _dataCellR(earnings[i].$2),
-                    _dataCell(deductions[i].$1),
-                    _dataCellR(deductions[i].$2, color: _red),
+                    _dataCell(e.$1),
+                    _dataCellR(e.$2),
+                    _dataCell(d.$1),
+                    _dataCellR(d.$2, color: _red),
                   ],
                 );
               }),
@@ -605,8 +610,7 @@ class SalaryPdfExportService {
     );
   }
 
-  // ── Attachment / Invoice stubs ────────────────────────────────────────────
-  // Replace these with your actual implementations.
+  // ── Attachment / Invoice stubs (unchanged placeholders) ────────────────────
 
   static pw.Widget _attachmentAPage({
     required CompanyConfigModel config,
@@ -617,7 +621,6 @@ class SalaryPdfExportService {
     required String customerName, required String customerAddress,
     required String customerGst,
   }) {
-    // TODO: implement Attachment A page
     throw UnimplementedError('Replace with original _attachmentAPage implementation');
   }
 
@@ -628,7 +631,6 @@ class SalaryPdfExportService {
     required String customerName, required String customerAddress,
     required String customerGst,
   }) {
-    // TODO: implement Attachment B page
     throw UnimplementedError('Replace with original _attachmentBPage implementation');
   }
 
@@ -641,7 +643,6 @@ class SalaryPdfExportService {
     required double baseAmount, required double cgst, required double sgst,
     required double totalTax, required double finalTotal, required double roundOff,
   }) {
-    // TODO: implement Salary Invoice page
     throw UnimplementedError('Replace with original _salaryInvoicePage implementation');
   }
 
@@ -721,7 +722,7 @@ class SalaryPdfExportService {
         ),
       );
 
-  // Kept for attachment/invoice builders
+  // Kept for attachment/invoice builders (unchanged)
   static pw.Widget _hcell(String t, int flex, pw.BorderSide rb) =>
       pw.Expanded(
         flex: flex,
@@ -795,7 +796,7 @@ class SalaryPdfExportService {
         ]),
       );
 
-  // ── Calculation helper ────────────────────────────────────────────────────
+  // ── Calculation helper (unchanged) ─────────────────────────────────────────
 
   static _SlipCalc _calc({
     required EmployeeModel      emp,
@@ -842,10 +843,9 @@ class SalaryPdfExportService {
       };
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PDF OUTPUT & SAVING (no Enum targets – uses salaryPdfPath automatically)
+  // PDF OUTPUT & SAVING (unchanged)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /// Prevents overwriting existing files.
   static Future<String> _uniquePath(String basePath) async {
     if (!await File(basePath).exists()) return basePath;
     final dot  = basePath.lastIndexOf('.');
@@ -859,11 +859,10 @@ class SalaryPdfExportService {
     }
   }
 
-  /// Saves the PDF silently to disk – no share popup.
   static Future<void> _saveAndShare(
     pw.Document doc,
     String      slug,
-    String      subject,   // kept for API compatibility — unused
+    String      subject,
   ) async {
     final bytes = await doc.save();
     if (bytes.isEmpty) throw Exception('PDF encode returned empty bytes');
@@ -873,27 +872,16 @@ class SalaryPdfExportService {
     await File(path).writeAsBytes(bytes, flush: true);
   }
 
-  /// Determines the output directory:
-  /// 1. Salary-specific path (if set)
-  /// 2. General PDF path (if set)
-  /// 3. System Downloads folder
-  /// 4. Application documents directory
   static Future<Directory> _outputDir() async {
     final prefs = ExportPreferencesNotifier.instance;
-
-    // Task 3: check salary-specific path first
     if (prefs.salaryPdfPath.isNotEmpty) {
       final dir = Directory(prefs.salaryPdfPath);
       if (await dir.exists()) return dir;
     }
-
-    // Fall back to general PDF path
     if (prefs.pdfPath.isNotEmpty) {
       final dir = Directory(prefs.pdfPath);
       if (await dir.exists()) return dir;
     }
-
-    // System default
     final home = Platform.environment['HOME'] ??
         Platform.environment['USERPROFILE'] ?? '.';
     final dl = Directory(
@@ -903,7 +891,7 @@ class SalaryPdfExportService {
   }
 }
 
-// ── Calculation value object ───────────────────────────────────────────────────
+// ── Calculation value object (unchanged) ──────────────────────────────────────
 class _SlipCalc {
   final int    days;
   final double eBasic, eOther, pf, esic, msw, pt;

@@ -208,7 +208,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                           icon: const Icon(Icons.picture_as_pdf_outlined,
                               size: 16),
                           label: Text(
-                              'Download All${pairs.isNotEmpty ? ' (${pairs.length} pages)' : ''}'),
+                              'Download ${pairs.isNotEmpty ? ' (${pairs.length} pages)' : ''}'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red.shade700,
                             side: BorderSide(color: Colors.red.shade400),

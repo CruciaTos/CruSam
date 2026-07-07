@@ -204,6 +204,12 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         _marginNotifier.settings.bottom,
       );
 
+  /// Derive department code from selected company code for display
+  String get _departmentCode {
+    final code = SalaryStateController.instance.selectedCompanyCode;
+    return code == 'All' ? '' : code;
+  }
+
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -224,6 +230,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           customerAddress:   _clientAddrCtrl.text,
           customerGst:       _clientGstCtrl.text,
           invoiceBaseAmount: sc.invoiceTotal,
+          departmentCode:    _departmentCode,
         ),
         fileNameSlug: 'salary_invoice_'
             '${_billNoCtrl.text.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_')}',
@@ -274,6 +281,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           customerName:      _clientNameCtrl.text,
           customerAddress:   _clientAddrCtrl.text,
           customerGst:       _clientGstCtrl.text,
+          departmentCode:    _departmentCode,
         ),
         ...AttachmentAPreview.buildPdfPages(
           config:          _config,
@@ -289,6 +297,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
+          departmentCode:  _departmentCode,
         ),
         ...AttachmentBPreview.buildPdfPages(
           config:          _config,
@@ -301,6 +310,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           customerName:    _clientNameCtrl.text,
           customerAddress: _clientAddrCtrl.text,
           customerGst:     _clientGstCtrl.text,
+          departmentCode:  _departmentCode,
         ),
         ...SalaryStatementPreview.buildPdfPages(
           config:      _config,
@@ -312,6 +322,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           isFeb:       n.isFeb,
           daysMap:     daysMap,
           daysInMonth: n.totalDays,
+          departmentCode: _departmentCode,   // ← Added here
         ),
       ];
 
@@ -490,6 +501,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                               poNo:              _poNoCtrl.text,
                               itemDescription:   n.itemDescription,
                               invoiceBaseAmount: sc.invoiceTotal,
+                              departmentCode:    _departmentCode,
                             ),
                           ),
                         ),

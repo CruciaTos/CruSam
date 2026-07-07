@@ -29,7 +29,10 @@ class AttachmentAPreview extends StatelessWidget {
   final double itemAmount;
   final double pfAmount;
   final double esicAmount;
-  final double totalAfterTax; // kept for compatibility
+  final double totalAfterTax;
+
+  // NEW: department code displayed below GST in billing info
+  final String departmentCode;
 
   const AttachmentAPreview({
     super.key,
@@ -53,6 +56,7 @@ class AttachmentAPreview extends StatelessWidget {
     this.pfAmount        = 0,
     this.esicAmount      = 0,
     this.totalAfterTax   = 0,
+    this.departmentCode  = '',   // default empty
   });
 
   double get _subtotal      => itemAmount + pfAmount + esicAmount;
@@ -88,6 +92,7 @@ class AttachmentAPreview extends StatelessWidget {
     required String customerName,
     required String customerAddress,
     required String customerGst,
+    String departmentCode = '',   // NEW parameter
   }) {
     final preview = AttachmentAPreview(
       config: config,
@@ -103,6 +108,7 @@ class AttachmentAPreview extends StatelessWidget {
       customerName: customerName,
       customerAddress: customerAddress,
       customerGst: customerGst,
+      departmentCode: departmentCode,
     );
     return [preview._buildPage(width: a4Width, height: a4Height)];
   }
@@ -198,7 +204,7 @@ class AttachmentAPreview extends StatelessWidget {
           Expanded(
             flex: 70,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // reduced
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -208,8 +214,14 @@ class AttachmentAPreview extends StatelessWidget {
                       style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 11.5)),
                   const SizedBox(height: 2),
                   Text(_multiline(customerAddress), style: _body),
-                  const SizedBox(height: 8), // reduced from 10
+                  const SizedBox(height: 8),
                   Text('GST No. $customerGst', style: _body.copyWith(fontWeight: FontWeight.w700)),
+                  // ── Department code below GST ──
+                  if (departmentCode.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text('Department Code: $departmentCode',
+                        style: _body.copyWith(fontWeight: FontWeight.w700)),
+                  ],
                 ],
               ),
             ),
@@ -288,7 +300,7 @@ class AttachmentAPreview extends StatelessWidget {
               Expanded(
                 flex: 70,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), // reduced from 6
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -301,12 +313,12 @@ class AttachmentAPreview extends StatelessWidget {
                           Text('HSN: $hsnCode', style: _body.copyWith(fontWeight: FontWeight.w700)),
                         ],
                       ),
-                      const SizedBox(height: 8), // reduced from 12
+                      const SizedBox(height: 8),
                       Text(
                         'Bank Details for  :  RTGS / NEFT',
                         style: _body.copyWith(fontWeight: FontWeight.w700, fontSize: 12),
                       ),
-                      const SizedBox(height: 4), // reduced from 6
+                      const SizedBox(height: 4),
                       _bankRow('Bank Name', bankName),
                       _bankRow('Branch', bankBranch),
                       _bankRow('Account No.', accountNo),
@@ -348,7 +360,7 @@ class AttachmentAPreview extends StatelessWidget {
 
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), // reduced from 4
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           child: Text(
             '',
             style: _body.copyWith(fontStyle: FontStyle.italic, fontSize: 10),
@@ -365,7 +377,7 @@ class AttachmentAPreview extends StatelessWidget {
         color: _hdrBg,
         border: rightBorder ? const Border(right: _bSide) : null,
       ),
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), // reduced from 8
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       alignment: Alignment.center,
       child: Text(
         text,
@@ -381,7 +393,7 @@ class AttachmentAPreview extends StatelessWidget {
         flex: flex,
         child: Container(
           decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), // reduced from 8
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           alignment: align,
           child: Text(text, style: _body.copyWith(fontSize: 12)),
         ),
@@ -395,7 +407,7 @@ class AttachmentAPreview extends StatelessWidget {
       flex: flex,
       child: Container(
         decoration: BoxDecoration(border: rightBorder ? const Border(right: _bSide) : null),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8), // reduced from 8
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         alignment: align,
         child: parts.length > 1
             ? RichText(
@@ -438,7 +450,7 @@ class AttachmentAPreview extends StatelessWidget {
               Expanded(
                 flex: 1,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                   alignment: Alignment.centerRight,
                   child: Text(
                     label,
@@ -454,7 +466,7 @@ class AttachmentAPreview extends StatelessWidget {
               Expanded(
                 flex: 1,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                   alignment: Alignment.centerRight,
                   child: Text(
                     value,
@@ -482,7 +494,7 @@ class AttachmentAPreview extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
               alignment: Alignment.centerRight,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -498,7 +510,7 @@ class AttachmentAPreview extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
               alignment: Alignment.centerRight,
               child: Text(value, style: _body.copyWith(fontSize: 11)),
             ),
@@ -516,7 +528,7 @@ class AttachmentAPreview extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
               alignment: Alignment.centerRight,
               child: Text(label, textAlign: TextAlign.right, style: _body.copyWith(fontSize: 10)),
             ),
@@ -525,7 +537,7 @@ class AttachmentAPreview extends StatelessWidget {
           Expanded(
             flex: 1,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3), // reduced from 4
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
               alignment: Alignment.centerRight,
               child: Text(value, style: _body.copyWith(fontSize: 11)),
             ),

@@ -542,7 +542,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// _Toolbar
+// _Toolbar (now includes department code badge when a specific code is selected)
 // ══════════════════════════════════════════════════════════════════════════════
 
 class _Toolbar extends StatelessWidget {
@@ -594,6 +594,26 @@ class _Toolbar extends StatelessWidget {
             Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
             const SizedBox(width: AppSpacing.md),
             _MonthBadge(monthName: monthName, year: year),
+            // ── Department code badge ──
+            if (selectedCode != 'All') ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.indigo600.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: AppColors.indigo600.withOpacity(0.3)),
+                ),
+                child: Text(
+                  selectedCode,
+                  style: AppTextStyles.small.copyWith(
+                    color: AppColors.indigo400,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
             const Spacer(),
             if (employees.isNotEmpty) ...[
               Container(

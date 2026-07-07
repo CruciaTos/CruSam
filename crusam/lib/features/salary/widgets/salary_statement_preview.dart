@@ -57,7 +57,7 @@ class SalaryStatementPreview extends StatelessWidget {
   final bool                isMsw;
   final double              mswAmount;
   final bool                isFeb;
-  final bool                applyMsw;          // ← NEW: respects the user toggle
+  final bool                applyMsw;
 
   /// Maps employee ID → days present.  Absent / 0 → all columns show 0.
   final Map<int, int> daysMap;
@@ -67,6 +67,10 @@ class SalaryStatementPreview extends StatelessWidget {
 
   /// Override individual column widths by index (0–17).
   final Map<int, double> columnWidths;
+
+  /// Department name / code to display in the heading only (e.g. 'F&B').
+  /// When empty, the heading shows no department suffix.
+  final String departmentCode;
 
   const SalaryStatementPreview({
     super.key,
@@ -78,10 +82,11 @@ class SalaryStatementPreview extends StatelessWidget {
     this.isMsw        = false,
     this.mswAmount    = 6,
     this.isFeb        = false,
-    this.applyMsw     = true,     // ← defaults to true (backward compatible)
+    this.applyMsw     = true,
     this.daysMap      = const {},
     this.daysInMonth  = 0,
     this.columnWidths = const {},
+    this.departmentCode = '',
   });
 
   // ── Sorting comparator ────────────────────────────────────────────────────
@@ -129,7 +134,6 @@ class SalaryStatementPreview extends StatelessWidget {
   }
 
   int _msw() {
-    // Only deduct MSW if both the month is eligible AND the user has applied it.
     return (isMsw && applyMsw) ? mswAmount.round() : 0;
   }
 
@@ -170,10 +174,11 @@ class SalaryStatementPreview extends StatelessWidget {
     bool                         isMsw        = false,
     double                       mswAmount    = 6,
     bool                         isFeb        = false,
-    bool                         applyMsw     = true,    // ← NEW parameter
+    bool                         applyMsw     = true,
     Map<int, int>                daysMap      = const {},
     int                          daysInMonth  = 0,
     Map<int, double>             columnWidths = const {},
+    String                       departmentCode = '',
   }) {
     final sorted = List<EmployeeModel>.from(employees)
       ..sort(_deptThenName);
@@ -186,10 +191,11 @@ class SalaryStatementPreview extends StatelessWidget {
       year:         year,
       isMsw:        isMsw,
       isFeb:        isFeb,
-      applyMsw:     applyMsw,           // ← pass it through
+      applyMsw:     applyMsw,
       daysMap:      daysMap,
       daysInMonth:  daysInMonth,
       columnWidths: columnWidths,
+      departmentCode: departmentCode,
     );
     if (sorted.isEmpty) {
       return [preview._buildPage(slice: const [], startIndex: 0, showTotals: true)];
@@ -221,10 +227,11 @@ class SalaryStatementPreview extends StatelessWidget {
       year:         year,
       isMsw:        isMsw,
       isFeb:        isFeb,
-      applyMsw:     applyMsw,          // ← pass it here as well
+      applyMsw:     applyMsw,
       daysMap:      daysMap,
       daysInMonth:  daysInMonth,
       columnWidths: columnWidths,
+      departmentCode: departmentCode,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -260,9 +267,10 @@ class SalaryStatementPreview extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _PageHeader(
-              config:    config,
-              monthName: monthName,
-              year:      year,
+              config:         config,
+              monthName:      monthName,
+              year:           year,
+              departmentCode: departmentCode,
             ),
             const SizedBox(height: 6),
             Expanded(
@@ -286,15 +294,21 @@ class _PageHeader extends StatelessWidget {
   final CompanyConfigModel config;
   final String monthName;
   final int    year;
+  final String departmentCode;
 
   const _PageHeader({
     required this.config,
     required this.monthName,
     required this.year,
+    this.departmentCode = '',
   });
 
   @override
   Widget build(BuildContext context) {
+    final title = 'SALARY STATEMENT FOR THE MONTH OF '
+        '${monthName.toUpperCase()} $year'
+        '${departmentCode.isNotEmpty ? ' - $departmentCode' : ''}';
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -325,10 +339,9 @@ class _PageHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'SALARY STATEMENT FOR THE MONTH OF '
-                '${monthName.toUpperCase()} $year',
+                title,
                 style: const TextStyle(
-                  fontSize: 9,
+                  fontSize: 11,   // Increased from 9 to 11
                   fontWeight: FontWeight.w600,
                   color: Colors.black,
                 ),
@@ -392,7 +405,7 @@ class _SalaryTable extends StatelessWidget {
       sumOther  += preview._earnedOther(e);
       sumGross  += preview._earnedGross(e);
       sumPf     += preview._pf(e);
-      sumMsw    += preview._msw();      // now respects applyMsw
+      sumMsw    += preview._msw();
       sumEsicP  += preview._esicInt(e);
       sumPt     += preview._pt(e);
       sumTd     += preview._totalDed(e);
@@ -440,15 +453,13 @@ class _SalaryTable extends StatelessWidget {
               final e         = entry.value;
               final hasDays   = (preview.daysMap[e.id ?? -1] ?? 0) > 0;
 
-              // ── Earned earnings (zero when no days) ──────────────────────
               final eBasic = preview._earnedBasic(e);
               final eOther = preview._earnedOther(e);
               final eGross = preview._earnedGross(e);
 
-              // ── Deductions (zero when no days) ───────────────────────────
               final pf  = preview._pf(e);
               final eP  = preview._esicInt(e);
-              final msw = preview._msw();      // now respects applyMsw
+              final msw = preview._msw();
               final pt  = preview._pt(e);
               final td  = preview._totalDed(e);
               final net = preview._net(e);
@@ -467,7 +478,6 @@ class _SalaryTable extends StatelessWidget {
                   _mono(e.ifscCode),
                   _mono(e.accountNumber),
 
-                  // ── Basic / Other / Gross: earned values ─────────────────
                   hasDays
                       ? _d(_n(eBasic), right: true)
                       : _d('0', right: true, style: _zeroStyle),
@@ -479,7 +489,6 @@ class _SalaryTable extends StatelessWidget {
                       ? _d(_n(eGross), right: true, style: _dBold)
                       : _d('0', right: true, style: _zeroStyle),
 
-                  // ── Deduction columns ────────────────────────────────────
                   hasDays
                       ? _d('$pf',  right: true)
                       : _d('0',    right: true, style: _zeroStyle),
