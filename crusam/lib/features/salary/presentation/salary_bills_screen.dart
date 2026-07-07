@@ -319,7 +319,9 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
           monthName:   n.monthName,
           year:        n.year,
           isMsw:       n.isMsw,
+          mswAmount:   n.mswAmount,
           isFeb:       n.isFeb,
+          applyMsw:    n.applyMsw,
           daysMap:     daysMap,
           daysInMonth: n.totalDays,
           departmentCode: _departmentCode,   // ← Added here
