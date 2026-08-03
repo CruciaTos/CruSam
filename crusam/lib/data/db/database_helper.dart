@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';                     // <-- added for immediate cloud_id generation
+import '../../core/storage/app_paths.dart';
 import '../../core/sync/sync_models.dart';
 import '../../core/sync/google_auth_service.dart';
 import '../models/employee_model.dart';
@@ -22,7 +23,7 @@ class DatabaseHelper {
   Future<Database> get database async => _db ??= await _init();
 
   Future<Database> _init() async {
-    final path = '${await getDatabasesPath()}/aarti.db';
+    final path = await _resolveDbPath();
     return openDatabase(
       path,
       version: 6,
@@ -39,6 +40,24 @@ class DatabaseHelper {
         await _seedCompanyConfig(db);
       },
     );
+  }
+
+  /// Resolves the absolute path to `aarti.db`.
+  ///
+  /// Desktop (Windows/Linux/macOS): resolved via [AppPaths], which uses
+  /// path_provider's application-support directory instead of the install
+  /// folder. sqflite_common_ffi's `getDatabasesPath()` otherwise defaults to
+  /// `Directory.current` — the install folder for a normally-launched exe —
+  /// which was the root cause of data loss on update/reinstall.
+  ///
+  /// Android/iOS: unchanged. The native sqflite plugin's `getDatabasesPath()`
+  /// already returns a correct, sandboxed, app-private directory there, so
+  /// there's nothing to fix on mobile and no migration risk introduced.
+  static Future<String> _resolveDbPath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return AppPaths.childPath('aarti.db');
+    }
+    return '${await getDatabasesPath()}/aarti.db';
   }
 
   Future<void> _migrate(Database db) async {
@@ -72,6 +91,12 @@ class DatabaseHelper {
     await _ensureColumn(db, 'pdf_settings', 'bank_col_widths', 'TEXT');
     await _ensureColumn(db, 'salary_disbursement_items', 'sb_code', "TEXT NOT NULL DEFAULT ''");
     await _ensureColumn(db, 'salary_disbursement_items', 'branch', "TEXT NOT NULL DEFAULT ''");
+
+    // Tracks which format(s) (pdf, excel, or pdf,excel) an email actually
+    // sent, so the "Already emailed to X" notices in the send dialogs can
+    // say which one instead of being generic. See output-format-selector
+    // blueprint §3.4.
+    await _ensureColumn(db, 'email_log', 'attachment_formats', "TEXT NOT NULL DEFAULT 'pdf'");
 
     await _normalizeEmployeeCodes(db);
     await _backfillEmployeeCharges(db);
@@ -437,7 +462,7 @@ class DatabaseHelper {
   /// here must never block the app from starting.
   Future<void> createPreSyncBackup() async {
     try {
-      final dbPath = '${await getDatabasesPath()}/aarti.db';
+      final dbPath = await _resolveDbPath();
       final src = File(dbPath);
       if (!src.existsSync()) return;
 

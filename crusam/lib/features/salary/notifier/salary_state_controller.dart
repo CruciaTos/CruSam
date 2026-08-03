@@ -101,8 +101,8 @@ class SalaryStateController extends ChangeNotifier {
   }
 
   // ── Attachment A calculations (earned/prorated values) ────────────────────
-  /// PF = 13.61% of Total Earned Basic Salary
-  double get attachmentAPf       => (totalEarnedBasic * 0.1361).roundToDouble();
+  /// PF = 13% of Total Earned Basic Salary
+  double get attachmentAPf       => (totalEarnedBasic * 0.1300).roundToDouble();
   /// ESIC = 3.25% of Total Earned Gross of ESIC-eligible employees (gross <= 21000)
   double get attachmentAEsic     => (totalEarnedEsicEligibleGross * 0.0325).roundToDouble();
   double get attachmentASubtotal => totalEarnedGross + attachmentAPf + attachmentAEsic;

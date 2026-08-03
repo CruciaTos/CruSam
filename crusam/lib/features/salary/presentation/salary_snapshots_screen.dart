@@ -9,6 +9,71 @@ import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 import '../widgets/send_salary_dialog.dart';
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens — same as the redesigned Invoices & Settings screens
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+  static const badgeBg     = Color(0xFF1E1B4B);
+  static const badgeFg     = Color(0xFFFFFFFF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+  static const fxcond = 'NotoSansExtraCondensed';
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsBadge = TextStyle(
+    fontFamily   : fxcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 11,
+    letterSpacing: 2.0,
+    color        : badgeFg,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsInput = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+    height    : 1.4,
+  );
+
+  static const tsMeta = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    color        : inkMuted,
+  );
+
+  static const double radius   = 6.0;
+  static const double cRadius  = 10.0;
+  static const double padH     = 18.0;
+  static const double padV     = 16.0;
+}
+
 class SalarySnapshotsScreen extends StatefulWidget {
   const SalarySnapshotsScreen({super.key});
 
@@ -151,42 +216,31 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      body: ListenableBuilder(
-        listenable: _notifier,
-        builder: (context, _) {
-          final summaries = _notifier.summaries;
-          return Padding(
-            padding: const EdgeInsets.all(AppSpacing.pagePadding),
+    return ListenableBuilder(
+      listenable: _notifier,
+      builder: (context, _) {
+        final summaries = _notifier.summaries;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text('All Saved Periods', style: AppTextStyles.h3),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.refresh,
-                        size: 18,
-                        color: AppColors.slate400,
-                      ),
-                      tooltip: 'Refresh',
-                      onPressed: _notifier.isLoading
-                          ? null
-                          : () => _notifier.loadSnapshotList(),
-                    ),
-                  ],
+                // ── Header bar ──────────────────────────────────────────
+                _SalariesHeader(
+                  isLoading: _notifier.isLoading,
+                  onRefresh: () => _notifier.loadSnapshotList(),
                 ),
-                const SizedBox(height: AppSpacing.lg),
+
+                const SizedBox(height: 16),
+
                 if (_notifier.error.isNotEmpty)
                   Container(
-                    margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                    margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(AppSpacing.radius),
+                      borderRadius: BorderRadius.circular(_Tok.radius),
                       border: Border.all(color: Colors.red.shade200),
                     ),
                     child: Text(
@@ -194,6 +248,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                       style: TextStyle(color: Colors.red.shade800),
                     ),
                   ),
+
                 Expanded(
                   child: _notifier.isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -217,13 +272,62 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                 ),
               ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
+// ── Header bar (matching Invoices / Settings) ────────────────────────────────
+class _SalariesHeader extends StatelessWidget {
+  final bool isLoading;
+  final VoidCallback onRefresh;
+
+  const _SalariesHeader({required this.isLoading, required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: _Tok.padH),
+        decoration: BoxDecoration(
+          color: _Tok.surfaceAlt,
+          border: const Border(bottom: BorderSide(color: _Tok.divider)),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(_Tok.cRadius),
+            topRight: Radius.circular(_Tok.cRadius),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: _Tok.ink,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Icon(
+                Icons.calendar_month_outlined,
+                color: Colors.white,
+                size: 13,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('SAVED SALARIES', style: _Tok.tsCardTitle),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 18, color: _Tok.inkLight),
+              tooltip: 'Refresh',
+              onPressed: isLoading ? null : onRefresh,
+            ),
+          ],
+        ),
+      );
+}
+
+// ── Salary card (re‑themed with indigo palette and Noto fonts) ───────────────
 class _SavedSalaryCard extends StatelessWidget {
   final SavedSalarySummary summary;
   final bool isActive;
@@ -253,24 +357,29 @@ class _SavedSalaryCard extends StatelessWidget {
         snapshot.snapshotName.trim() != periodLabel;
     final savedAt = DateTime.tryParse(snapshot.updatedAt);
 
-    // ---------- Card provides the Material ancestor for InkWell hover/splash ----------
-    return Card(
+    return Container(
       margin: EdgeInsets.zero, // spacing handled by ListView separator
-      elevation: 1,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: isActive ? AppColors.indigo400 : AppColors.slate200,
+      decoration: BoxDecoration(
+        color: _Tok.surface,           // solid white card
+        border: Border.all(
+          color: isActive ? _Tok.inkLight : _Tok.border,
           width: isActive ? 1.4 : 1,
         ),
+        borderRadius: BorderRadius.circular(_Tok.cRadius),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(16), // matching invoice card padding
+        padding: const EdgeInsets.all(_Tok.padV),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ---------- Top: main info ----------
+            // ── Top row: icon, period info, badges ───────────────────
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -278,14 +387,14 @@ class _SavedSalaryCard extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: AppColors.indigo50,
+                    color: _Tok.surfaceAlt,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   alignment: Alignment.center,
                   child: const Icon(
                     Icons.calendar_month_outlined,
                     size: 18,
-                    color: AppColors.indigo600,
+                    color: _Tok.inkLight,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -300,7 +409,10 @@ class _SavedSalaryCard extends StatelessWidget {
                         children: [
                           Text(
                             periodLabel,
-                            style: AppTextStyles.bodySemi.copyWith(fontSize: 14),
+                            style: _Tok.tsInput.copyWith(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                           if (isActive)
                             Container(
@@ -309,15 +421,14 @@ class _SavedSalaryCard extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.indigo600,
+                                color: _Tok.ink,
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'ACTIVE',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                                style: _Tok.tsBadge.copyWith(
+                                  fontSize: 9,
+                                  letterSpacing: 1.5,
                                 ),
                               ),
                             ),
@@ -328,13 +439,13 @@ class _SavedSalaryCard extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: AppColors.slate100,
+                                color: _Tok.border.withOpacity(0.4),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
                                 snapshot.snapshotName,
-                                style: AppTextStyles.small.copyWith(
-                                  color: AppColors.slate600,
+                                style: _Tok.tsMeta.copyWith(
+                                  color: _Tok.inkMuted,
                                 ),
                               ),
                             ),
@@ -345,18 +456,16 @@ class _SavedSalaryCard extends StatelessWidget {
                         savedAt != null
                             ? 'Saved ${_savedAtFormat.format(savedAt)}'
                             : 'Save time unknown',
-                        style: AppTextStyles.small.copyWith(
-                          color: AppColors.slate500,
-                        ),
+                        style: _Tok.tsMeta,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${summary.employeeCount} employee'
                         '${summary.employeeCount == 1 ? '' : 's'}  ·  '
                         '₹${_payrollFormat.format(summary.totalPayroll)} total payroll',
-                        style: AppTextStyles.small.copyWith(
-                          color: AppColors.slate600,
+                        style: _Tok.tsMeta.copyWith(
                           fontWeight: FontWeight.w600,
+                          color: _Tok.ink,
                         ),
                       ),
                     ],
@@ -365,35 +474,35 @@ class _SavedSalaryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            // ---------- Bottom: action buttons (icon + text, identical to invoice list) ----------
+            // ── Action buttons ──────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 _ActionButton(
                   icon: Icons.file_open_outlined,
                   label: 'Load',
-                  color: AppColors.indigo600,
+                  color: _Tok.inkLight,
                   onPressed: onLoad,
                 ),
                 const SizedBox(width: 8),
                 _ActionButton(
                   icon: Icons.send_outlined,
                   label: 'Send',
-                  color: AppColors.indigo600,
+                  color: _Tok.inkLight,
                   onPressed: onSend,
                 ),
                 const SizedBox(width: 8),
                 _ActionButton(
                   icon: Icons.edit_outlined,
                   label: 'Rename',
-                  color: AppColors.indigo600,
+                  color: _Tok.inkLight,
                   onPressed: onRename,
                 ),
                 const SizedBox(width: 8),
                 _ActionButton(
                   icon: Icons.delete_outline,
                   label: 'Delete',
-                  color: Colors.red,
+                  color: Colors.red.shade700,
                   onPressed: onDelete,
                 ),
               ],
@@ -405,10 +514,7 @@ class _SavedSalaryCard extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reusable action button – exactly the same as in the invoice list.
-// InkWell requires a Material ancestor, provided by the Card above.
-// ---------------------------------------------------------------------------
+// ── Reusable action button (matches Invoices) ────────────────────────────────
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -423,32 +529,31 @@ class _ActionButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: color,
-                fontWeight: FontWeight.w500,
+  Widget build(BuildContext context) => InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: _Tok.tsLabel.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
 
+// ── Empty state ──────────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -460,10 +565,13 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.calendar_month_outlined,
               size: 48,
-              color: AppColors.slate300,
+              color: _Tok.inkMuted.withOpacity(0.4),
             ),
             const SizedBox(height: 12),
-            Text('No saved salary periods yet.', style: AppTextStyles.small),
+            Text(
+              'No saved salary periods yet.',
+              style: _Tok.tsMeta.copyWith(fontSize: 13),
+            ),
           ],
         ),
       );

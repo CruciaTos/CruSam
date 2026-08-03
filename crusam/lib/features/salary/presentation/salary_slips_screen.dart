@@ -6,11 +6,48 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
-import '../../../shared/widgets/full_screen_loader.dart'; // Added
+import '../../../shared/widgets/full_screen_loader.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_pdf_export_service.dart';
 import '../widgets/salary_slip_preview.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – only used for the left employee panel
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+
+  static const tsInput = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+    height    : 1.4,
+  );
+
+  static const tsMeta = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    color        : inkMuted,
+  );
+
+  static const double radius   = 6.0;
+  static const double cRadius  = 10.0;
+  static const double padV     = 16.0;
+}
 
 class SalarySlipsScreen extends StatefulWidget {
   const SalarySlipsScreen({super.key});
@@ -109,7 +146,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
       return;
     }
     setState(() => _exporting = true);
-    showLoader(context, message: 'Generating salary slips…'); // Added
+    showLoader(context, message: 'Generating salary slips…');
     try {
       final n = SalaryDataNotifier.instance;
       await SalaryPdfExportService.exportSalarySlips(
@@ -127,7 +164,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           content: Text('Export failed: $e'),
           backgroundColor: Colors.red.shade700));
     } finally {
-      hideLoader(context); // Added
+      hideLoader(context);
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -147,6 +184,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           padding: const EdgeInsets.all(AppSpacing.pagePadding),
           child: Column(
             children: [
+              // Toolbar – unchanged from original
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -154,7 +192,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                     children: [
                       Text(
                         title,
-                        style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                        style: AppTextStyles.h3.copyWith(color: Colors.white),
                       ),
                       const SizedBox(width: AppSpacing.md),
                       _MonthBadge(monthName: n.monthName, year: n.year),
@@ -170,7 +208,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                           icon: const Icon(Icons.picture_as_pdf_outlined,
                               size: 16),
                           label: Text(
-                              'Download All${pairs.isNotEmpty ? ' (${pairs.length} pages)' : ''}'),
+                              'Download ${pairs.isNotEmpty ? ' (${pairs.length} pages)' : ''}'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red.shade700,
                             side: BorderSide(color: Colors.red.shade400),
@@ -198,25 +236,40 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
+                    // ── Themed left pane (only this part is restyled) ─────
+                    SizedBox(
                       width: 268,
-                      color: Colors.grey[200],
-                      child: _EmployeePanel(
-                        employees: _filteredEmployees,
-                        highlightedIds: highlightedIds,
-                        searchCtrl: _searchCtrl,
-                        searchQuery: _searchQuery,
-                        onSearchChanged: (v) =>
-                            setState(() => _searchQuery = v),
-                        onSearchCleared: () {
-                          _searchCtrl.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                        onSelect: (emp) {
-                          setState(() => _selectedEmployee = emp);
-                          _jumpToEmployee(emp);
-                        },
-                        getDays: (emp) => n.getDays(emp.id ?? 0),
+                      child: Container(
+                        padding: const EdgeInsets.all(_Tok.padV),
+                        decoration: BoxDecoration(
+                          color: _Tok.surface,
+                          border: Border.all(color: _Tok.border),
+                          borderRadius: BorderRadius.circular(_Tok.cRadius),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 12,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: _EmployeePanel(
+                          employees: _filteredEmployees,
+                          highlightedIds: highlightedIds,
+                          searchCtrl: _searchCtrl,
+                          searchQuery: _searchQuery,
+                          onSearchChanged: (v) =>
+                              setState(() => _searchQuery = v),
+                          onSearchCleared: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          onSelect: (emp) {
+                            setState(() => _selectedEmployee = emp);
+                            _jumpToEmployee(emp);
+                          },
+                          getDays: (emp) => n.getDays(emp.id ?? 0),
+                        ),
                       ),
                     ),
                     Container(
@@ -293,7 +346,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
   }
 }
 
-// ── Scrollable wrapper ────────────────────────────────────────────────────────
+// ── Scrollable wrapper (unchanged) ────────────────────────────────────────────
 class _ScrollablePage extends StatefulWidget {
   final List<EmployeeModel> pair;
   final CompanyConfigModel config;
@@ -332,6 +385,7 @@ class _ScrollablePageState extends State<_ScrollablePage> {
               daysInMonth: n.totalDays,
               isMsw: n.isMsw,
               isFeb: n.isFeb,
+              mswAmount: n.mswAmount,
             ),
           ),
         ),
@@ -341,8 +395,8 @@ class _ScrollablePageState extends State<_ScrollablePage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Employee panel
-
+// Employee panel (now uses _Tok for search field and counters)
+// ─────────────────────────────────────────────────────────────────────────────
 class _EmployeePanel extends StatelessWidget {
   final List<EmployeeModel> employees;
   final Set<int> highlightedIds;
@@ -368,42 +422,52 @@ class _EmployeePanel extends StatelessWidget {
   Widget build(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: SizedBox(
-              height: 38,
-              child: TextField(
-                controller: searchCtrl,
-                onChanged: onSearchChanged,
-                style: AppTextStyles.input,
-                decoration: InputDecoration(
-                  hintText: 'Search employees…',
-                  prefixIcon: const Icon(Icons.search, size: 16),
-                  isDense: true,
-                  suffixIcon: searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 14),
-                          onPressed: onSearchCleared)
-                      : null,
+          SizedBox(
+            height: 38,
+            child: TextField(
+              controller: searchCtrl,
+              onChanged: onSearchChanged,
+              style: _Tok.tsInput,
+              decoration: InputDecoration(
+                hintText: 'Search employees…',
+                hintStyle: _Tok.tsMeta,
+                prefixIcon: Icon(Icons.search, size: 16, color: _Tok.inkMuted),
+                isDense: true,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                suffixIcon: searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear,
+                            size: 14, color: _Tok.inkMuted),
+                        onPressed: onSearchCleared)
+                    : null,
+                enabledBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: _Tok.border),
+                  borderRadius: BorderRadius.circular(_Tok.radius),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: const BorderSide(color: _Tok.inkLight),
+                  borderRadius: BorderRadius.circular(_Tok.radius),
                 ),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-                '${employees.length} employee${employees.length == 1 ? '' : 's'}',
-                style: AppTextStyles.small),
+          const SizedBox(height: 8),
+          Text(
+            '${employees.length} employee${employees.length == 1 ? '' : 's'}',
+            style: _Tok.tsMeta,
           ),
+          const SizedBox(height: 8),
+          const Divider(color: _Tok.divider),
           const SizedBox(height: 4),
           Expanded(
             child: employees.isEmpty
                 ? Center(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.search_off_outlined,
-                        size: 32, color: AppColors.slate300),
+                        size: 32, color: _Tok.inkMuted),
                     const SizedBox(height: 8),
-                    Text('No employees found', style: AppTextStyles.small),
+                    Text('No employees found', style: _Tok.tsMeta),
                   ]))
                 : _buildList(),
           ),
@@ -421,7 +485,6 @@ class _EmployeePanel extends StatelessWidget {
           next != null && highlightedIds.contains(next.id);
 
       if (thisHighlighted && nextHighlighted) {
-        // Two consecutive highlighted employees → one unified box
         items.add(_GroupedEmpTile(
           first: emp,
           second: next,
@@ -445,14 +508,14 @@ class _EmployeePanel extends StatelessWidget {
   }
 }
 
-// ── Shared constants ──────────────────────────────────────────────────────────
-const _kHighlightBg = Color(0x17516CF5);       // indigo600 @ ~9 %
-const _kHighlightBorder = Color(0x5A7C9FF0);   // indigo500 @ ~35 %
-const _kDividerColor = Color(0x337C9FF0);      // indigo500 @ ~20 %
+// ── Shared constants (unchanged) ──────────────────────────────────────────────
+const _kHighlightBg = Color(0x17516CF5);
+const _kHighlightBorder = Color(0x5A7C9FF0);
+const _kDividerColor = Color(0x337C9FF0);
 const _kRadius = Radius.circular(8);
 const _kBorderRadius = BorderRadius.all(_kRadius);
 
-// ── Grouped tile: two rows, one box, ink ripples clipped properly ─────────────
+// ── Grouped tile, single tile, EmpRow – keep exactly as before ───────────────
 class _GroupedEmpTile extends StatelessWidget {
   final EmployeeModel first;
   final EmployeeModel second;
@@ -481,7 +544,6 @@ class _GroupedEmpTile extends StatelessWidget {
         border: Border.fromBorderSide(
             BorderSide(color: _kHighlightBorder, width: 1)),
       ),
-      // ClipRRect keeps InkWell splash inside the rounded corners
       child: ClipRRect(
         borderRadius: _kBorderRadius,
         child: Material(
@@ -520,7 +582,6 @@ class _GroupedEmpTile extends StatelessWidget {
   }
 }
 
-// ── Single tile ───────────────────────────────────────────────────────────────
 class _EmpTile extends StatelessWidget {
   final EmployeeModel employee;
   final bool isSelected;
@@ -567,7 +628,6 @@ class _EmpTile extends StatelessWidget {
       );
 }
 
-// ── Row content shared by both tile types ─────────────────────────────────────
 class _EmpRow extends StatelessWidget {
   final EmployeeModel employee;
   final int days;
@@ -576,7 +636,7 @@ class _EmpRow extends StatelessWidget {
   const _EmpRow({
     required this.employee,
     required this.days,
-    this.isSelected = true, // grouped tiles are always highlighted
+    this.isSelected = true,
   });
 
   String get _initials {
@@ -653,9 +713,7 @@ class _EmpRow extends StatelessWidget {
       );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Remaining helpers (unchanged)
-
+// ── Unchanged helpers ─────────────────────────────────────────────────────────
 class _MonthBadge extends StatelessWidget {
   final String monthName;
   final int year;

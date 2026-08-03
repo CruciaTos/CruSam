@@ -116,4 +116,34 @@ extension SalaryDisbursementRepository on DatabaseHelper {
     ''', [month, year]);
     return rows.map((r) => r['employee_id'] as int).toSet();
   }
+
+  // ── Find the batch matching a Saved Salary period ─────────────────────────
+  // A SalaryMonthSnapshotModel (Saved Salary) and a SalaryDisbursementModel
+  // (a generated batch) are separate rows, keyed by month/year — this is the
+  // missing lookup connecting the two, used by SendSalaryDialog to resolve
+  // "Disbursement" back to a real batch when re-added to its document-type
+  // dropdown. See output-format-selector blueprint §3.5.
+  //
+  // Deliberately NOT filtered by dept_code: for disbursements that column
+  // isn't a real per-department filter (there's no department picker on the
+  // Disbursement screen) — it's populated with the active month's name and
+  // used purely as a display label in the exported sheet. Filtering by
+  // month+year alone matches how a batch is actually generated (one batch
+  // per period), and returns the most recent match if a period was ever
+  // regenerated.
+
+  Future<SalaryDisbursementModel?> getByPeriod({
+    required int month,
+    required int year,
+  }) async {
+    final db   = await database;
+    final rows = await db.query(
+      'salary_disbursements',
+      where:     'month = ? AND year = ?',
+      whereArgs: [month, year],
+      orderBy:   'id DESC',
+      limit:     1,
+    );
+    return rows.isEmpty ? null : SalaryDisbursementModel.fromDbMap(rows.first);
+  }
 }

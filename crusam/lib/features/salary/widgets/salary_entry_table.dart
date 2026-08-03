@@ -11,6 +11,7 @@ class SalaryEntryTable extends StatefulWidget {
   final int year;
   final int totalDays;
   final bool isMsw;
+  final double mswAmount;
   final bool isFeb;
   final Map<int, TextEditingController> daysCtrls;
   final Map<int, FocusNode> daysFocusNodes;
@@ -29,6 +30,7 @@ class SalaryEntryTable extends StatefulWidget {
     required this.year,
     required this.totalDays,
     required this.isMsw,
+    required this.mswAmount,
     required this.isFeb,
     required this.daysCtrls,
     required this.daysFocusNodes,
@@ -95,7 +97,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     return (_earnedGross(e) * 0.0075).ceil();
   }
 
-  int _msw() => widget.isMsw ? 6 : 0;
+  int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;
 
   int _pt(EmployeeModel e) {
     final g = _earnedGross(e);
@@ -177,7 +179,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
       'Basic', 'Other', 'Gross',
       'Days\nPresent', 'Earned\nGross',
       'Provident\nFund (12%)',
-      if (widget.isMsw) 'MSW\n(₹6)',
+      if (widget.isMsw) 'MSW\n(₹${widget.mswAmount.toStringAsFixed(0)})',
       'ESIC\n(0.75%)',
       'Prof.\nTax',
       'Total\nDeductions',
@@ -296,7 +298,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
     final totalGrossFull = totalBasic + totalOther;
     final totalPf = employees.fold(0, (s, e) => s + _pf(e));
     final totalEsic = employees.fold(0, (s, e) => s + _esic(e));
-    final totalMsw = widget.isMsw ? employees.length * 6 : 0;
+    final totalMsw = widget.isMsw ? employees.length * widget.mswAmount.round() : 0;
     final totalPt = employees.fold(0, (s, e) => s + _pt(e));
     final totalTd = employees.fold(0, (s, e) => s + _td(e));
     final totalNet = employees.fold(0.0, (s, e) => s + _net(e));

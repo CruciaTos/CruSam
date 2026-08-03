@@ -12,12 +12,12 @@
 // calling any of these.
 
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
+import '../../../shared/models/generated_document.dart';
 import '../../vouchers/services/pdf_export_service.dart';
 import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
@@ -28,6 +28,7 @@ import '../widgets/attachment_b_preview.dart';
 import '../widgets/salary_bill_preview.dart';
 import '../widgets/salary_statement_preview.dart';
 import 'salary_pdf_export_service.dart';
+import 'salary_statement_excel_export_service.dart';
 import 'salary_statement_pdf_service.dart';
 
 /// Every document type the Saved Salary screen can send by email.
@@ -62,19 +63,6 @@ extension SalaryDocumentTypeX on SalaryDocumentType {
   bool get usesDepartmentFilter => this != SalaryDocumentType.disbursement;
 }
 
-/// A generated document ready to attach to an email.
-class SalaryDocumentBytes {
-  final Uint8List bytes;
-  final String filename;
-  final String mimeType;
-
-  const SalaryDocumentBytes({
-    required this.bytes,
-    required this.filename,
-    required this.mimeType,
-  });
-}
-
 class SalaryEmailExportService {
   SalaryEmailExportService._();
 
@@ -85,7 +73,7 @@ class SalaryEmailExportService {
   static const String _defaultItemDescription = 'Manpower Supply Charges';
 
   // ── Salary Slips ───────────────────────────────────────────────────────
-  static Future<SalaryDocumentBytes> buildSalarySlips({
+  static Future<GeneratedDocument> buildSalarySlips({
     required CompanyConfigModel config,
     required String deptCode,
   }) async {
@@ -103,7 +91,7 @@ class SalaryEmailExportService {
       isFeb: n.isFeb,
     );
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: 'salary_slips_${n.monthName.toLowerCase()}_${n.year}.pdf',
       mimeType: pdfMimeType,
@@ -111,7 +99,7 @@ class SalaryEmailExportService {
   }
 
   // ── Salary Statement ───────────────────────────────────────────────────
-  static Future<SalaryDocumentBytes> buildSalaryStatement({
+  static Future<GeneratedDocument> buildSalaryStatement({
     required CompanyConfigModel config,
     required String deptCode,
   }) async {
@@ -126,15 +114,52 @@ class SalaryEmailExportService {
       monthName: n.monthName,
       year: n.year,
       isMsw: n.isMsw,
+      mswAmount: n.mswAmount,
       isFeb: n.isFeb,
       daysMap: daysMap,
       daysInMonth: n.totalDays,
     );
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: 'salary_statement_${n.monthName.toLowerCase()}_${n.year}.pdf',
       mimeType: pdfMimeType,
+    );
+  }
+
+  // ── Salary Statement — Excel version ────────────────────────────────────
+  //
+  // Reuses the exact generator the standalone Salary Statement screen's own
+  // "Export Excel" button already calls (still a disk write under the
+  // hood) — reads the file back into bytes, same read-back pattern as
+  // buildDisbursementExcel below. First time this generator has been wired
+  // into the email path.
+  static Future<GeneratedDocument> buildSalaryStatementExcel({
+    required CompanyConfigModel config,
+    required String deptCode,
+  }) async {
+    final n = SalaryDataNotifier.instance;
+    final sc = SalaryStateController.instance;
+    final employees = _filterByDept(sc.employees, deptCode);
+
+    final path = await ExcelExportService.exportSalaryStatement(
+      config: config,
+      employees: employees,
+      monthName: n.monthName,
+      year: n.year,
+      isMsw: n.isMsw,
+      mswAmount: n.mswAmount,
+      isFeb: n.isFeb,
+      daysMap: _daysMapFor(employees, n),
+      daysInMonth: n.totalDays,
+    );
+    if (path == null) throw Exception('Excel export returned no data.');
+
+    final bytes = await File(path).readAsBytes();
+    return GeneratedDocument(
+      bytes: bytes,
+      filename: path.split(Platform.pathSeparator).last,
+      mimeType: xlsxMimeType,
     );
   }
 
@@ -146,7 +171,7 @@ class SalaryEmailExportService {
   // picks that chip themselves on the Salary Bills screen — then restores
   // whatever was selected before, so this never leaves global state changed
   // behind the scenes.
-  static Future<SalaryDocumentBytes> buildSalaryBill({
+  static Future<GeneratedDocument> buildSalaryBill({
     required BuildContext context,
     required CompanyConfigModel config,
     required EdgeInsets margins,
@@ -208,7 +233,9 @@ class SalaryEmailExportService {
             monthName: n.monthName,
             year: n.year,
             isMsw: n.isMsw,
+            mswAmount: n.mswAmount,
             isFeb: n.isFeb,
+            applyMsw: n.applyMsw,
             daysMap: _daysMapFor(sc.filteredEmployees, n),
             daysInMonth: n.totalDays,
           ),
@@ -231,7 +258,7 @@ class SalaryEmailExportService {
               : n.billNo.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_');
       final prefix = finalised ? 'final_invoice' : 'salary_invoice';
 
-      return SalaryDocumentBytes(
+      return GeneratedDocument(
         bytes: bytes,
         filename: '${prefix}_$slug.pdf',
         mimeType: pdfMimeType,
@@ -248,7 +275,7 @@ class SalaryEmailExportService {
   // select workflow. This never generates a new batch — it only re-exports
   // bytes for one that already exists, the same way that screen's own
   // "Export Excel" button does (including marking it exported).
-  static Future<SalaryDocumentBytes?> buildDisbursementExcel(
+  static Future<GeneratedDocument?> buildDisbursementExcel(
     SalaryDisbursementModel disbursement,
   ) async {
     final path = await SalaryDisbursementNotifier.instance
@@ -258,7 +285,7 @@ class SalaryEmailExportService {
     final bytes = await File(path).readAsBytes();
     final filename = path.split(Platform.pathSeparator).last;
 
-    return SalaryDocumentBytes(
+    return GeneratedDocument(
       bytes: bytes,
       filename: filename,
       mimeType: xlsxMimeType,

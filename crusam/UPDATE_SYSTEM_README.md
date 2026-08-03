@@ -26,23 +26,30 @@ updater/pubspec.yaml
 updater/bin/main.dart
 ```
 
-### Release metadata
-```
-latest.json
-```
-
 ---
 
-## Configure GitHub release metadata
+## Update source: GitHub Releases API (no metadata file)
 
-`lib/core/update/version_constants.dart` is already pointed at:
+Update information is no longer sourced from a manually-maintained
+`latest.json` file. `UpdateService` queries the GitHub Releases REST API
+directly:
 
-```dart
-const String kLatestJsonUrl =
-    'https://raw.githubusercontent.com/CruciaTos/CruSam/main/latest.json';
+```
+GET https://api.github.com/repos/CruciaTos/CruSam/releases/latest
 ```
 
-Update `latest.json` in the repository root for each release.
+The owner/repo pair is declared once in
+`lib/core/updater/version_constants.dart` (`kGitHubRepoOwner`,
+`kGitHubRepoName`) and the endpoint is built from those constants — nothing
+else in the codebase should hardcode the repo path.
+
+There is nothing to "update" between releases beyond publishing the GitHub
+release itself with a correctly-named installer asset
+(`CruSam-Setup-<version>.exe`) — see `RELEASE.md` for the full flow and
+naming convention.
+
+`latest.json` at the repo root is no longer read by the app. See
+`RELEASE.md` for whether/when it's safe to delete it.
 
 ---
 
@@ -60,12 +67,18 @@ Copy `updater.exe` next to `crusam.exe` in the release output folder.
 
 ## Release flow
 
-1. Bump version in `crusam/pubspec.yaml`.
-2. Update `kAppVersion` in `lib/core/update/version_constants.dart`.
-3. Build your Windows release ZIP.
-4. Publish a GitHub release tagged like `v1.0.1`.
-5. Upload the ZIP to that release.
-6. Update root `latest.json` with the new version and ZIP URL.
+`pubspec.yaml`'s `version:` field is the single source of truth for the app
+version — there is no separate version constant to keep in sync. See
+`RELEASE.md` for the full, required build procedure (including why
+`flutter clean` is mandatory on Windows and how to verify the built
+`crusam.exe`).
+
+1. Bump `version:` in `crusam/pubspec.yaml`.
+2. Follow the build + verification steps in `RELEASE.md`.
+3. Publish a GitHub release tagged like `v1.0.1`.
+4. Upload the installer as `CruSam-Setup-1.0.1.exe` to that release.
+   The in-app updater discovers it automatically via the GitHub Releases
+   API — no metadata file to update.
 
 ---
 

@@ -1,6 +1,21 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – consistent with the indigo theme used in other screens
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink        = Color(0xFF1E1B4B);
+  static const inkLight   = Color(0xFF3730A3);
+  static const inkMuted   = Color(0xFF818CF8);
+  static const surface    = Color(0xFFFFFFFF);
+  static const surfaceAlt = Color(0xFFEEF2FF);
+
+  static const fbody = 'NotoSans';
+  static const fcond = 'NotoSansCondensed';
+}
 
 class AvatarWidget extends StatelessWidget {
   final String displayName;
@@ -45,8 +60,8 @@ class AvatarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = gradientColors ??
-        [AppColors.indigo600, const Color(0xFF7C3AED)];
+    // Use provided gradient or fall back to the indigo theme gradient
+    final colors = gradientColors ?? [_Tok.ink, _Tok.inkLight];
     final img = _image;
 
     Widget circle = Container(
@@ -66,7 +81,7 @@ class AvatarWidget extends StatelessWidget {
             : null,
         border: showBorder
             ? Border.all(
-                color: borderColor ?? AppColors.indigo400,
+                color: borderColor ?? _Tok.inkLight,
                 width: borderWidth,
               )
             : null,
@@ -76,6 +91,7 @@ class AvatarWidget extends StatelessWidget {
               child: Text(
                 _initials,
                 style: TextStyle(
+                  fontFamily: _Tok.fbody,   // use NotoSans
                   fontSize: size * 0.36,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,

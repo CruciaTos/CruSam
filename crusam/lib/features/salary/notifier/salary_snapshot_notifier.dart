@@ -135,6 +135,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
     final n = SalaryDataNotifier.instance;
     final sc = SalaryStateController.instance;
     final isMsw = n.isMsw;
+    final mswAmount = n.mswAmount;
     final isFeb = n.isFeb;
     final totalDays = n.totalDays;
 
@@ -152,7 +153,7 @@ class SalarySnapshotNotifier extends ChangeNotifier {
 
       final pf = earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round();
       final esic = e.grossSalary <= 21000 ? (earnedGross * 0.0075).ceil() : 0;
-      final msw = isMsw ? 6 : 0;
+      final msw = isMsw ? mswAmount.round() : 0;
 
       final isFemale = e.gender.toUpperCase() == 'F';
       int pt;
@@ -203,6 +204,9 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       clientGstin: n.clientGstin,
       deptCode: n.deptCode,
       selectedCompanyCode: sc.selectedCompanyCode,
+      itemDescription: n.itemDescription,
+      itemDescriptionAttachmentA: n.itemDescriptionAttachmentARaw,
+      itemDescriptionAttachmentB: n.itemDescriptionAttachmentBRaw,
       employees: employeeData,
     );
   }
@@ -254,6 +258,12 @@ class SalarySnapshotNotifier extends ChangeNotifier {
     n.setClientAddr(payload.clientAddr);
     n.setClientGstin(payload.clientGstin);
     n.setDeptCode(payload.deptCode);
+    n.setItemDescription(payload.itemDescription);
+    // Applied after setMonthYear so an empty override correctly recomputes
+    // against the *restored* month/year rather than whatever was active
+    // before the load.
+    n.setItemDescriptionAttachmentA(payload.itemDescriptionAttachmentA);
+    n.setItemDescriptionAttachmentB(payload.itemDescriptionAttachmentB);
     sc.setCompanyCode(payload.selectedCompanyCode);
 
     // 3. Restore per-employee attendance, syncing any already-cached

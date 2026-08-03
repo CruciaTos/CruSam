@@ -33,6 +33,7 @@ class SalarySlipPreview extends StatelessWidget {
   final String year;
   final int daysInMonth;
   final int daysPresent;
+  final double mswAmount;
   final double basicSalary;
   final double otherAllowances;
   final double pfDeduction;
@@ -58,6 +59,7 @@ class SalarySlipPreview extends StatelessWidget {
     this.year = '2026',
     this.daysInMonth = 31,
     this.daysPresent = 31,
+    this.mswAmount = 6,
     this.basicSalary = 0,
     this.otherAllowances = 0,
     this.pfDeduction = 0,
@@ -100,6 +102,7 @@ class SalarySlipPreview extends StatelessWidget {
     required int daysInMonth,
     required bool isMsw,
     required bool isFeb,
+    double mswAmount = 6,
     EdgeInsets margins = const EdgeInsets.all(24),
   }) {
     final pages = <Widget>[];
@@ -115,6 +118,7 @@ class SalarySlipPreview extends StatelessWidget {
           year: year.toString(),
           daysInMonth: daysInMonth,
           isMsw: isMsw,
+          mswAmount: mswAmount,
           isFeb: isFeb,
         ),
       );
@@ -254,8 +258,8 @@ class SalarySlipPreview extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           _detailRow('Employee Name', employeeName),
-                          _detailRow(
-                              'Department / Code', '$department ($employeeCode)'),
+                          // FIX: show only the department abbreviation (no duplicate code)
+                          _detailRow('Department / Code', department),
                           _detailRow('Designation', designation),
                           _detailRow('PF No.', pfNo),
                           _detailRow('UAN No.', uanNo),
@@ -273,8 +277,7 @@ class SalarySlipPreview extends StatelessWidget {
                           _detailRow('Bank Name', bankName),
                           _detailRow('Account No.', accountNo),
                           _detailRow('IFSC Code', ifscCode),
-                          _detailRow('Days in Month', daysInMonth.toString()),
-                          _detailRow('Days Present', daysPresent.toString()),
+                          // "Days in Month" and "Days Present" rows removed
                         ],
                       ),
                     ),
@@ -362,11 +365,11 @@ class SalarySlipPreview extends StatelessWidget {
       );
 
   List<Widget> _buildEarningsDeductionRows() {
+    // "Basic Salary (Full)" and "Other Allowances (Full)" removed.
+    // "Earned Basic" renamed to "Basic Salary", "Earned Allowances" renamed to "Other Allowances".
     final earnings = [
-      ('Basic Salary (Full)', basicSalary.toStringAsFixed(2)),
-      ('Other Allowances (Full)', otherAllowances.toStringAsFixed(2)),
-      ('Earned Basic', _earnedBasic.toStringAsFixed(2)),
-      ('Earned Allowances', _earnedOther.toStringAsFixed(2)),
+      ('Basic Salary', _earnedBasic.toStringAsFixed(2)),
+      ('Other Allowances', _earnedOther.toStringAsFixed(2)),
     ];
     final deductions = <(String, String, bool)>[
       ('Provident Fund (12%)', pfDeduction.toStringAsFixed(2), false),
@@ -606,6 +609,7 @@ class SalarySlipPairPage extends StatelessWidget {
   final String year;
   final int daysInMonth;
   final bool isMsw;
+  final double mswAmount;
   final bool isFeb;
 
   const SalarySlipPairPage({
@@ -617,6 +621,7 @@ class SalarySlipPairPage extends StatelessWidget {
     required this.year,
     required this.daysInMonth,
     required this.isMsw,
+    required this.mswAmount,
     required this.isFeb,
   }) : assert(employees.length <= 2, 'At most two employees per page');
 
@@ -659,7 +664,7 @@ class SalarySlipPairPage extends StatelessWidget {
     final pf = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).roundToDouble();
     final esicApplicable = emp.grossSalary <= 21000;
     final esic = esicApplicable ? (eGross * 0.0075).ceilToDouble() : 0.0;
-    final msw = isMsw ? 6.0 : 0.0;
+    final msw = isMsw ? mswAmount : 0.0;
     final isFemale = emp.gender.toUpperCase() == 'F';
     double pt;
     if (isFemale) {
@@ -677,7 +682,7 @@ class SalarySlipPairPage extends StatelessWidget {
       margins: const EdgeInsets.symmetric(horizontal: 24, vertical: 10), // was vertical:12
       employeeName: emp.name,
       employeeCode: emp.code,
-      department: _codeToDept(emp.code),
+      department: emp.code, // Show department abbreviation only (e.g., "F&B")
       pfNo: emp.pfNo,
       uanNo: emp.uanNo,
       bankName: emp.bankDetails,
@@ -695,12 +700,4 @@ class SalarySlipPairPage extends StatelessWidget {
       ptDeduction: pt,
     );
   }
-
-  static String _codeToDept(String code) => switch (code.toUpperCase()) {
-        'F&B' => 'Food & Beverage',
-        'I&L' => 'Infrastructure & Logistics',
-        'P&S' => 'Projects & Services',
-        'A&P' => 'Administration & Projects',
-        _ => code,
-      };
 }

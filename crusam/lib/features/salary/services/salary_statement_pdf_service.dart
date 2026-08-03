@@ -119,7 +119,7 @@ class SalaryStatementPdfService {
     return eg == 0 ? 0 : (eg * 0.0075).ceil();
   }
 
-  static int _msw(bool isMsw) => isMsw ? 6 : 0;
+  static int _msw(bool isMsw, double mswAmount) => isMsw ? mswAmount.round() : 0;
 
   static int _pt(EmployeeModel e, int days, int dim, bool isFeb) {
     final eg = _earnedGross(e, days, dim);
@@ -131,12 +131,16 @@ class SalaryStatementPdfService {
     return isFeb ? 300 : 200;
   }
 
-  static int _totalDed(EmployeeModel e, int days, int dim, bool isMsw, bool isFeb) =>
-      _pf(e, days, dim) + _esic(e, days, dim) + _msw(isMsw) + _pt(e, days, dim, isFeb);
+  static int _totalDed(
+    EmployeeModel e, int days, int dim, bool isMsw, double mswAmount, bool isFeb,
+  ) =>
+      _pf(e, days, dim) + _esic(e, days, dim) + _msw(isMsw, mswAmount) + _pt(e, days, dim, isFeb);
 
-  static double _net(EmployeeModel e, int days, int dim, bool isMsw, bool isFeb) {
+  static double _net(
+    EmployeeModel e, int days, int dim, bool isMsw, double mswAmount, bool isFeb,
+  ) {
     final eg = _earnedGross(e, days, dim);
-    return eg == 0 ? 0 : eg - _totalDed(e, days, dim, isMsw, isFeb);
+    return eg == 0 ? 0 : eg - _totalDed(e, days, dim, isMsw, mswAmount, isFeb);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -149,6 +153,7 @@ class SalaryStatementPdfService {
     required String              monthName,
     required int                 year,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -160,6 +165,7 @@ class SalaryStatementPdfService {
       monthName: monthName,
       year: year,
       isMsw: isMsw,
+      mswAmount: mswAmount,
       isFeb: isFeb,
       daysMap: daysMap,
       daysInMonth: daysInMonth,
@@ -184,6 +190,7 @@ class SalaryStatementPdfService {
     required String              monthName,
     required int                 year,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -195,6 +202,7 @@ class SalaryStatementPdfService {
       monthName: monthName,
       year: year,
       isMsw: isMsw,
+      mswAmount: mswAmount,
       isFeb: isFeb,
       daysMap: daysMap,
       daysInMonth: daysInMonth,
@@ -212,6 +220,7 @@ class SalaryStatementPdfService {
     required String              monthName,
     required int                 year,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -239,11 +248,11 @@ class SalaryStatementPdfService {
       sumOther    += _earnedOther(e, d, daysInMonth);
       sumGross    += _earnedGross(e, d, daysInMonth);
       sumPf       += _pf(e, d, daysInMonth);
-      sumMswAcc   += _msw(isMsw);
+      sumMswAcc   += _msw(isMsw, mswAmount);
       sumEsic     += _esic(e, d, daysInMonth);
       sumPt       += _pt(e, d, daysInMonth, isFeb);
-      sumTd       += _totalDed(e, d, daysInMonth, isMsw, isFeb);
-      sumNet      += _net(e, d, daysInMonth, isMsw, isFeb);
+      sumTd       += _totalDed(e, d, daysInMonth, isMsw, mswAmount, isFeb);
+      sumNet      += _net(e, d, daysInMonth, isMsw, mswAmount, isFeb);
     }
 
     final doc = pw.Document(
@@ -270,6 +279,7 @@ class SalaryStatementPdfService {
           monthName:  monthName,
           year:       year,
           isMsw:      isMsw,
+          mswAmount:  mswAmount,
           isFeb:      isFeb,
           daysMap:    daysMap,
           daysInMonth: daysInMonth,
@@ -302,6 +312,7 @@ class SalaryStatementPdfService {
     required String              monthName,
     required int                 year,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -320,6 +331,7 @@ class SalaryStatementPdfService {
             startIndex: startIndex,
             showTotals: showTotals,
             isMsw:      isMsw,
+            mswAmount:  mswAmount,
             isFeb:      isFeb,
             daysMap:    daysMap,
             daysInMonth: daysInMonth,
@@ -386,6 +398,7 @@ class SalaryStatementPdfService {
     required int                 startIndex,
     required bool                showTotals,
     required bool                isMsw,
+    required double              mswAmount,
     required bool                isFeb,
     required Map<int, int>       daysMap,
     required int                 daysInMonth,
@@ -441,10 +454,10 @@ class SalaryStatementPdfService {
       // Deductions
       final pf   = _pf(e, d, daysInMonth);
       final esic = _esic(e, d, daysInMonth);
-      final mswV = _msw(isMsw);
+      final mswV = _msw(isMsw, mswAmount);
       final pt   = _pt(e, d, daysInMonth, isFeb);
-      final td   = _totalDed(e, d, daysInMonth, isMsw, isFeb);
-      final net  = _net(e, d, daysInMonth, isMsw, isFeb);
+      final td   = _totalDed(e, d, daysInMonth, isMsw, mswAmount, isFeb);
+      final net  = _net(e, d, daysInMonth, isMsw, mswAmount, isFeb);
 
       final rowBg = globalIdx.isOdd ? _altBg : PdfColors.white;
 

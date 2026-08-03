@@ -1,19 +1,64 @@
 // lib/features/profile/widgets/gmail_account_card.dart
 //
-// Connect/disconnect the Gmail account invoices get sent from. Same card
-// shape and state-handling convention as BackupRestoreCard right next to it.
-//
-// This is intentionally just identity + connect/disconnect — it doesn't
-// know anything about invoices or sending. SendInvoiceDialog is the only
-// place that actually calls GmailService; this card just manages whether
-// there's an authenticated account for it to use.
+// Connect/disconnect the Gmail account invoices get sent from.
+// Visual styling now matches the indigo theme used across the app.
 
 import 'package:flutter/material.dart';
 
 import '../../../core/sync/google_auth_service.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../core/theme/app_spacing.dart';
-import '../../../core/theme/app_text_styles.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – consistent with the indigo theme
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsBody = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+  );
+
+  static const tsSmall = TextStyle(
+    fontFamily : fcond,
+    fontWeight : FontWeight.w500,
+    fontSize   : 11,
+    color      : inkMuted,
+  );
+
+  static const double radius  = 6.0;
+  static const double cRadius = 10.0;
+  static const double padH    = 18.0;
+  static const double padV    = 16.0;
+}
 
 class GmailAccountCard extends StatefulWidget {
   const GmailAccountCard({super.key});
@@ -57,162 +102,208 @@ class _GmailAccountCardState extends State<GmailAccountCard> {
         final connected = auth.isSignedIn;
         final busy = auth.isLoading;
 
+        // Themed card wrapper
         return Container(
-          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: AppColors.slate200),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            color: _Tok.surface,
+            border: Border.all(color: _Tok.border),
+            borderRadius: BorderRadius.circular(_Tok.cRadius),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header ────────────────────────────────────────────────────
-              Row(children: [
-                const Icon(Icons.mail_outline,
-                    size: 18, color: AppColors.slate500),
-                const SizedBox(width: 8),
-                Text('Email Sending (Gmail)', style: AppTextStyles.h4),
-              ]),
-              const SizedBox(height: 4),
-              Text(
-                connected
-                    ? 'Invoices sent from Crusam go out from this account.'
-                    : 'Connect a Gmail account to send invoices directly '
-                        'from Crusam.',
-                style: AppTextStyles.small.copyWith(color: AppColors.slate500),
+              // Header bar
+              Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: _Tok.padH),
+                decoration: const BoxDecoration(
+                  color: _Tok.surfaceAlt,
+                  border: Border(bottom: BorderSide(color: _Tok.divider)),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(_Tok.cRadius),
+                    topRight: Radius.circular(_Tok.cRadius),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: _Tok.ink,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Icon(Icons.mail_outline, size: 12, color: Colors.white),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('GMAIL ACCOUNT', style: _Tok.tsCardTitle.copyWith(fontSize: 12)),
+                  ],
+                ),
               ),
 
-              const SizedBox(height: 20),
+              // Body content
+              Padding(
+                padding: const EdgeInsets.all(_Tok.padV),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Description
+                    Text(
+                      connected
+                          ? 'Invoices sent from Crusam go out from this account.'
+                          : 'Connect a Gmail account to send invoices directly from Crusam.',
+                      style: _Tok.tsSmall,
+                    ),
 
-              // ── Status / action row ──────────────────────────────────────
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: connected ? AppColors.emerald50 : AppColors.indigo50,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      connected ? Icons.check_circle_outline : Icons.link,
-                      size: 20,
-                      color: connected ? AppColors.emerald600 : AppColors.indigo600,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 16),
+
+                    // Status / action row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Text(
-                          connected ? 'Connected' : 'Not connected',
-                          style: AppTextStyles.bodyMedium,
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: connected ? const Color(0xFFD1FAE5) : _Tok.surfaceAlt,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            connected ? Icons.check_circle_outline : Icons.link,
+                            size: 18,
+                            color: connected ? const Color(0xFF065F46) : _Tok.inkLight,
+                          ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          connected
-                              ? (auth.userEmail ?? '—')
-                              : 'No Gmail account linked yet.',
-                          style: AppTextStyles.small.copyWith(
-                              color: AppColors.slate500, fontSize: 11),
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                connected ? 'Connected' : 'Not connected',
+                                style: _Tok.tsBody.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                connected
+                                    ? (auth.userEmail ?? '—')
+                                    : 'No Gmail account linked yet.',
+                                style: _Tok.tsSmall,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          height: 34,
+                          child: connected
+                              ? OutlinedButton(
+                                  onPressed: busy ? null : _disconnect,
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFFDC2626),
+                                    side: const BorderSide(color: Color(0xFFFECACA)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(_Tok.radius),
+                                    ),
+                                    textStyle: _Tok.tsLabel.copyWith(fontSize: 12),
+                                  ),
+                                  child: busy
+                                      ? const SizedBox(
+                                          width: 14, height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFDC2626)),
+                                        )
+                                      : const Text('Disconnect'),
+                                )
+                              : ElevatedButton(
+                                  onPressed: busy ? null : _connect,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _Tok.ink,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(_Tok.radius),
+                                    ),
+                                    elevation: 0,
+                                    textStyle: _Tok.tsLabel.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                                  ),
+                                  child: busy
+                                      ? const SizedBox(
+                                          width: 14, height: 14,
+                                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                        )
+                                      : const Text('Connect'),
+                                ),
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    height: 36,
-                    child: connected
-                        ? OutlinedButton(
-                            onPressed: busy ? null : _disconnect,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFDC2626),
-                              side: const BorderSide(color: Color(0xFFFECACA)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              textStyle: const TextStyle(fontSize: 13),
-                            ),
-                            child: busy
-                                ? const SizedBox(
-                                    width: 14, height: 14,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Text('Disconnect'),
-                          )
-                        : ElevatedButton(
-                            onPressed: busy ? null : _connect,
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              textStyle: const TextStyle(fontSize: 13),
-                            ),
-                            child: busy
-                                ? const SizedBox(
-                                    width: 14, height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Text('Connect'),
-                          ),
-                  ),
-                ],
-              ),
 
-              // ── Status message ───────────────────────────────────────────
-              if (_statusMessage != null) ...[
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: _statusIsError
-                        ? const Color(0xFFFEF2F2)
-                        : AppColors.emerald50,
-                    border: Border.all(
-                      color: _statusIsError
-                          ? const Color(0xFFFECACA)
-                          : AppColors.emerald100,
-                    ),
-                    borderRadius: BorderRadius.circular(AppSpacing.radius),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        _statusIsError
-                            ? Icons.error_outline
-                            : Icons.check_circle_outline,
-                        size: 15,
-                        color: _statusIsError
-                            ? const Color(0xFFDC2626)
-                            : AppColors.emerald700,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _statusMessage!,
-                          style: AppTextStyles.small.copyWith(
+                    // Status message (if any)
+                    if (_statusMessage != null) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _statusIsError
+                              ? const Color(0xFFFEF2F2)
+                              : _Tok.surfaceAlt,
+                          border: Border.all(
                             color: _statusIsError
-                                ? const Color(0xFFDC2626)
-                                : AppColors.emerald700,
-                            fontWeight: FontWeight.w500,
+                                ? const Color(0xFFFECACA)
+                                : _Tok.border,
                           ),
+                          borderRadius: BorderRadius.circular(_Tok.radius),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              _statusIsError
+                                  ? Icons.error_outline
+                                  : Icons.check_circle_outline,
+                              size: 15,
+                              color: _statusIsError
+                                  ? const Color(0xFFDC2626)
+                                  : _Tok.inkLight,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _statusMessage!,
+                                style: _Tok.tsSmall.copyWith(
+                                  color: _statusIsError
+                                      ? const Color(0xFFDC2626)
+                                      : _Tok.ink,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => setState(() => _statusMessage = null),
+                              child: Icon(
+                                Icons.close,
+                                size: 14,
+                                color: _statusIsError
+                                    ? const Color(0xFFDC2626)
+                                    : _Tok.inkLight,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      GestureDetector(
-                        onTap: () => setState(() => _statusMessage = null),
-                        child: Icon(Icons.close,
-                            size: 14,
-                            color: _statusIsError
-                                ? const Color(0xFFDC2626)
-                                : AppColors.emerald700),
-                      ),
                     ],
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
         );

@@ -9,6 +9,7 @@ import '../../../shared/widgets/full_screen_loader.dart';
 import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_disbursement_notifier.dart';
+import '../widgets/send_disbursement_dialog.dart';
 import '../widgets/shared_salary_widgets.dart';
 
 class SalaryDisbursementsScreen extends StatefulWidget {
@@ -61,6 +62,9 @@ class _SalaryDisbursementsScreenState
       if (mounted) hideLoader(context);
     }
   }
+
+  Future<void> _onSendEmail(SalaryDisbursementModel disbursement) =>
+      SendDisbursementDialog.show(context, disbursement: disbursement);
 
   Future<void> _onDelete(SalaryDisbursementModel disbursement) async {
     final ok = await showDialog<bool>(
@@ -157,6 +161,7 @@ class _SalaryDisbursementsScreenState
                                 notifier:  notifier,
                                 onGenerate: _onGenerate,
                                 onExport:  _onExportExcel,
+                                onSend:    _onSendEmail,
                                 onDelete:  _onDelete,
                               ),
                             ),
@@ -268,12 +273,14 @@ class _LeftPane extends StatelessWidget {
   final SalaryDisbursementNotifier notifier;
   final VoidCallback onGenerate;
   final void Function(SalaryDisbursementModel) onExport;
+  final void Function(SalaryDisbursementModel) onSend;
   final void Function(SalaryDisbursementModel) onDelete;
 
   const _LeftPane({
     required this.notifier,
     required this.onGenerate,
     required this.onExport,
+    required this.onSend,
     required this.onDelete,
   });
 
@@ -386,6 +393,7 @@ class _LeftPane extends StatelessWidget {
           ...notifier.history.map((d) => _HistoryCard(
                 disbursement: d,
                 onExport:     () => onExport(d),
+                onSend:       () => onSend(d),
                 onDelete:     () => onDelete(d),
               )),
       ],
@@ -500,11 +508,13 @@ class _EmployeeChip extends StatelessWidget {
 class _HistoryCard extends StatelessWidget {
   final SalaryDisbursementModel disbursement;
   final VoidCallback             onExport;
+  final VoidCallback             onSend;
   final VoidCallback             onDelete;
 
   const _HistoryCard({
     required this.disbursement,
     required this.onExport,
+    required this.onSend,
     required this.onDelete,
   });
 
@@ -552,6 +562,13 @@ class _HistoryCard extends StatelessWidget {
               label: 'Export Excel',
               color: Colors.green.shade700,
               onTap: onExport,
+            ),
+            const SizedBox(width: 4),
+            _ActionBtn(
+              icon:  Icons.send_outlined,
+              label: 'Send Email',
+              color: AppColors.indigo600,
+              onTap: onSend,
             ),
             const Spacer(),
             _ActionBtn(
@@ -764,7 +781,7 @@ class _PreviewRow extends StatelessWidget {
   // Matches Excel column order exactly:
   // Amount | Debit A/C | IFSC | Credit A/C | Code | Beneficiary | Branch | Bank Details
   List<String> get _cells => [
-    '₹${item.amount.toStringAsFixed(2)}',  // Amount
+    '₹${item.amount.toStringAsFixed(0)}',  // Amount
     debitAccount,                           // Debit A/C (config.accountNo)
     item.ifscCode,                          // IFSC
     item.accountNumber,                     // Credit A/C
@@ -852,7 +869,7 @@ class _TotalRow extends StatelessWidget {
     // 8 columns — put total in col 0, "TOTAL" label in col 5 (Beneficiary)
     // put selected amount in col 0 context below
     final cells = List<String>.filled(8, '');
-    cells[0] = '₹${total.toStringAsFixed(2)}';
+    cells[0] = '₹${total.toStringAsFixed(0)}';
     cells[5] = 'TOTAL ($totalCount employees)';
 
     return Container(

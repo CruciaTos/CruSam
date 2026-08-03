@@ -8,13 +8,68 @@ import '../../../data/models/company_config_model.dart';
 import '../../../data/models/margin_settings_model.dart';
 import '../../../shared/utils/title_utils.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
-import '../../vouchers/notifiers/item_description_notifier.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
 import '../../vouchers/services/pdf_export_service.dart';
-import '../../vouchers/widgets/item_description_field.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/attachment_a_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Design tokens – matching the InvoicesScreen theme
+// ════════════════════════════════════════════════════════════════════════════
+class _Tok {
+  _Tok._();
+
+  static const ink         = Color(0xFF1E1B4B);
+  static const inkLight    = Color(0xFF3730A3);
+  static const inkMuted    = Color(0xFF818CF8);
+  static const border      = Color(0xFFC7D2FE);
+  static const divider     = Color(0xFFE0E7FF);
+  static const surface     = Color(0xFFFFFFFF);
+  static const surfaceAlt  = Color(0xFFEEF2FF);
+  static const badgeBg     = Color(0xFF1E1B4B);
+  static const badgeFg     = Color(0xFFFFFFFF);
+
+  static const fbody  = 'NotoSans';
+  static const fcond  = 'NotoSansCondensed';
+  static const fxcond = 'NotoSansExtraCondensed';
+
+  static const double radius   = 6.0;
+  static const double cRadius  = 10.0;
+  static const double padH     = 18.0;
+  static const double padV     = 16.0;
+
+  static const tsCardTitle = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w700,
+    fontSize     : 14,
+    letterSpacing: 1.6,
+    color        : inkLight,
+  );
+
+  static const tsLabel = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    letterSpacing: 1.0,
+    color        : inkLight,
+  );
+
+  static const tsInput = TextStyle(
+    fontFamily: fbody,
+    fontWeight: FontWeight.w500,
+    fontSize  : 13,
+    color     : ink,
+    height    : 1.4,
+  );
+
+  static const tsMeta = TextStyle(
+    fontFamily   : fcond,
+    fontWeight   : FontWeight.w600,
+    fontSize     : 11,
+    color        : inkMuted,
+  );
+}
 
 class SalaryAttachmentAScreen extends StatefulWidget {
   const SalaryAttachmentAScreen({super.key});
@@ -24,15 +79,20 @@ class SalaryAttachmentAScreen extends StatefulWidget {
 }
 
 class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
-  final _descNotifier   = ItemDescriptionNotifier();
   final _marginNotifier = MarginSettingsNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
 
-  String _itemDescription = 'Manpower Supply Charges';
   final _billNoCtrl = TextEditingController(text: 'AE/-/25-26');
+  final _descCtrl   = TextEditingController();
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+
+  /// Derive department code from selected company code for display
+  String get _departmentCode {
+    final code = SalaryStateController.instance.selectedCompanyCode;
+    return code == 'All' ? '' : code;
+  }
 
   void _setControllerText(TextEditingController ctrl, String value) {
     if (ctrl.text == value) return;
@@ -50,30 +110,46 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
     SalaryDataNotifier.instance.setBillNo(_billNoCtrl.text);
   }
 
+  void _syncDescFromSalaryData() {
+    _setControllerText(
+        _descCtrl, SalaryDataNotifier.instance.itemDescriptionAttachmentA);
+  }
+
+  void _onDescChanged() {
+    SalaryDataNotifier.instance.setItemDescriptionAttachmentA(_descCtrl.text);
+  }
+
   @override
   void initState() {
     super.initState();
-    _descNotifier.load();
     _marginNotifier.load();
     _loadConfig();
     if (SalaryStateController.instance.employees.isEmpty) {
       SalaryStateController.instance.loadEmployees();
     }
     _syncBillNoFromSalaryData();
+    _syncDescFromSalaryData();
     SalaryDataNotifier.instance
         .removeListener(_syncBillNoFromSalaryData);
     SalaryDataNotifier.instance.addListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance
+        .removeListener(_syncDescFromSalaryData);
+    SalaryDataNotifier.instance.addListener(_syncDescFromSalaryData);
     _billNoCtrl.addListener(_onBillNoChanged);
+    _descCtrl.addListener(_onDescChanged);
   }
 
   @override
   void dispose() {
     SalaryDataNotifier.instance
         .removeListener(_syncBillNoFromSalaryData);
+    SalaryDataNotifier.instance
+        .removeListener(_syncDescFromSalaryData);
     _billNoCtrl.removeListener(_onBillNoChanged);
-    _descNotifier.dispose();
+    _descCtrl.removeListener(_onDescChanged);
     _marginNotifier.dispose();
     _billNoCtrl.dispose();
+    _descCtrl.dispose();
     super.dispose();
   }
 
@@ -110,10 +186,11 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
           billNo:          n.billNo,
           date:            n.dateDisplay,
           poNo:            n.poNo,
-          itemDescription: _itemDescription,
+          itemDescription: n.itemDescriptionAttachmentA,
           customerName:    n.clientName,
           customerAddress: n.clientAddr,
           customerGst:     n.clientGstin,
+          departmentCode:  _departmentCode,   // pass department code
         ),
         fileNameSlug:         'attachment_a',
         filePrefix:           'attachment_a',
@@ -161,7 +238,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                   Row(children: [
                     Text(
                       title,
-                      style: AppTextStyles.h3.copyWith(color: Colors.white), // heading now white
+                      style: AppTextStyles.h3.copyWith(color: Colors.white),
                     ),
                     const SizedBox(width: AppSpacing.md),
                     SalaryMonthBadge(
@@ -201,19 +278,30 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  // ── Left pane ──────────────────────────────────────────
+                  // ── Themed left pane ──────────────────────────────────────
                   Container(
                     width: 272,
-                    color: Colors.grey[200],
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    child: _LeftPane(
-                      descNotifier:    _descNotifier,
-                      itemDescription: _itemDescription,
-                      billNoCtrl:      _billNoCtrl,
-                      sc:              sc,
-                      marginNotifier:  _marginNotifier,
-                      onDescChanged:
-                          (v) => setState(() => _itemDescription = v),
+                    margin: const EdgeInsets.only(right: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(_Tok.padV),
+                      decoration: BoxDecoration(
+                        color: _Tok.surface,
+                        border: Border.all(color: _Tok.border),
+                        borderRadius: BorderRadius.circular(_Tok.cRadius),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 12,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: _LeftPane(
+                        descCtrl:        _descCtrl,
+                        billNoCtrl:      _billNoCtrl,
+                        sc:              sc,
+                        marginNotifier:  _marginNotifier,
+                      ),
                     ),
                   ),
                   Container(
@@ -234,11 +322,11 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                               const BoxConstraints(maxWidth: 820),
                           child: ListenableBuilder(
                             listenable: Listenable.merge(
-                                [_billNoCtrl, _marginNotifier]),
+                                [_billNoCtrl, _descCtrl, _marginNotifier]),
                             builder: (_, _) => AttachmentAPreview(
                               config:          _config,
                               margins:         _margins,
-                              itemDescription: _itemDescription,
+                              itemDescription: n.itemDescriptionAttachmentA,
                               billNo:          n.billNo,
                               poNo:            n.poNo,
                               date:            date,
@@ -249,6 +337,7 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
                               customerName:    n.clientName,
                               customerAddress: n.clientAddr,
                               customerGst:     n.clientGstin,
+                              departmentCode:  _departmentCode,   // pass department code
                             ),
                           ),
                         ),
@@ -263,91 +352,108 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
       );
 }
 
-// ── Left pane ─────────────────────────────────────────────────────────────────
-
+// ── Themed left pane ──────────────────────────────────────────────────────────
 class _LeftPane extends StatelessWidget {
-  final ItemDescriptionNotifier descNotifier;
-  final String                  itemDescription;
+  final TextEditingController   descCtrl;
   final TextEditingController   billNoCtrl;
   final SalaryStateController   sc;
   final MarginSettingsNotifier  marginNotifier;
-  final void Function(String)   onDescChanged;
 
   const _LeftPane({
-    required this.descNotifier,
-    required this.itemDescription,
+    required this.descCtrl,
     required this.billNoCtrl,
     required this.sc,
     required this.marginNotifier,
-    required this.onDescChanged,
   });
 
   @override
   Widget build(BuildContext context) => ListView(
+        padding: EdgeInsets.zero,
         children: [
-          Text('Document Details', style: AppTextStyles.h4),
-          const SizedBox(height: AppSpacing.lg),
+          Text('Document Details',
+              style: _Tok.tsCardTitle.copyWith(fontSize: 15)),
+          const SizedBox(height: 16),
           _label('Bill No.'),
           const SizedBox(height: 4),
           _field(billNoCtrl),
-          const SizedBox(height: AppSpacing.md),
+          const SizedBox(height: 12),
           _label('Item Description'),
           const SizedBox(height: 4),
-          ItemDescriptionField(
-            value:     itemDescription,
-            onChanged: onDescChanged,
-            notifier:  descNotifier,
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          const Divider(),
-          const SizedBox(height: AppSpacing.sm),
+          _descriptionField(descCtrl),
+          const SizedBox(height: 16),
+          const Divider(color: _Tok.divider),
+          const SizedBox(height: 8),
           Text('Salary Aggregates',
-              style: AppTextStyles.label
-                  .copyWith(color: AppColors.slate500)),
-          const SizedBox(height: AppSpacing.sm),
+              style: _Tok.tsMeta.copyWith(fontSize: 12)),
+          const SizedBox(height: 8),
           _row('Total Gross Salary',
               '₹${sc.totalEarnedGross.toStringAsFixed(2)}',
-              AppColors.indigo600),
-          _row('PF (13.61% basic)',
+              _Tok.inkLight),
+          _row('PF (13% basic)',
               '₹${sc.attachmentAPf.round()}',
-              AppColors.slate600),
+              _Tok.inkMuted),
           _row('ESIC (3.25% eligible)',
               '₹${sc.attachmentAEsic.round()}',
-              AppColors.slate600),
+              _Tok.inkMuted),
           _row(
             'Round Off',
             '${sc.attachmentARoundOff >= 0 ? "+" : ""}${sc.attachmentARoundOff.toStringAsFixed(2)}',
-            AppColors.slate500,
+            _Tok.inkMuted,
           ),
-          const Divider(height: AppSpacing.lg),
+          const Divider(color: _Tok.divider, height: 20),
           _row('Grand Total',
               '₹${sc.attachmentATotal.toStringAsFixed(0)}',
-              AppColors.emerald700,
+              _Tok.ink,
               bold: true),
-          const SizedBox(height: AppSpacing.xl),
-          const Divider(),
-          const SizedBox(height: AppSpacing.sm),
+          const SizedBox(height: 16),
+          const Divider(color: _Tok.divider),
+          const SizedBox(height: 8),
           SalaryMarginSection(notifier: marginNotifier),
         ],
       );
 
   static Widget _label(String t) => Text(
         t,
-        style: AppTextStyles.smallMedium.copyWith(
-          color: AppColors.slate600,
-          fontWeight: FontWeight.w600,
-        ),
+        style: _Tok.tsLabel,
       );
 
   static Widget _field(TextEditingController ctrl) => SizedBox(
         height: 38,
         child: TextField(
           controller: ctrl,
-          style: AppTextStyles.input,
-          decoration: const InputDecoration(
+          style: _Tok.tsInput,
+          decoration: InputDecoration(
             isDense: true,
             contentPadding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            enabledBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: _Tok.border),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderSide: const BorderSide(color: _Tok.inkLight),
+              borderRadius: BorderRadius.circular(_Tok.radius),
+            ),
+          ),
+        ),
+      );
+
+  static Widget _descriptionField(TextEditingController ctrl) => TextField(
+        controller: ctrl,
+        minLines: 1,
+        maxLines: 3,
+        style: _Tok.tsInput,
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          enabledBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: _Tok.border),
+            borderRadius: BorderRadius.circular(_Tok.radius),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderSide: const BorderSide(color: _Tok.inkLight),
+            borderRadius: BorderRadius.circular(_Tok.radius),
           ),
         ),
       );
@@ -363,13 +469,12 @@ class _LeftPane extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: AppTextStyles.small),
+            Text(label, style: _Tok.tsMeta),
             Text(
               value,
-              style: AppTextStyles.small.copyWith(
+              style: _Tok.tsInput.copyWith(
                 color: color,
-                fontWeight:
-                    bold ? FontWeight.w700 : FontWeight.w600,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
                 fontSize: bold ? 13 : 12,
               ),
             ),

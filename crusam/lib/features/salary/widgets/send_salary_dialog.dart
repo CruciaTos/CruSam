@@ -2,8 +2,8 @@
 //
 // Compose-and-send dialog for emailing salary documents from the Saved
 // Salary screen. The user picks a document type (Salary Slips, Salary Bill,
-// or Salary Statement) and an optional department code filter, fills in
-// recipient / subject / body, and sends via Gmail.
+// Salary Statement, or Disbursement) and an optional department code
+// filter, fills in recipient / subject / body, and sends via Gmail.
 //
 // Flow:
 //  1. Dialog opens → decodes snapshot payload for dept codes, loads
@@ -13,9 +13,15 @@
 //     into live state so SalaryEmailExportService can read the right period's
 //     data → build document bytes → send via GmailService → mark sent/failed.
 //
-// Disbursement (Excel) is intentionally excluded here: it requires an
-// existing disbursement batch entity that is not part of the snapshot. Use
-// the Disbursement screen's own email flow for that.
+// Disbursement is a special case: a SalaryDisbursementModel is a separate
+// row from the SalaryMonthSnapshotModel this dialog otherwise operates on
+// (keyed by month/year, not by snapshot id), generated independently on the
+// Disbursement screen because it depends on bank account data resolved at
+// generation time. Selecting it here looks that batch up by period via
+// SalaryDisbursementRepository.getByPeriod(...) rather than building
+// anything from the snapshot directly — see _lookupDisbursementBatch().
+// If no batch exists yet for this period, Send stays disabled with an
+// inline notice pointing at the Disbursement screen.
 
 import 'package:flutter/material.dart';
 
@@ -30,6 +36,11 @@ import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
 import '../../../data/models/margin_settings_model.dart';
+import '../../../shared/models/generated_document.dart';
+import '../../../shared/models/output_format.dart';
+import '../../../shared/widgets/output_format_picker.dart';
+import '../../../data/db/salary_disbursement_repository.dart';
+import '../models/salary_disbursement_model.dart';
 import '../models/salary_snapshot_model.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 import '../notifier/salary_state_controller.dart';
@@ -67,6 +78,14 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   SalaryDocumentType _docType     = SalaryDocumentType.salarySlips;
   List<String>       _deptCodes   = const ['All'];
   String             _selectedDept = 'All';
+  Set<OutputFormat>  _formats     = {OutputFormat.pdf};
+
+  // ── Disbursement lookup state (only relevant when _docType is disbursement) ─
+  // A disbursement batch is a separate row from the snapshot this dialog
+  // otherwise operates on — see file header. Null + not-looking-up means
+  // "no batch exists for this period yet", which disables Send.
+  SalaryDisbursementModel? _disbursementBatch;
+  bool                     _lookingUpDisbursement = false;
 
   // ── Async state ───────────────────────────────────────────────────────────
   bool           _initialising    = true;
@@ -80,10 +99,22 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   CompanyConfigModel _config  = const CompanyConfigModel();
   MarginSettings     _margins = const MarginSettings();
 
-  // ── Document types shown in the dropdown (disbursement excluded) ──────────
-  static final _docTypeOptions = SalaryDocumentType.values
-      .where((t) => t != SalaryDocumentType.disbursement)
-      .toList();
+  // ── Document types shown in the dropdown ───────────────────────────────────
+  static final _docTypeOptions = SalaryDocumentType.values.toList();
+
+  // ── Which formats can be picked for the current document type ─────────────
+  // Salary Statement has both a PDF and an Excel generator (§2.2 of the
+  // blueprint); Salary Slips / Salary Bill (export + final) only have PDF
+  // generators today, so the picker is hidden and locked to PDF for them.
+  // Disbursement only has an Excel generator, so it's locked to Excel.
+  Set<OutputFormat> get _availableFormats => switch (_docType) {
+        SalaryDocumentType.salaryStatement => const {
+            OutputFormat.pdf,
+            OutputFormat.excel,
+          },
+        SalaryDocumentType.disbursement => const {OutputFormat.excel},
+        _ => const {OutputFormat.pdf},
+      };
 
   @override
   void initState() {
@@ -175,6 +206,39 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
     if (mounted) setState(() => _alreadySentLog = log);
   }
 
+  // Disbursement's "already sent" state has to be checked against the
+  // batch's own id, not the snapshot id above — that's what
+  // SendDisbursementDialog logs against, and they need to agree on what
+  // counts as "this disbursement" for the notice to mean anything.
+  Future<void> _lookupDisbursementBatch() async {
+    setState(() {
+      _lookingUpDisbursement = true;
+      _disbursementBatch     = null;
+      _alreadySentLog        = null;
+    });
+    try {
+      final snap  = widget.summary.snapshot;
+      final batch = await DatabaseHelper.instance.getByPeriod(
+        month: snap.month,
+        year:  snap.year,
+      );
+      if (!mounted) return;
+      setState(() => _disbursementBatch = batch);
+
+      if (batch?.id != null) {
+        final log = await DatabaseHelper.instance.getLatestSentEmailLogFor(
+          SalaryDocumentType.disbursement.entityType,
+          batch!.id!,
+        );
+        if (mounted) setState(() => _alreadySentLog = log);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _lookingUpDisbursement = false);
+    }
+  }
+
   // ── Auto-fill helpers ─────────────────────────────────────────────────────
 
   String _buildSubject() {
@@ -185,10 +249,10 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
 
   String _buildBody() {
     final period = widget.summary.periodLabel;
-    return 'Dear Sir/Madam,\n\n'
+    return 'Dear Sir,\n\n'
         'Please find attached the ${_docType.label.toLowerCase()} '
         'for $period.\n\n'
-        'Regards,\n${_config.companyName}';
+        'Regards,\nBharat Boridkar';
   }
 
   void _refreshAutoFill() {
@@ -204,12 +268,33 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   bool get _needsResendConfirmation =>
       _alreadySentLog != null && !_confirmedResend;
 
+  // Disbursement needs a resolved batch before Send means anything — every
+  // other type can always build its document straight from the snapshot.
+  bool get _canSend => _docType == SalaryDocumentType.disbursement
+      ? (!_lookingUpDisbursement && _disbursementBatch != null)
+      : true;
+
   // ── Send ──────────────────────────────────────────────────────────────────
 
   Future<void> _send() async {
     final snapshotId = widget.summary.snapshot.id;
     if (snapshotId == null) {
       setState(() => _error = 'This saved salary has no ID — cannot send.');
+      return;
+    }
+
+    // Disbursement logs against the batch's own id (matching what
+    // SendDisbursementDialog logs), not the snapshot id — see
+    // _lookupDisbursementBatch(). A null id here means no batch has been
+    // generated for this period yet; Send is already disabled in that
+    // state, but this guard keeps _send() safe if it's ever reached anyway.
+    final entityId = _docType == SalaryDocumentType.disbursement
+        ? _disbursementBatch?.id
+        : snapshotId;
+    if (entityId == null) {
+      setState(() => _error =
+          'No disbursement batch generated yet for this period — '
+          'generate one from the Disbursement screen first.');
       return;
     }
 
@@ -242,11 +327,12 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
       //    mid-send leaves a trace rather than silently losing the attempt.
       logId = await DatabaseHelper.instance.insertEmailLog(EmailLogModel(
         entityType:  _docType.entityType,
-        entityId:    snapshotId,
+        entityId:    entityId,
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject:     _subjectCtrl.text.trim(),
         sentBy:      GoogleAuthService.instance.userEmail ?? '',
+        attachmentFormats: _formats.map((f) => f.name).join(','),
       ));
 
       // 2. Ensure employees are loaded and the correct snapshot period is
@@ -263,21 +349,21 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
             '${SalarySnapshotNotifier.instance.error}');
       }
 
-      // 3. Build the document bytes.
-      final doc = await _buildDocument();
-      if (doc == null) {
+      // 3. Build whichever document(s) the format picker has selected
+      //    (Salary Statement only — every other type is PDF-only and
+      //    returns exactly one document).
+      final docs = await _buildDocuments();
+      if (docs.isEmpty) {
         throw Exception('Document generation returned no data.');
       }
 
-      // 4. Send via Gmail.
-      final messageId = await GmailService.instance.sendAttachmentEmail(
-        to:                 to,
-        cc:                 _ccCtrl.text.trim(),
-        subject:            _subjectCtrl.text.trim(),
-        bodyText:           _bodyCtrl.text,
-        attachmentBytes:    doc.bytes,
-        attachmentFilename: doc.filename,
-        mimeType:           doc.mimeType,
+      // 4. Send — one email, every selected format attached.
+      final messageId = await GmailService.instance.sendAttachmentsEmail(
+        to:          to,
+        cc:          _ccCtrl.text.trim(),
+        subject:     _subjectCtrl.text.trim(),
+        bodyText:    _bodyCtrl.text,
+        attachments: docs,
       );
 
       // 5. Mark the log row as sent.
@@ -310,9 +396,11 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   }
 
   /// Delegates to SalaryEmailExportService based on the selected document
-  /// type. buildSalaryBill needs the dialog's BuildContext for off-screen
-  /// widget screenshot rendering.
-  Future<SalaryDocumentBytes?> _buildDocument() {
+  /// type, returning every file the format picker has selected — one email,
+  /// N attachments, per output-format-selector blueprint §4.2.
+  /// buildSalaryBill needs the dialog's BuildContext for off-screen widget
+  /// screenshot rendering.
+  Future<List<GeneratedDocument>> _buildDocuments() async {
     final margins = EdgeInsets.fromLTRB(
       _margins.left,
       _margins.top,
@@ -322,39 +410,68 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
 
     switch (_docType) {
       case SalaryDocumentType.salarySlips:
-        return SalaryEmailExportService.buildSalarySlips(
-          config:   _config,
-          deptCode: _selectedDept,
-        );
+        return [
+          await SalaryEmailExportService.buildSalarySlips(
+            config:   _config,
+            deptCode: _selectedDept,
+          ),
+        ];
 
       case SalaryDocumentType.salaryStatement:
-        return SalaryEmailExportService.buildSalaryStatement(
-          config:   _config,
-          deptCode: _selectedDept,
-        );
+        // Only type with a real format choice today — build whichever of
+        // PDF / Excel (or both) the picker has selected.
+        final docs = <GeneratedDocument>[];
+        if (_formats.contains(OutputFormat.pdf)) {
+          docs.add(await SalaryEmailExportService.buildSalaryStatement(
+            config:   _config,
+            deptCode: _selectedDept,
+          ));
+        }
+        if (_formats.contains(OutputFormat.excel)) {
+          docs.add(await SalaryEmailExportService.buildSalaryStatementExcel(
+            config:   _config,
+            deptCode: _selectedDept,
+          ));
+        }
+        return docs;
 
       case SalaryDocumentType.salaryBillExport:
-        return SalaryEmailExportService.buildSalaryBill(
-          context:   context,
-          config:    _config,
-          margins:   margins,
-          deptCode:  _selectedDept,
-          finalised: false,
-        );
+        return [
+          await SalaryEmailExportService.buildSalaryBill(
+            context:   context,
+            config:    _config,
+            margins:   margins,
+            deptCode:  _selectedDept,
+            finalised: false,
+          ),
+        ];
 
       case SalaryDocumentType.salaryBillFinal:
-        return SalaryEmailExportService.buildSalaryBill(
-          context:   context,
-          config:    _config,
-          margins:   margins,
-          deptCode:  _selectedDept,
-          finalised: true,
-        );
+        return [
+          await SalaryEmailExportService.buildSalaryBill(
+            context:   context,
+            config:    _config,
+            margins:   margins,
+            deptCode:  _selectedDept,
+            finalised: true,
+          ),
+        ];
 
       case SalaryDocumentType.disbursement:
-        // Disbursement requires a batch entity — excluded from this dialog.
-        throw UnsupportedError(
-            'Use the Disbursement screen to email disbursement files.');
+        final batch = _disbursementBatch;
+        if (batch == null) {
+          // Belt-and-suspenders — Send is disabled in the UI whenever this
+          // is null, so reaching here would mean that guard was bypassed.
+          throw Exception(
+              'No disbursement batch generated yet for this period — '
+              'generate one from the Disbursement screen first.');
+        }
+        final doc =
+            await SalaryEmailExportService.buildDisbursementExcel(batch);
+        if (doc == null) {
+          throw Exception('Excel export returned no data.');
+        }
+        return [doc];
     }
   }
 
@@ -423,11 +540,24 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
             icon:  Icons.check_circle_outline,
             color: AppColors.emerald700,
             bg:    AppColors.emerald50,
-            text:  'Already sent ${_docType.label} to '
+            text:  'Already sent ${_docType.label} as '
+                   '${_alreadySentLog!.attachmentFormatsLabel} to '
                    '${_alreadySentLog!.recipientTo}'
                    '${_alreadySentLog!.sentAt != null
                        ? " on ${_alreadySentLog!.sentAt!.split('T').first}"
                        : ""}.',
+          ),
+
+        if (_docType == SalaryDocumentType.disbursement &&
+            !_lookingUpDisbursement &&
+            _disbursementBatch == null)
+          _Notice(
+            icon:  Icons.info_outline,
+            color: AppColors.amber700,
+            bg:    AppColors.amber100,
+            text:  'No disbursement batch generated yet for '
+                   '${widget.summary.periodLabel} — generate one from the '
+                   'Disbursement screen first.',
           ),
 
         const SizedBox(height: AppSpacing.xs),
@@ -458,9 +588,24 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
                     _docType         = t;
                     _confirmedResend = false;
                     _alreadySentLog  = null;
+                    // Salary Statement (PDF+Excel) and Disbursement
+                    // (Excel-only) each have their own valid default; every
+                    // other type is PDF-only — snap back to whichever is
+                    // valid if the picker isn't shown (or is locked) for the
+                    // newly-selected type, so a stale selection can't
+                    // silently carry over to a type it doesn't apply to.
+                    if (!_availableFormats.containsAll(_formats)) {
+                      _formats = t == SalaryDocumentType.disbursement
+                          ? const {OutputFormat.excel}
+                          : const {OutputFormat.pdf};
+                    }
                   });
                   _refreshAutoFill();
-                  _checkPriorSends();
+                  if (t == SalaryDocumentType.disbursement) {
+                    _lookupDisbursementBatch();
+                  } else {
+                    _checkPriorSends();
+                  }
                 },
         ),
 
@@ -576,6 +721,32 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
           ),
         ),
 
+        // ── Output format — Salary Statement and Disbursement only ─────────
+        // Salary Slips / Salary Bill only have a PDF generator, so the
+        // picker would only ever show a single un-toggleable chip for
+        // them — hidden entirely rather than shown locked, per blueprint
+        // §4.2. Salary Statement gets a real PDF/Excel toggle; Disbursement
+        // gets the same picker locked to its one available format (Excel),
+        // which keeps the pattern predictable across every type that shows
+        // it at all rather than special-casing Disbursement's UI away.
+        if (_docType == SalaryDocumentType.salaryStatement ||
+            _docType == SalaryDocumentType.disbursement) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _FieldLabel('Attach as'),
+          const SizedBox(height: AppSpacing.xs),
+          IgnorePointer(
+            ignoring: _sending,
+            child: Opacity(
+              opacity: _sending ? 0.6 : 1,
+              child: OutputFormatPicker(
+                selected: _formats,
+                available: _availableFormats,
+                onChanged: (s) => setState(() => _formats = s),
+              ),
+            ),
+          ),
+        ],
+
         // ── Error text ─────────────────────────────────────────────────────
         if (_error != null) ...[
           const SizedBox(height: AppSpacing.sm),
@@ -597,7 +768,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
             ),
             const SizedBox(width: AppSpacing.sm),
             ElevatedButton.icon(
-              onPressed: (_sending || !connected) ? null : _send,
+              onPressed: (_sending || !connected || !_canSend) ? null : _send,
               icon: _sending
                   ? const SizedBox(
                       width: 16,

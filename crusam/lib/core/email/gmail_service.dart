@@ -1,13 +1,16 @@
 // lib/core/email/gmail_service.dart
 //
-// Sends an email with a single PDF attachment via the Gmail API.
+// Sends an email with one or more attachments via the Gmail API.
 // Built entirely on the OAuth client GoogleAuthService already provides —
 // no new auth plumbing here, just the Gmail-specific request shape.
 //
 // Gmail's API doesn't take a structured "to/subject/body/attachment"
 // payload — it wants one base64url-encoded RFC 2822 message. That's what
 // _buildRawMimeMessage constructs: one multipart/mixed message with a
-// plain-text body part and a base64 PDF attachment part.
+// plain-text body part and one base64 attachment part per file — so a
+// "PDF + Excel" selection from OutputFormatPicker goes out as a single
+// email with two attachment parts, not two emails. See
+// output-format-selector blueprint §3.3.
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -15,6 +18,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/gmail/v1.dart' as gmail;
 
+import '../../shared/models/generated_document.dart';
 import '../sync/google_auth_service.dart';
 
 class GmailNotSignedInException implements Exception {
@@ -58,9 +62,13 @@ class GmailService {
       );
 
   /// Sends [attachmentBytes] as an email attachment of any [mimeType] —
-  /// the generic form behind [sendPdfEmail]. Added for non-PDF documents
-  /// (e.g. the .xlsx disbursement sheet) that still go through the same
-  /// Gmail-send pipeline.
+  /// the generic single-attachment form behind [sendPdfEmail]. Added for
+  /// non-PDF documents (e.g. the .xlsx disbursement sheet) that still go
+  /// through the same Gmail-send pipeline.
+  ///
+  /// Now a thin wrapper around [sendAttachmentsEmail] — kept so every
+  /// existing call site (Disbursement, and any future single-format sends)
+  /// keeps compiling unchanged. See output-format-selector blueprint §3.3.
   ///
   /// Returns the Gmail message id on success. Throws
   /// [GmailNotSignedInException] if no Gmail account is connected, or
@@ -74,7 +82,43 @@ class GmailService {
     required Uint8List attachmentBytes,
     required String attachmentFilename,
     required String mimeType,
+  }) =>
+      sendAttachmentsEmail(
+        to: to,
+        cc: cc,
+        subject: subject,
+        bodyText: bodyText,
+        attachments: [
+          GeneratedDocument(
+            bytes: attachmentBytes,
+            filename: attachmentFilename,
+            mimeType: mimeType,
+          ),
+        ],
+      );
+
+  /// Sends [attachments] — one or more files — as a single email. This is
+  /// the method every format-picker-enabled send dialog (Invoices, Salary
+  /// Statement) actually calls: when a user selects both PDF and Excel,
+  /// both go out as two attachment parts on the *same* message, per the
+  /// "both formats → one email" decision in the output-format-selector
+  /// blueprint §3.3, rather than sending two separate emails.
+  ///
+  /// Returns the Gmail message id on success. Throws
+  /// [GmailNotSignedInException] if no Gmail account is connected, or
+  /// [GmailSendException] for anything the Gmail API itself rejects
+  /// (bad recipient, quota, etc), or if [attachments] is empty.
+  Future<String> sendAttachmentsEmail({
+    required String to,
+    String cc = '',
+    required String subject,
+    required String bodyText,
+    required List<GeneratedDocument> attachments,
   }) async {
+    if (attachments.isEmpty) {
+      throw GmailSendException('No attachments selected to send.');
+    }
+
     final api = await _api();
     if (api == null) throw GmailNotSignedInException();
 
@@ -85,9 +129,7 @@ class GmailService {
       cc: cc,
       subject: subject,
       bodyText: bodyText,
-      attachmentFilename: attachmentFilename,
-      attachmentBytes: attachmentBytes,
-      contentType: mimeType,
+      attachments: attachments,
     );
 
     // One retry on a transient failure — Gmail sending at this volume never
@@ -104,7 +146,7 @@ class GmailService {
         return sent.id!;
       } catch (e) {
         final isLastAttempt = attempt == 2;
-        debugPrint('GmailService.sendAttachmentEmail attempt $attempt failed: $e');
+        debugPrint('GmailService.sendAttachmentsEmail attempt $attempt failed: $e');
         if (isLastAttempt) {
           throw GmailSendException(_friendlyError(e));
         }
@@ -145,9 +187,7 @@ class GmailService {
     required String cc,
     required String subject,
     required String bodyText,
-    required String attachmentFilename,
-    required Uint8List attachmentBytes,
-    required String contentType,
+    required List<GeneratedDocument> attachments,
   }) {
     final boundary = 'crusam_${DateTime.now().microsecondsSinceEpoch}';
     final b = StringBuffer()
@@ -165,14 +205,20 @@ class GmailService {
       ..writeln('Content-Type: text/plain; charset="UTF-8"')
       ..writeln()
       ..writeln(bodyText)
-      ..writeln()
-      ..writeln('--$boundary')
-      ..writeln('Content-Type: $contentType; name="$attachmentFilename"')
-      ..writeln('Content-Disposition: attachment; filename="$attachmentFilename"')
-      ..writeln('Content-Transfer-Encoding: base64')
-      ..writeln()
-      ..writeln(base64.encode(attachmentBytes))
-      ..writeln('--$boundary--');
+      ..writeln();
+
+    // One boundary part per attachment — multipart/mixed already supports
+    // N parts, this just loops instead of writing a single fixed part.
+    for (final doc in attachments) {
+      b
+        ..writeln('--$boundary')
+        ..writeln('Content-Type: ${doc.mimeType}; name="${doc.filename}"')
+        ..writeln('Content-Disposition: attachment; filename="${doc.filename}"')
+        ..writeln('Content-Transfer-Encoding: base64')
+        ..writeln()
+        ..writeln(base64.encode(doc.bytes));
+    }
+    b.writeln('--$boundary--');
 
     // Gmail wants the whole RFC 2822 message base64url-encoded.
     return base64Url.encode(utf8.encode(b.toString()));
