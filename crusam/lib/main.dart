@@ -15,6 +15,7 @@ import 'core/updater/update_dialog.dart';
 import 'core/updater/update_notifier.dart';
 import 'features/auth/notifiers/auth_notifier.dart';
 import 'features/master_data/notifiers/employee_notifier.dart';
+import 'features/salary/notifier/salary_formula_notifier.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,10 @@ Future<void> main() async {
   // No login required – skip all session checks
   // await AuthNotifier.instance.checkSession();
   await ExportPreferencesNotifier.instance.load();
+  // Loaded (and awaited) before runApp so every static salary-formula
+  // calculation — most of which run synchronously off SalaryFormulaEngine —
+  // sees the saved PF/ESIC/PT/employer-contribution config from first paint.
+  await SalaryFormulaNotifier.instance.load();
   // Restores the saved Gmail connection (if any) so the app doesn't ask the
   // user to reconnect every launch — stays connected until they manually
   // disconnect in Profile. Not awaited, same as EmployeeNotifier.load() and

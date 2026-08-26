@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
+import '../services/salary_formula_engine.dart';
 
 /// Landscape A4 salary statement preview.
 ///
@@ -121,31 +122,22 @@ class SalaryStatementPreview extends StatelessWidget {
     return e.grossSalary * d / daysInMonth;
   }
 
-  int _pf(EmployeeModel e) {
-    final eb = _earnedBasic(e);
-    if (eb == 0) return 0;
-    return eb >= 15000 ? 1800 : (eb * 0.12).round();
-  }
+  int _pf(EmployeeModel e) => SalaryFormulaEngine.pf(_earnedBasic(e)).round();
 
-  int _esicInt(EmployeeModel e) {
-    if (e.grossSalary > 21000) return 0;
-    final eg = _earnedGross(e);
-    return eg == 0 ? 0 : (eg * 0.0075).ceil();
-  }
+  int _esicInt(EmployeeModel e) => SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: _earnedGross(e),
+      ).round();
 
   int _msw() {
     return (isMsw && applyMsw) ? mswAmount.round() : 0;
   }
 
-  int _pt(EmployeeModel e) {
-    final eg = _earnedGross(e);
-    if (eg == 0) return 0;
-    final isFemale = e.gender.toUpperCase() == 'F';
-    if (isFemale) return eg < 25000 ? 0 : (isFeb ? 300 : 200);
-    if (eg < 7500)  return 0;
-    if (eg < 10000) return 175;
-    return isFeb ? 300 : 200;
-  }
+  int _pt(EmployeeModel e) => SalaryFormulaEngine.pt(
+        earnedGross: _earnedGross(e),
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: isFeb,
+      ).round();
 
   int _totalDed(EmployeeModel e) => _pf(e) + _esicInt(e) + _msw() + _pt(e);
 

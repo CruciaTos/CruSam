@@ -16,6 +16,7 @@ import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../widgets/salary_statement_preview.dart';
+import 'salary_formula_engine.dart';
 
 class SalaryStatementPdfService {
   SalaryStatementPdfService._();
@@ -107,29 +108,21 @@ class SalaryStatementPdfService {
     return e.grossSalary * days / dim;
   }
 
-  static int _pf(EmployeeModel e, int days, int dim) {
-    final eb = _earnedBasic(e, days, dim);
-    if (eb == 0) return 0;
-    return eb >= 15000 ? 1800 : (eb * 0.12).round();
-  }
+  static int _pf(EmployeeModel e, int days, int dim) =>
+      SalaryFormulaEngine.pf(_earnedBasic(e, days, dim)).round();
 
-  static int _esic(EmployeeModel e, int days, int dim) {
-    if (e.grossSalary > 21000) return 0;
-    final eg = _earnedGross(e, days, dim);
-    return eg == 0 ? 0 : (eg * 0.0075).ceil();
-  }
+  static int _esic(EmployeeModel e, int days, int dim) => SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: _earnedGross(e, days, dim),
+      ).round();
 
   static int _msw(bool isMsw, double mswAmount) => isMsw ? mswAmount.round() : 0;
 
-  static int _pt(EmployeeModel e, int days, int dim, bool isFeb) {
-    final eg = _earnedGross(e, days, dim);
-    if (eg == 0) return 0;
-    final female = e.gender.toUpperCase() == 'F';
-    if (female) return eg < 25000 ? 0 : (isFeb ? 300 : 200);
-    if (eg < 7500)  return 0;
-    if (eg < 10000) return 175;
-    return isFeb ? 300 : 200;
-  }
+  static int _pt(EmployeeModel e, int days, int dim, bool isFeb) => SalaryFormulaEngine.pt(
+        earnedGross: _earnedGross(e, days, dim),
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: isFeb,
+      ).round();
 
   static int _totalDed(
     EmployeeModel e, int days, int dim, bool isMsw, double mswAmount, bool isFeb,

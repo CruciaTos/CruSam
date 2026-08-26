@@ -7,6 +7,7 @@ import '../../core/storage/app_paths.dart';
 import '../../core/sync/sync_models.dart';
 import '../../core/sync/google_auth_service.dart';
 import '../models/employee_model.dart';
+import '../models/salary_formula_config_model.dart';
 import '../models/margin_settings_model.dart';
 import '../models/voucher_column_widths_model.dart';
 import '../models/bank_column_widths_model.dart';
@@ -31,6 +32,7 @@ class DatabaseHelper {
       onCreate: (db, v) async {
         await _createTables(db);
         await _seedCompanyConfig(db);
+        await _seedSalaryFormulaConfig(db);
       },
       onUpgrade: (db, old, v) async {
         await _migrate(db);
@@ -38,6 +40,7 @@ class DatabaseHelper {
       onOpen: (db) async {
         await _migrate(db);
         await _seedCompanyConfig(db);
+        await _seedSalaryFormulaConfig(db);
       },
     );
   }
@@ -262,6 +265,21 @@ class DatabaseHelper {
       bank_name TEXT, branch TEXT, account_no TEXT, ifsc_code TEXT, phone TEXT)''',
     );
 
+    // ── Salary formula config: PF/ESIC/PT/employer-contribution constants
+    //    that used to be hardcoded across the salary module. Single-row
+    //    table, same upsert-by-first-row pattern as company_config.
+    await db.execute(
+      '''CREATE TABLE IF NOT EXISTS salary_formula_config(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pf_rate REAL, pf_basic_threshold REAL, pf_cap_amount REAL,
+      esic_rate REAL, esic_gross_threshold REAL,
+      pt_female_threshold REAL, pt_male_tier1_threshold REAL,
+      pt_male_tier2_threshold REAL, pt_male_tier2_amount REAL,
+      pt_standard_amount REAL, pt_feb_amount REAL,
+      employer_pf_rate REAL, employer_esic_rate REAL,
+      attachment_b_per_employee REAL)''',
+    );
+
     await db.execute('''CREATE TABLE IF NOT EXISTS vouchers(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT, description TEXT, dept_code TEXT,
@@ -431,6 +449,17 @@ class DatabaseHelper {
       }
     }
     await _ensureSeedEmployees(db);
+  }
+
+  Future<void> _seedSalaryFormulaConfig(Database db) async {
+    final rows =
+        await db.query('salary_formula_config', columns: ['id'], limit: 1);
+    if (rows.isEmpty) {
+      await db.insert(
+        'salary_formula_config',
+        const SalaryFormulaConfigModel().toMap(),
+      );
+    }
   }
 
   // ── Sync helpers ──────────────────────────────────────────────────────────
@@ -932,6 +961,31 @@ class DatabaseHelper {
     } else {
       await db.update(
         'company_config',
+        data,
+        where: 'id=?',
+        whereArgs: [existing.first['id']],
+      );
+    }
+  }
+
+  // --- Salary Formula Config ---
+  Future<Map<String, dynamic>?> getSalaryFormulaConfig() async {
+    final rows = await (await database).query('salary_formula_config', limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<void> saveSalaryFormulaConfig(Map<String, dynamic> data) async {
+    final db = await database;
+    final existing = await db.query(
+      'salary_formula_config',
+      columns: ['id'],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await db.insert('salary_formula_config', data);
+    } else {
+      await db.update(
+        'salary_formula_config',
         data,
         where: 'id=?',
         whereArgs: [existing.first['id']],

@@ -17,6 +17,7 @@ import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../notifier/salary_data_notifier.dart';
+import 'salary_formula_engine.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const _black = PdfColor.fromInt(0xFF000000);
@@ -810,18 +811,17 @@ class SalaryPdfExportService {
     final eB     = daysInMonth == 0 ? 0.0 : emp.basicCharges * days / daysInMonth;
     final eO     = daysInMonth == 0 ? 0.0 : emp.otherCharges * days / daysInMonth;
     final eG     = eB + eO;
-    final pf     = eB >= 15000 ? 1800.0 : (eB * 0.12).round().toDouble();
-    final esic   = emp.grossSalary <= 21000 ? (eG * 0.0075).ceil().toDouble() : 0.0;
+    final pf     = SalaryFormulaEngine.pf(eB);
+    final esic   = SalaryFormulaEngine.esic(
+      fullGrossSalary: emp.grossSalary,
+      earnedGross: eG,
+    );
     final msw    = isMsw ? mswAmount : 0.0;
-    final female = emp.gender.toUpperCase() == 'F';
-    double pt;
-    if (female) {
-      pt = eG < 25000 ? 0 : (isFeb ? 300 : 200);
-    } else {
-      if (eG < 7500)       pt = 0;
-      else if (eG < 10000) pt = 175;
-      else                  pt = isFeb ? 300 : 200;
-    }
+    final pt     = SalaryFormulaEngine.pt(
+      earnedGross: eG,
+      isFemale: emp.gender.toUpperCase() == 'F',
+      isFeb: isFeb,
+    );
     return _SlipCalc(
         days: days, eBasic: eB, eOther: eO, pf: pf, esic: esic, msw: msw, pt: pt);
   }

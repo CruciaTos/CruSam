@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../data/db/database_helper.dart';
+import '../services/salary_formula_engine.dart';
 import 'salary_data_notifier.dart';
 
 class SalaryStateController extends ChangeNotifier {
@@ -70,8 +71,9 @@ class SalaryStateController extends ChangeNotifier {
       filteredEmployees.fold(0.0, (s, e) => s + e.grossSalary);
 
   double get totalEsicEligibleGrossFull =>
-      filteredEmployees.where((e) => e.grossSalary <= 21000).fold(
-        0.0, (s, e) => s + e.grossSalary);
+      filteredEmployees
+          .where((e) => SalaryFormulaEngine.esicApplicable(e.grossSalary))
+          .fold(0.0, (s, e) => s + e.grossSalary);
 
   // ── Day-prorated totals — used for earned salary display ──────────────────
   double get totalBasic    => totalBasicFull;
@@ -95,22 +97,22 @@ class SalaryStateController extends ChangeNotifier {
     final n = SalaryDataNotifier.instance;
     if (n.totalDays == 0) return 0;
     return filteredEmployees
-        .where((e) => e.grossSalary <= 21000)
+        .where((e) => SalaryFormulaEngine.esicApplicable(e.grossSalary))
         .fold(0.0, (s, e) =>
             s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
   }
 
   // ── Attachment A calculations (earned/prorated values) ────────────────────
-  /// PF = 13% of Total Earned Basic Salary
-  double get attachmentAPf       => (totalEarnedBasic * 0.1300).roundToDouble();
-  /// ESIC = 3.25% of Total Earned Gross of ESIC-eligible employees (gross <= 21000)
-  double get attachmentAEsic     => (totalEarnedEsicEligibleGross * 0.0325).roundToDouble();
+  /// PF = employer PF rate × Total Earned Basic Salary
+  double get attachmentAPf       => SalaryFormulaEngine.employerPf(totalEarnedBasic);
+  /// ESIC = employer ESIC rate × Total Earned Gross of ESIC-eligible employees
+  double get attachmentAEsic     => SalaryFormulaEngine.employerEsic(totalEarnedEsicEligibleGross);
   double get attachmentASubtotal => totalEarnedGross + attachmentAPf + attachmentAEsic;
   double get attachmentATotal    => attachmentASubtotal.ceilToDouble();
   double get attachmentARoundOff => attachmentATotal - attachmentASubtotal;
 
   // ── Attachment B calculations ──────────────────────────────────────────────
-  double get attachmentBTotal => employeeCount * 1753.0;
+  double get attachmentBTotal => SalaryFormulaEngine.attachmentBTotal(employeeCount);
 
   // ── Salary Invoice total (Attachment A + Attachment B) ────────────────────
   double get invoiceTotal => attachmentATotal + attachmentBTotal;

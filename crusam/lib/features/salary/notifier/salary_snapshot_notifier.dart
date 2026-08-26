@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:crusam/data/db/salary_snapshot_repository.dart';
 import '../models/salary_snapshot_model.dart';
+import '../services/salary_formula_engine.dart';
 import 'salary_data_notifier.dart';
 import 'salary_state_controller.dart';
 
@@ -151,21 +152,18 @@ class SalarySnapshotNotifier extends ChangeNotifier {
           totalDays == 0 ? 0.0 : e.otherCharges * days / totalDays;
       final earnedGross = earnedBasic + earnedOther;
 
-      final pf = earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round();
-      final esic = e.grossSalary <= 21000 ? (earnedGross * 0.0075).ceil() : 0;
+      final pf = SalaryFormulaEngine.pf(earnedBasic).round();
+      final esic = SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: earnedGross,
+      ).round();
       final msw = isMsw ? mswAmount.round() : 0;
 
-      final isFemale = e.gender.toUpperCase() == 'F';
-      int pt;
-      if (isFemale) {
-        pt = earnedGross < 25000 ? 0 : (isFeb ? 300 : 200);
-      } else if (earnedGross < 7500) {
-        pt = 0;
-      } else if (earnedGross < 10000) {
-        pt = 175;
-      } else {
-        pt = isFeb ? 300 : 200;
-      }
+      final pt = SalaryFormulaEngine.pt(
+        earnedGross: earnedGross,
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: isFeb,
+      ).round();
 
       final totalDeduction = pf + esic + msw + pt;
       final netSalary = earnedGross - totalDeduction;

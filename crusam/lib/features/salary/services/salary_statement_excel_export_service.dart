@@ -7,6 +7,7 @@ import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
+import 'salary_formula_engine.dart';
 
 /// Service to export Salary Statement to Excel (.xlsx) format.
 /// Basic, Other, and Gross columns show EARNED (prorated) values.
@@ -105,13 +106,18 @@ class ExcelExportService {
           ? e.grossSalary * days / daysInMonth
           : 0.0;
 
-      final pf      = hasDays ? (earnedBasic >= 15000 ? 1800 : (earnedBasic * 0.12).round()) : 0;
-      final esicInt = e.grossSalary <= 21000
-          ? (earnedGross * 0.0075).ceil()
-          : 0;
+      final pf      = hasDays ? SalaryFormulaEngine.pf(earnedBasic).round() : 0;
+      final esicInt = SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: earnedGross,
+      ).round();
       final mswVal        = isMsw ? mswAmount.round() : 0;
       final displayedMsw  = hasDays ? mswVal : 0;
-      final pt            = _calculatePT(earnedGross, e.gender, isFeb);
+      final pt            = SalaryFormulaEngine.pt(
+        earnedGross: earnedGross,
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: isFeb,
+      ).round();
       final totalDed      = pf + esicInt + mswVal + pt;
       final displayedTotalDed = hasDays ? totalDed : 0;
       final net           = hasDays ? earnedGross - totalDed : 0.0;
@@ -316,18 +322,6 @@ class ExcelExportService {
   static void _applyBorder(Range range) {
     range.cellStyle.borders.all.lineStyle = LineStyle.thin;
     range.cellStyle.borders.all.color = '#000000';
-  }
-
-  static int _calculatePT(
-      double earnedGross, String gender, bool isFeb) {
-    if (earnedGross == 0) return 0;
-    final isFemale = gender.toUpperCase() == 'F';
-    if (isFemale) {
-      return earnedGross < 25000 ? 0 : (isFeb ? 300 : 200);
-    }
-    if (earnedGross < 7500)  return 0;
-    if (earnedGross < 10000) return 175;
-    return isFeb ? 300 : 200;
   }
 
   static Future<String?> _saveExcelFile(

@@ -16,6 +16,7 @@ import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_statement_excel_export_service.dart';
 import '../services/salary_statement_pdf_service.dart';
 import '../services/salary_disbursement_service.dart';
+import '../services/salary_formula_engine.dart';
 import '../models/salary_disbursement_model.dart';
 import '../widgets/salary_statement_preview.dart';
 
@@ -795,28 +796,20 @@ class _LeftPaneState extends State<_LeftPane> {
     return e.otherCharges * d / widget.daysInMonth;
   }
 
-  int _pf(EmployeeModel e) {
-    final eb = _earnedBasic(e);
-    return eb == 0 ? 0 : (eb >= 15000 ? 1800 : (eb * 0.12).round());
-  }
+  int _pf(EmployeeModel e) => SalaryFormulaEngine.pf(_earnedBasic(e)).round();
 
-  int _esic(EmployeeModel e) {
-    if (e.grossSalary > 21000) return 0;
-    final eg = _earnedGross(e);
-    return eg == 0 ? 0 : (eg * 0.0075).ceil();
-  }
+  int _esic(EmployeeModel e) => SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: _earnedGross(e),
+      ).round();
 
   int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;
 
-  int _pt(EmployeeModel e) {
-    final eg = _earnedGross(e);
-    if (eg == 0) return 0;
-    final f = e.gender.toUpperCase() == 'F';
-    if (f) return eg < 25000 ? 0 : (widget.isFeb ? 300 : 200);
-    if (eg < 7500) return 0;
-    if (eg < 10000) return 175;
-    return widget.isFeb ? 300 : 200;
-  }
+  int _pt(EmployeeModel e) => SalaryFormulaEngine.pt(
+        earnedGross: _earnedGross(e),
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: widget.isFeb,
+      ).round();
 
   int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
 

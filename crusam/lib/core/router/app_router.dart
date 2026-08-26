@@ -7,6 +7,7 @@ import '../../features/master_data/presentation/employee_list_screen.dart';
 import '../../features/vouchers/presentation/voucher_builder_screen.dart';
 import '../../features/vouchers/presentation/invoices_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/salary/presentation/salary_formula_settings_screen.dart';
 import '../../features/salary/presentation/salary_employees_screen.dart';
 import '../../features/salary/presentation/salary_slips_screen.dart';
 import '../../features/salary/presentation/salary_bills_screen.dart';
@@ -69,6 +70,11 @@ class AppRouter {
             path: '/settings',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const SettingsScreen()),
+          ),
+          GoRoute(
+            path: '/salary-formula-settings',
+            pageBuilder: (context, state) => _buildPageTransition(
+                state, const SalaryFormulaSettingsScreen()),
           ),
           GoRoute(
             path: '/profile',

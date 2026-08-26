@@ -65,6 +65,7 @@ const _kNav = <_NavItem>[
   _Route('/vouchers',         Icons.description_outlined,     'Voucher'),
   _Route('/invoices',         Icons.receipt_outlined,         'Invoices'),
   _Route('/settings',         Icons.settings_outlined,        'Company-Config'),
+  _Route('/salary-formula-settings', Icons.calculate_outlined, 'Salary Formula'),
   _Route('/salary-employees', Icons.badge_outlined,           'Employee Salary'),
   _Route('/saved-salary',     Icons.history_outlined,         'Saved Salary'),
   _Group(Icons.payments_outlined, 'Salary-Output', [

@@ -24,6 +24,7 @@ import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 
 import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
+import 'salary_formula_engine.dart';
 
 class SalaryDisbursementService {
   SalaryDisbursementService._();
@@ -90,7 +91,7 @@ class SalaryDisbursementService {
   static int get _dataEndCol   => _dataStartCol + 7; // 8 columns (0..7)
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Net salary calculation (unchanged)
+  // Net salary calculation — deduction math now lives in SalaryFormulaEngine
   // ─────────────────────────────────────────────────────────────────────────
   static double _computeNetSalary({
     required EmployeeModel employee,
@@ -103,20 +104,17 @@ class SalaryDisbursementService {
     if (days == 0 || daysInMonth == 0) return 0;
     final eBasic = employee.basicCharges * days / daysInMonth;
     final eGross = employee.grossSalary  * days / daysInMonth;
-    final pf     = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).round().toDouble();
-    final esic   = employee.grossSalary <= 21000
-        ? (eGross * 0.0075).ceilToDouble()
-        : 0.0;
+    final pf     = SalaryFormulaEngine.pf(eBasic);
+    final esic   = SalaryFormulaEngine.esic(
+      fullGrossSalary: employee.grossSalary,
+      earnedGross: eGross,
+    );
     final msw    = isMsw ? mswAmount : 0.0;
-    final female = employee.gender.toUpperCase() == 'F';
-    double pt;
-    if (female) {
-      pt = eGross < 25000 ? 0 : (isFeb ? 300 : 200);
-    } else {
-      if (eGross < 7500)       pt = 0;
-      else if (eGross < 10000) pt = 175;
-      else                     pt = isFeb ? 300 : 200;
-    }
+    final pt     = SalaryFormulaEngine.pt(
+      earnedGross: eGross,
+      isFemale: employee.gender.toUpperCase() == 'F',
+      isFeb: isFeb,
+    );
     return eGross - pf - esic - msw - pt;
   }
 

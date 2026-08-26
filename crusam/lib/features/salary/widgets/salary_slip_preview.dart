@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../data/models/company_config_model.dart';
 import '../../../data/models/employee_model.dart';
 import '../../../features/salary/notifier/salary_data_notifier.dart';
+import '../services/salary_formula_engine.dart';
 
 /// A4 Salary Slip Preview — mirrors a standard payslip format.
 /// Designed to be reused across company codes (F&B, I&L, etc.)
@@ -661,20 +662,17 @@ class SalarySlipPairPage extends StatelessWidget {
     final eGross = eBasic + eOther;
 
     // Deductions
-    final pf = eBasic >= 15000 ? 1800.0 : (eBasic * 0.12).roundToDouble();
-    final esicApplicable = emp.grossSalary <= 21000;
-    final esic = esicApplicable ? (eGross * 0.0075).ceilToDouble() : 0.0;
+    final pf = SalaryFormulaEngine.pf(eBasic);
+    final esic = SalaryFormulaEngine.esic(
+      fullGrossSalary: emp.grossSalary,
+      earnedGross: eGross,
+    );
     final msw = isMsw ? mswAmount : 0.0;
-    final isFemale = emp.gender.toUpperCase() == 'F';
-    double pt;
-    if (isFemale) {
-      pt = eGross < 25000 ? 0 : (isFeb ? 300 : 200);
-    } else {
-      if (eGross < 7500) {
-        pt = 0;
-      } else if (eGross < 10000) pt = 175;
-      else                     pt = isFeb ? 300 : 200;
-    }
+    final pt = SalaryFormulaEngine.pt(
+      earnedGross: eGross,
+      isFemale: emp.gender.toUpperCase() == 'F',
+      isFeb: isFeb,
+    );
 
     return SalarySlipPreview(
       config: config,

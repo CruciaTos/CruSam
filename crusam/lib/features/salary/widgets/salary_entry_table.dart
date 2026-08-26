@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../data/models/employee_model.dart';
+import '../services/salary_formula_engine.dart';
 
 class SalaryEntryTable extends StatefulWidget {
   final List<EmployeeModel> employees;
@@ -85,32 +86,23 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
 
   double _earnedGross(EmployeeModel e) => _earnedBasic(e) + _earnedOther(e);
 
-  int _pf(EmployeeModel e) {
-  final eb = _earnedBasic(e);
-  return eb >= 15000 ? 1800 : (eb * 0.12).round();
-}
+  int _pf(EmployeeModel e) => SalaryFormulaEngine.pf(_earnedBasic(e)).round();
 
-  bool _esicApplicable(EmployeeModel e) => e.grossSalary <= 21000;
+  bool _esicApplicable(EmployeeModel e) =>
+      SalaryFormulaEngine.esicApplicable(e.grossSalary);
 
-  int _esic(EmployeeModel e) {
-    if (!_esicApplicable(e)) return 0;
-    return (_earnedGross(e) * 0.0075).ceil();
-  }
+  int _esic(EmployeeModel e) => SalaryFormulaEngine.esic(
+        fullGrossSalary: e.grossSalary,
+        earnedGross: _earnedGross(e),
+      ).round();
 
   int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;
 
-  int _pt(EmployeeModel e) {
-    final g = _earnedGross(e);
-    final isFemale = e.gender.toUpperCase() == 'F';
-    if (isFemale) {
-      if (g < 25000) return 0;
-      return widget.isFeb ? 300 : 200;
-    } else {
-      if (g < 7500) return 0;
-      if (g < 10000) return 175;
-      return widget.isFeb ? 300 : 200;
-    }
-  }
+  int _pt(EmployeeModel e) => SalaryFormulaEngine.pt(
+        earnedGross: _earnedGross(e),
+        isFemale: e.gender.toUpperCase() == 'F',
+        isFeb: widget.isFeb,
+      ).round();
 
   int _td(EmployeeModel e) => _pf(e) + _esic(e) + _msw() + _pt(e);
   double _net(EmployeeModel e) => _earnedGross(e) - _td(e);
