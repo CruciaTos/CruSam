@@ -2,9 +2,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:crusam/data/db/salary_snapshot_repository.dart';
-import '../models/salary_snapshot_model.dart';
-import '../services/salary_formula_engine.dart';
+import 'package:crusam_core/crusam_core.dart';
 import 'salary_data_notifier.dart';
+import 'salary_formula_notifier.dart';
 import 'salary_state_controller.dart';
 
 /// Lightweight display model pairing a saved salary period's metadata with
@@ -135,61 +135,16 @@ class SalarySnapshotNotifier extends ChangeNotifier {
   SalarySnapshotPayload _buildPayload() {
     final n = SalaryDataNotifier.instance;
     final sc = SalaryStateController.instance;
-    final isMsw = n.isMsw;
-    final mswAmount = n.mswAmount;
-    final isFeb = n.isFeb;
-    final totalDays = n.totalDays;
-
-    final employeeData = <SalarySnapshotEmployeeData>[];
-    for (final e in sc.employees) {
-      final id = e.id;
-      if (id == null) continue;
-
-      final days = n.getDays(id);
-      final earnedBasic =
-          totalDays == 0 ? 0.0 : e.basicCharges * days / totalDays;
-      final earnedOther =
-          totalDays == 0 ? 0.0 : e.otherCharges * days / totalDays;
-      final earnedGross = earnedBasic + earnedOther;
-
-      final pf = SalaryFormulaEngine.pf(earnedBasic).round();
-      final esic = SalaryFormulaEngine.esic(
-        fullGrossSalary: e.grossSalary,
-        earnedGross: earnedGross,
-      ).round();
-      final msw = isMsw ? mswAmount.round() : 0;
-
-      final pt = SalaryFormulaEngine.pt(
-        earnedGross: earnedGross,
-        isFemale: e.gender.toUpperCase() == 'F',
-        isFeb: isFeb,
-      ).round();
-
-      final totalDeduction = pf + esic + msw + pt;
-      final netSalary = earnedGross - totalDeduction;
-
-      employeeData.add(
-        SalarySnapshotEmployeeData(
-          employeeId: id,
-          employeeName: e.name,
-          code: e.code,
-          pfNo: e.pfNo,
-          days: days,
-          basicCharges: e.basicCharges,
-          otherCharges: e.otherCharges,
-          grossSalary: e.grossSalary,
-          earnedBasic: earnedBasic,
-          earnedOther: earnedOther,
-          earnedGross: earnedGross,
-          pf: pf,
-          esic: esic,
-          msw: msw,
-          pt: pt,
-          totalDeduction: totalDeduction,
-          netSalary: netSalary,
-        ),
-      );
-    }
+    // Per-employee math shared with the MCP server (crusam_core).
+    final input = SalaryMonthInput(
+      month: n.month,
+      year: n.year,
+      applyMsw: n.applyMsw,
+      mswAmount: n.mswAmount,
+    );
+    final employeeData = SalaryMonthCalculator(
+      SalaryFormulaNotifier.instance.config,
+    ).employeesData(sc.employees, n.getDays, input);
 
     return SalarySnapshotPayload(
       month: n.month,

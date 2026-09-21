@@ -1,0 +1,85 @@
+{
+  "manifest_version": "0.3",
+  "name": "crusam",
+  "display_name": "CruSam",
+  "version": "1.2.0",
+  "description": "Read and update your CruSam data (employees, invoices, salaries) from Claude. Runs only on this computer.",
+  "long_description": "Connects Claude Desktop to the CruSam app's database on this computer. Claude can look up employees and clients, create invoices from a photo of a handwritten list (with a preview before saving), calculate and save salary months, create the same PDF and Excel documents as the app, and change settings. Emails are sent by the CruSam app itself through the Gmail account connected in its Profile screen, and only after you approve them. The server has no network access and backs up the database before its first change in each session.\n\nLeave 'CruSam database' empty to use the CruSam app's own database automatically.",
+  "author": {
+    "name": "Soham Boridkar",
+    "email": "sohamboridkar@gmail.com"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/bin/server.exe",
+    "mcp_config": {
+      "command": "${__dirname}/server/bin/server.exe",
+      "args": [],
+      "env": {
+        "CRUSAM_DB_PATH": "${user_config.db_path}",
+        "CRUSAM_READ_ONLY": "${user_config.read_only}",
+        "CRUSAM_USER_EMAIL": "${user_config.user_email}"
+      }
+    }
+  },
+  "user_config": {
+    "db_path": {
+      "type": "file",
+      "title": "CruSam database (optional)",
+      "description": "Leave empty to use the CruSam app's database on this computer automatically. Only set this to use a copy (e.g. for testing).",
+      "required": false,
+      "default": ""
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only",
+      "description": "When on, Claude can look at your data but cannot change anything.",
+      "required": false,
+      "default": false
+    },
+    "user_email": {
+      "type": "string",
+      "title": "Your email (optional)",
+      "description": "Recorded as the creator of invoices Claude saves, like the app does with your Google account.",
+      "required": false,
+      "default": ""
+    }
+  },
+  "tools": [
+    { "name": "get_app_overview", "description": "What CruSam contains and its conventions" },
+    { "name": "match_employees", "description": "Match handwritten names to employees" },
+    { "name": "find_employees" }, { "name": "list_employees" }, { "name": "get_employee" },
+    { "name": "create_employee" }, { "name": "update_employee" }, { "name": "delete_employee" },
+    { "name": "find_clients" }, { "name": "list_clients" }, { "name": "create_client" },
+    { "name": "update_client" }, { "name": "delete_client" },
+    { "name": "list_invoices" }, { "name": "get_invoice" },
+    { "name": "create_invoice", "description": "Create an invoice (with dry-run preview and duplicate protection)" },
+    { "name": "update_invoice" }, { "name": "delete_invoice" },
+    { "name": "calculate_salary_month", "description": "Salaries from attendance; optionally save the month" },
+    { "name": "list_saved_salary_months" }, { "name": "get_saved_salary_month" },
+    { "name": "rename_saved_salary_month" }, { "name": "delete_saved_salary_month" },
+    { "name": "salary_analytics" }, { "name": "list_salary_disbursements" }, { "name": "get_salary_disbursement" },
+    { "name": "get_company_settings" }, { "name": "update_company_settings" },
+    { "name": "get_salary_formula_settings" }, { "name": "update_salary_formula_settings" },
+    { "name": "list_item_descriptions" }, { "name": "add_item_description" }, { "name": "delete_item_description" },
+    { "name": "export_invoice_documents", "description": "Invoice PDF and bank disbursement PDF/Excel" },
+    { "name": "export_salary_documents", "description": "Salary bills, attachments, statement and slips" },
+    { "name": "create_salary_disbursement" }, { "name": "export_salary_disbursement_excel" },
+    { "name": "send_email", "description": "Email documents through the app's connected Gmail" },
+    { "name": "list_email_outbox" }, { "name": "cancel_email" }, { "name": "list_email_log" }
+  ],
+  "prompts_generated": true,
+  "prompts": [
+    { "name": "invoices_from_image", "description": "Invoices from a photo of a handwritten list", "text": "Provided by the server." },
+    { "name": "salary_from_attendance", "description": "Salary month from a photo of the attendance sheet", "text": "Provided by the server." },
+    { "name": "month_end", "description": "Salary documents, bank disbursement and emails for a month", "text": "Provided by the server." },
+    { "name": "email_invoice", "description": "Email an invoice through the app's Gmail", "text": "Provided by the server." },
+    { "name": "whats_pending", "description": "Read-only checklist of what's left for a month", "text": "Provided by the server." }
+  ],
+  "keywords": ["crusam", "invoices", "payroll", "local"],
+  "license": "UNLICENSED",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["win32"]
+  }
+}

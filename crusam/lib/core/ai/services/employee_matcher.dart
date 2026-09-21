@@ -1,5 +1,6 @@
 // lib/core/ai/services/employee_matcher.dart
-import 'package:crusam/data/models/employee_model.dart';
+
+import 'package:crusam_core/crusam_core.dart';
 
 enum NameMatchConfidence { exact, high, low, none }
 

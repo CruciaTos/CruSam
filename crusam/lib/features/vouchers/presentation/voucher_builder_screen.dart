@@ -43,16 +43,14 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/voucher_model.dart';
 import '../../master_data/notifiers/employee_notifier.dart';    // ← NEW import
 import '../../salary/notifier/salary_data_notifier.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/item_description_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
-import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
 import 'package:crusam/shared/widgets/full_screen_loader.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ────────────────────────────────────────────────────────────────────────────
 //  Design tokens  (private to this file)
@@ -72,8 +70,6 @@ class _Tok {
   static const surfaceAlt  = Color(0xFFEEF2FF); // indigo-50
   static const badgeBg     = Color(0xFF1E1B4B); // indigo-950
   static const badgeFg     = Color(0xFFFFFFFF); // white
-  static const dotFilled   = Color(0xFF4338CA); // indigo-700
-  static const dotEmpty    = Color(0xFFC7D2FE); // indigo-200
 
   // Font families
   static const fbody  = 'NotoSans';
@@ -141,7 +137,7 @@ class _Tok {
 
 // ── Shared field decoration ──────────────────────────────────────────────────
 
-InputDecoration _inputDec({String? hint, Widget? suffix, bool mono = false}) =>
+InputDecoration _inputDec({String? hint, Widget? suffix}) =>
     InputDecoration(
       hintText      : hint,
       hintStyle     : const TextStyle(
@@ -387,7 +383,7 @@ class _MetadataCardState extends State<_MetadataCard> {
         borderRadius: BorderRadius.circular(_Tok.cRadius),
         boxShadow   : [
           BoxShadow(
-            color     : Colors.black.withOpacity(0.04),
+            color     : Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset    : const Offset(0, 2),
           ),
@@ -924,7 +920,7 @@ class _DeptDropdownState extends State<_DeptDropdown> {
                   padding  : const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                   decoration: BoxDecoration(
                     color       : _isOpen
-                        ? _Tok.surfaceAlt.withOpacity(0.45)
+                        ? _Tok.surfaceAlt.withValues(alpha: 0.45)
                         : _Tok.surface,
                     borderRadius: BorderRadius.circular(_Tok.radius),
                     border      : Border.all(
@@ -934,7 +930,7 @@ class _DeptDropdownState extends State<_DeptDropdown> {
                     boxShadow: (_isOpen || _hasFocus)
                         ? [
                             BoxShadow(
-                              color     : _Tok.borderFocus.withOpacity(0.10),
+                              color     : _Tok.borderFocus.withValues(alpha: 0.10),
                               blurRadius: 8,
                               offset    : const Offset(0, 1),
                             ),
@@ -1018,7 +1014,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         );
       }
     } finally {
-      hideLoader(context);
+      hideLoader();
     }
   }
 
@@ -1051,7 +1047,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         );
       }
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _exportingBankSheet = false);
     }
   }
@@ -1103,7 +1099,7 @@ class _VoucherBuilderScreenState extends State<VoucherBuilderScreen> {
         );
       }
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -1240,11 +1236,9 @@ class _RowsTableState extends State<_RowsTable> {
   }
 
   void _disposeNodeMap(Map<String, FocusNode> map) {
-    for (final node in map.values) node.dispose();
-    map.clear();
-  }
-
-  void _disposeKeyMap(Map<String, GlobalKey> map) {
+    for (final node in map.values) {
+      node.dispose();
+    }
     map.clear();
   }
 
@@ -1255,8 +1249,12 @@ class _RowsTableState extends State<_RowsTable> {
       final removed = map.keys
           .where((id) => !ids.contains(id))
           .toList(growable: false);
-      for (final id in removed) map.remove(id)?.dispose();
-      for (final id in ids) map.putIfAbsent(id, FocusNode.new);
+      for (final id in removed) {
+        map.remove(id)?.dispose();
+      }
+      for (final id in ids) {
+        map.putIfAbsent(id, FocusNode.new);
+      }
     }
 
     syncMap(_employeeFocusNodes);
@@ -1269,7 +1267,9 @@ class _RowsTableState extends State<_RowsTable> {
   void _syncRowKeys() {
     final ids = notifier.current.rows.map((r) => r.id).toSet();
     final removed = _rowKeys.keys.where((id) => !ids.contains(id)).toList(growable: false);
-    for (final id in removed) _rowKeys.remove(id);
+    for (final id in removed) {
+      _rowKeys.remove(id);
+    }
     for (final id in ids) {
       _rowKeys.putIfAbsent(id, () => GlobalKey());
     }
@@ -1510,7 +1510,7 @@ class _RowsTableState extends State<_RowsTable> {
                   boxShadow: widget.addEmployeeButtonFocus.hasFocus
                       ? [
                           BoxShadow(
-                            color     : AppColors.indigo500.withOpacity(0.22),
+                            color     : AppColors.indigo500.withValues(alpha: 0.22),
                             blurRadius: 10,
                             offset    : const Offset(0, 1),
                           ),

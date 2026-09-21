@@ -13,7 +13,6 @@
 // output-format-selector blueprint §3.3.
 
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:googleapis/gmail/v1.dart' as gmail;

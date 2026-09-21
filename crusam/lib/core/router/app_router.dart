@@ -6,6 +6,7 @@ import '../../features/dashboard/presentation/dashboard_screen.dart';
 import '../../features/master_data/presentation/employee_list_screen.dart';
 import '../../features/vouchers/presentation/voucher_builder_screen.dart';
 import '../../features/vouchers/presentation/invoices_screen.dart';
+import '../../features/clients/presentation/clients_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/salary/presentation/salary_formula_settings_screen.dart';
 import '../../features/salary/presentation/salary_employees_screen.dart';
@@ -19,7 +20,6 @@ import '../../features/salary/presentation/salary_attachment_b_screen.dart';
 import '../../features/salary/presentation/salary_analytics_screen.dart';
 import '../../features/salary/presentation/salary_snapshots_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
-import '../../features/profile/presentation/google_drive_debug_screen.dart';
 import '../../shared/widgets/coming_soon_screen.dart';
 
 class AppRouter {
@@ -67,6 +67,11 @@ class AppRouter {
                 _buildPageTransition(state, const InvoicesScreen()),
           ),
           GoRoute(
+            path: '/clients',
+            pageBuilder: (context, state) =>
+                _buildPageTransition(state, const ClientsScreen()),
+          ),
+          GoRoute(
             path: '/settings',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const SettingsScreen()),
@@ -80,11 +85,6 @@ class AppRouter {
             path: '/profile',
             pageBuilder: (context, state) =>
                 _buildPageTransition(state, const ProfileScreen()),
-          ),
-          GoRoute(
-            path: '/google-drive-debug',
-            pageBuilder: (context, state) => _buildPageTransition(
-                state, const GoogleDriveDebugScreen()),
           ),
           GoRoute(
             path: '/salary-employees',
@@ -118,7 +118,7 @@ class AppRouter {
           ),
           GoRoute(
             path: '/salary-disburse',
-            redirect: (_, __) => '/dashboard',
+            redirect: (_, _) => '/dashboard',
           ),
           GoRoute(
             path: '/salary-preview',

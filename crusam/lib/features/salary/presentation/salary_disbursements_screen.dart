@@ -6,11 +6,11 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
-import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_disbursement_notifier.dart';
 import '../widgets/send_disbursement_dialog.dart';
 import '../widgets/shared_salary_widgets.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryDisbursementsScreen extends StatefulWidget {
   const SalaryDisbursementsScreen({super.key});
@@ -44,7 +44,7 @@ class _SalaryDisbursementsScreenState
         _showSnack('Failed to generate disbursement.', isError: true);
       }
     } finally {
-      if (mounted) hideLoader(context);
+      if (mounted) hideLoader();
     }
   }
 
@@ -59,7 +59,7 @@ class _SalaryDisbursementsScreenState
         _showSnack('Export failed.', isError: true);
       }
     } finally {
-      if (mounted) hideLoader(context);
+      if (mounted) hideLoader();
     }
   }
 
@@ -405,9 +405,11 @@ class _LeftPane extends StatelessWidget {
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: AppTextStyles.small),
+            Expanded(
+              child: Text(label, style: AppTextStyles.small, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Text(value,
                 style: AppTextStyles.small.copyWith(
                   color:      color,
@@ -675,7 +677,7 @@ class _PreviewPane extends StatelessWidget {
                           child: ListView.separated(
                             padding: EdgeInsets.zero,
                             itemCount: candidates.length + 1, // +1 for total row
-                            separatorBuilder: (_, __) => const Divider(
+                            separatorBuilder: (_, _) => const Divider(
                                 height: 1, color: AppColors.slate800),
                             itemBuilder: (ctx, i) {
                               if (i == candidates.length) {
@@ -731,7 +733,6 @@ class _PreviewHeader extends StatelessWidget {
       ),
       child: Row(
         children: List.generate(headers.length, (i) {
-          final isFirst = i == 0;
           final isAmount = i == 0;
           return Expanded(
             flex: colFlex[i],
@@ -880,7 +881,6 @@ class _TotalRow extends StatelessWidget {
       child: Row(
         children: List.generate(8, (i) {
           final isAmount = i == 0;
-          final isBene   = i == 5;
           return Expanded(
             flex: colFlex[i],
             child: Container(

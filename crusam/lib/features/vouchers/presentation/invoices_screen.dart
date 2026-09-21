@@ -3,11 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../shared/utils/format_utils.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/voucher_row_model.dart';
 import '../../../core/preferences/export_preferences_notifier.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../widgets/invoice_preview_dialog.dart';
@@ -15,73 +11,13 @@ import '../widgets/send_invoice_dialog.dart';
 import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/email_log_model.dart';
 import 'package:go_router/go_router.dart';
+import 'package:crusam_core/crusam_core.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – shared with SettingsScreen
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-  static const badgeBg     = Color(0xFF1E1B4B);
-  static const badgeFg     = Color(0xFFFFFFFF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-  static const fxcond = 'NotoSansExtraCondensed';
-
-  // Text styles
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsBadge = TextStyle(
-    fontFamily   : fxcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 11,
-    letterSpacing: 2.0,
-    color        : badgeFg,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-
-  // Dimensions
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padH     = 18.0;
-  static const double padV     = 16.0;
-}
+typedef _Tok = InkTokens;
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key});
@@ -248,16 +184,24 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   }
   static void _openFile(String path) {
     try {
-      if (Platform.isWindows) Process.run('cmd', ['/c', 'start', '', path]);
-      else if (Platform.isMacOS) Process.run('open', [path]);
-      else if (Platform.isLinux) Process.run('xdg-open', [path]);
+      if (Platform.isWindows) {
+        Process.run('cmd', ['/c', 'start', '', path]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [path]);
+      } else if (Platform.isLinux) {
+        Process.run('xdg-open', [path]);
+      }
     } catch (_) {}
   }
   static void _openFolder(String folder) {
     try {
-      if (Platform.isWindows) Process.run('explorer', [folder]);
-      else if (Platform.isMacOS) Process.run('open', [folder]);
-      else if (Platform.isLinux) Process.run('xdg-open', [folder]);
+      if (Platform.isWindows) {
+        Process.run('explorer', [folder]);
+      } else if (Platform.isMacOS) {
+        Process.run('open', [folder]);
+      } else if (Platform.isLinux) {
+        Process.run('xdg-open', [folder]);
+      }
     } catch (_) {}
   }
 
@@ -284,7 +228,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.receipt_long_outlined, size: 64, color: _Tok.inkMuted.withOpacity(0.5)),
+                      Icon(Icons.receipt_long_outlined, size: 64, color: _Tok.inkMuted.withValues(alpha: 0.5)),
                       const SizedBox(height: 16),
                       Text('No invoices yet', style: _Tok.tsMeta.copyWith(fontSize: 16, color: _Tok.inkMuted, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 4),
@@ -402,7 +346,7 @@ class _InvoiceCard extends StatelessWidget {
         border: Border.all(color: _Tok.border),
         borderRadius: BorderRadius.circular(_Tok.cRadius),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 2)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 2)),
         ],
       ),
       child: Padding(

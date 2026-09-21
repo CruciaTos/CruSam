@@ -8,71 +8,12 @@ import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 import '../widgets/send_salary_dialog.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens — same as the redesigned Invoices & Settings screens
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-  static const badgeBg     = Color(0xFF1E1B4B);
-  static const badgeFg     = Color(0xFFFFFFFF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-  static const fxcond = 'NotoSansExtraCondensed';
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsBadge = TextStyle(
-    fontFamily   : fxcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 11,
-    letterSpacing: 2.0,
-    color        : badgeFg,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padH     = 18.0;
-  static const double padV     = 16.0;
-}
+typedef _Tok = InkTokens;
 
 class SalarySnapshotsScreen extends StatefulWidget {
   const SalarySnapshotsScreen({super.key});
@@ -256,7 +197,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                           ? const _EmptyState()
                           : ListView.separated(
                               itemCount: summaries.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 8),
                               itemBuilder: (ctx, i) => _SavedSalaryCard(
                                 summary: summaries[i],
@@ -368,7 +309,7 @@ class _SavedSalaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(_Tok.cRadius),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -439,7 +380,7 @@ class _SavedSalaryCard extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: _Tok.border.withOpacity(0.4),
+                                color: _Tok.border.withValues(alpha: 0.4),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
@@ -565,7 +506,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.calendar_month_outlined,
               size: 48,
-              color: _Tok.inkMuted.withOpacity(0.4),
+              color: _Tok.inkMuted.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
             Text(

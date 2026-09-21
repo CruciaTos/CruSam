@@ -1,8 +1,8 @@
+import 'package:crusam_core/crusam_core.dart';
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../shared/utils/format_utils.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
 
 class BankSplitCard extends StatelessWidget {
   final double idbiToOther;

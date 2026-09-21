@@ -1,6 +1,6 @@
-import 'package:crusam/data/models/voucher_column_widths_model.dart';
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class VoucherColumnWidthsNotifier extends ChangeNotifier {
   VoucherColumnWidthsSettings _settings = const VoucherColumnWidthsSettings();

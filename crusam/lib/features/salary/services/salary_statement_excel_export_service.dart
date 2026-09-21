@@ -5,9 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 
 import '../../../core/preferences/export_preferences_notifier.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/employee_model.dart';
-import 'salary_formula_engine.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 /// Service to export Salary Statement to Excel (.xlsx) format.
 /// Basic, Other, and Gross columns show EARNED (prorated) values.
@@ -347,7 +345,7 @@ class ExcelExportService {
       }
 
       final String path =
-          '${directory!.path}${Platform.pathSeparator}$fileName';
+          '${directory.path}${Platform.pathSeparator}$fileName';
       await File(path).writeAsBytes(bytes, flush: true);
       return path;
     } catch (e) {

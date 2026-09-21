@@ -1,8 +1,8 @@
+import 'package:crusam_core/crusam_core.dart';
 import 'package:flutter/material.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_text_styles.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../data/models/employee_model.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/app_spacing.dart';
 
 /// A searchable employee picker that supports keyboard navigation.
 ///
@@ -235,7 +235,7 @@ class _EmployeeList extends StatelessWidget {
     return ListView.separated(
       controller: scrollController,
       itemCount: employees.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, thickness: 0.5),
+      separatorBuilder: (_, _) => const Divider(height: 1, thickness: 0.5),
       itemBuilder: (_, i) {
         final emp = employees[i];
         final isSelected = emp.id?.toString() == selectedId;
@@ -273,7 +273,7 @@ class _EmployeeTile extends StatelessWidget {
     // Visual feedback for keyboard highlight
     final Color? tileColor;
     if (isHighlighted) {
-      tileColor = AppColors.indigo50.withOpacity(0.6);
+      tileColor = AppColors.indigo50.withValues(alpha: 0.6);
     } else if (isSelected) {
       tileColor = AppColors.slate50;
     } else {

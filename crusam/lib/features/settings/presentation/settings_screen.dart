@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/sync/google_auth_service.dart';
-import '../../../data/models/company_config_model.dart';
 import '../notifiers/settings_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens — compact, label weight w600, label size reduced to 11
@@ -241,7 +241,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(_Tok.cRadius),
                 boxShadow   : [
                   BoxShadow(
-                    color     : Colors.black.withOpacity(0.04),
+                    color     : Colors.black.withValues(alpha: 0.04),
                     blurRadius: 12,
                     offset    : const Offset(0, 2),
                   ),

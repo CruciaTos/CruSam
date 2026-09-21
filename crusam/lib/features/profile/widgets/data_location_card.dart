@@ -10,66 +10,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/storage/app_paths.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – consistent with the indigo theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink        = Color(0xFF1E1B4B);
-  static const inkLight   = Color(0xFF3730A3);
-  static const inkMuted   = Color(0xFF818CF8);
-  static const border     = Color(0xFFC7D2FE);
-  static const divider    = Color(0xFFE0E7FF);
-  static const surface    = Color(0xFFFFFFFF);
-  static const surfaceAlt = Color(0xFFEEF2FF);
-
-  static const fbody = 'NotoSans';
-  static const fcond = 'NotoSansCondensed';
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsBody = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-  );
-
-  static const tsSmall = TextStyle(
-    fontFamily : fcond,
-    fontWeight : FontWeight.w500,
-    fontSize   : 11,
-    color      : inkMuted,
-  );
-
-  static const tsMono = TextStyle(
-    fontFamily: 'RobotoMono', // monospace font — keep as-is or replace if you have one
-    fontWeight: FontWeight.w400,
-    fontSize  : 12,
-    color     : ink,
-  );
-
-  static const double radius  = 6.0;
-  static const double cRadius = 10.0;
-  static const double padH    = 18.0;
-  static const double padV    = 16.0;
-}
+typedef _Tok = InkTokens;
 
 class DataLocationCard extends StatefulWidget {
   const DataLocationCard({super.key});
@@ -134,7 +80,7 @@ class _DataLocationCardState extends State<DataLocationCard> {
         borderRadius: BorderRadius.circular(_Tok.cRadius),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),

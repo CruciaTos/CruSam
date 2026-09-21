@@ -3,14 +3,12 @@ import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/voucher_row_model.dart';
 import 'package:crusam/core/ai/services/classification_result.dart';
 import 'package:crusam/core/ai/services/semantic_index_service.dart';
 import 'package:crusam/core/ai/services/semantic_index_formatter.dart';
 import 'package:crusam/core/ai/services/semantic_index_models.dart';
 import '../../../data/db/database_helper.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 /// Builds a rich [AppContext] from live notifier state for injection into
 /// [AiChatNotifier] before every message.
@@ -185,11 +183,9 @@ Phone: ${config['phone']}
       employeeCount: employees.length,
       totalSalary: totalBasic + totalOther,
       pendingVouchers:
-          voucherNotifier != null
-              ? voucherNotifier.savedVouchers
+          voucherNotifier?.savedVouchers
                   .where((v) => v.status == VoucherStatus.draft)
-                  .length
-              : null,
+                  .length,
       dashboardSummary: dashboardSummary,
       extra: combined.isEmpty ? null : combined,
     );

@@ -43,7 +43,7 @@ import 'package:crusam/core/ai/services/semantic_index_models.dart';
 import 'package:crusam/core/ai/services/semantic_index_repository.dart';
 import 'package:crusam/core/ai/services/text_vectorizer.dart';
 import 'package:crusam/data/db/database_helper.dart';
-import 'package:crusam/data/models/employee_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ── Service ──────────────────────────────────────────────────────────────────
 

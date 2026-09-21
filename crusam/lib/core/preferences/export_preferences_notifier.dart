@@ -1,24 +1,14 @@
 // lib/core/preferences/export_preferences_notifier.dart
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crusam_core/crusam_core.dart' show ExportPathTarget;
+
+export 'package:crusam_core/crusam_core.dart' show ExportPathTarget;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Enum for per‑target export paths — includes PDF and Excel variants
 // ═══════════════════════════════════════════════════════════════════════════
-enum ExportPathTarget {
-  taxInvoice,                // Tax Invoice & Voucher PDF
-  salary,                    // Salary Documents PDF
-  general,                   // Fallback (uses general PDF path)
-  salaryStatementExcel,      // Salary Statement Excel (monthly statement)
-  taxInvoiceExcel,           // Tax Invoice Excel (generated via Python)
-  bankDisbursementExcel;     // Bank Disbursement Excel sheet
-
-  /// Returns true for PDF targets, false for Excel targets.
-  bool get usesPdfDefaults =>
-      this != salaryStatementExcel &&
-      this != taxInvoiceExcel &&
-      this != bankDisbursementExcel;
-}
+// ExportPathTarget lives in crusam_core (shared with the MCP server).
 
 class ExportPreferencesNotifier extends ChangeNotifier {
   ExportPreferencesNotifier._();
@@ -27,14 +17,12 @@ class ExportPreferencesNotifier extends ChangeNotifier {
   // ── SharedPreferences keys ───────────────────────────────────────────────
   static const _kPdfPath              = 'export_pdf_path';
   static const _kExcelPath            = 'export_excel_path';
-  static const _kUseWidgetPdf         = 'use_widget_pdf_invoice_voucher';
   static const _kTaxInvoicePdfPath    = 'export_tax_invoice_pdf_path';
   static const _kSalaryPdfPath        = 'export_salary_pdf_path';
 
   // ── State ────────────────────────────────────────────────────────────────
   String _pdfPath           = '';
   String _excelPath         = '';
-  bool   _useWidgetPdf      = false;
   String _taxInvoicePdfPath = '';
   String _salaryPdfPath     = '';
   bool   _loaded            = false;
@@ -42,7 +30,6 @@ class ExportPreferencesNotifier extends ChangeNotifier {
   // ── Getters ──────────────────────────────────────────────────────────────
   String get pdfPath                         => _pdfPath;
   String get excelPath                       => _excelPath;
-  bool   get useWidgetPdfForInvoiceVoucher   => _useWidgetPdf;
   String get taxInvoicePdfPath               => _taxInvoicePdfPath;
   String get salaryPdfPath                   => _salaryPdfPath;
 
@@ -52,7 +39,6 @@ class ExportPreferencesNotifier extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _pdfPath           = prefs.getString(_kPdfPath)           ?? '';
     _excelPath         = prefs.getString(_kExcelPath)         ?? '';
-    _useWidgetPdf      = prefs.getBool(_kUseWidgetPdf)        ?? false;
     _taxInvoicePdfPath = prefs.getString(_kTaxInvoicePdfPath) ?? '';
     _salaryPdfPath     = prefs.getString(_kSalaryPdfPath)     ?? '';
     _loaded = true;
@@ -90,15 +76,6 @@ class ExportPreferencesNotifier extends ChangeNotifier {
     _excelPath = '';
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kExcelPath);
-    notifyListeners();
-  }
-
-  // ── Widget PDF toggle ────────────────────────────────────────────────────
-  Future<void> setUseWidgetPdf(bool value) async {
-    if (_useWidgetPdf == value) return;
-    _useWidgetPdf = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kUseWidgetPdf, value);
     notifyListeners();
   }
 

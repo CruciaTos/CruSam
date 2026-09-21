@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/voucher_row_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class DashboardNotifier extends ChangeNotifier {
   List<EmployeeModel> employees = [];

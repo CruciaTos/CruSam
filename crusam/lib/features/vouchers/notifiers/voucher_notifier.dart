@@ -1,15 +1,11 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:crusam_core/crusam_core.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/sync/drive_service.dart';
 import '../../../core/sync/google_auth_service.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/voucher_row_model.dart';
 
 class VoucherNotifier extends ChangeNotifier {
   // ── Singleton ──────────────────────────────────────────────────────────────
@@ -32,14 +28,16 @@ class VoucherNotifier extends ChangeNotifier {
     clientGstin:     AppConstants.defaultClientGstin,
   );
 
-  // ── Computed ───────────────────────────────────────────────────────────────
-  double get baseTotal   => current.rows.fold(0, (a, r) => a + r.amount);
-  double get cgst        => baseTotal * AppConstants.cgstRate;
-  double get sgst        => baseTotal * AppConstants.sgstRate;
-  double get totalTax    => cgst + sgst;
-  double get rawTotal    => baseTotal + totalTax;
-  double get finalTotal  => rawTotal.roundToDouble();
-  double get roundOff    => finalTotal - rawTotal;
+  // ── Computed (shared with the MCP server via crusam_core) ──────────────────
+  InvoiceTotals get _totals =>
+      InvoiceTotals.fromAmounts(current.rows.map((r) => r.amount));
+  double get baseTotal   => _totals.baseTotal;
+  double get cgst        => _totals.cgst;
+  double get sgst        => _totals.sgst;
+  double get totalTax    => _totals.totalTax;
+  double get rawTotal    => _totals.rawTotal;
+  double get finalTotal  => _totals.finalTotal;
+  double get roundOff    => _totals.roundOff;
 
   String get _companyBankIfscPrefix {
     final ifsc = config.ifscCode.trim().toUpperCase();
@@ -119,11 +117,10 @@ class VoucherNotifier extends ChangeNotifier {
   String addRow() {
     final id = '${DateTime.now().millisecondsSinceEpoch}'
                '${Random().nextInt(9999)}';
-    final row = VoucherRowModel(
-      id:                id,
-      deptCode:          current.deptCode,
-      debitAccountNumber:config.accountNo,
-      debitAccountName:  config.companyName,
+    final row = VoucherFactory.blankRow(
+      rowId:    id,
+      deptCode: current.deptCode,
+      config:   config,
     );
     current = current.copyWith(rows: [...current.rows, row]);
     _syncSalaryMetadata();
@@ -146,15 +143,7 @@ class VoucherNotifier extends ChangeNotifier {
     );
     updateRow(
       rowId,
-      (r) => r.copyWith(
-        employeeId:    empId,
-        employeeName:  emp.name,
-        ifscCode:      emp.ifscCode,
-        accountNumber: emp.accountNumber,
-        bankDetails:   emp.bankDetails,
-        branch:        emp.branch,
-        sbCode:        emp.sbCode,
-      ),
+      (r) => VoucherFactory.applyEmployee(r, emp).copyWith(employeeId: empId),
     );
   }
 
@@ -190,41 +179,25 @@ class VoucherNotifier extends ChangeNotifier {
     final now = DateTime.now().toUtc().toIso8601String();
     final email = GoogleAuthService.instance.userEmail?.trim().toLowerCase() ??
         'unknown';
-    final cloudId = current.cloudId.trim().isNotEmpty
-        ? current.cloudId
-        : const Uuid().v4();
-    final createdAt = current.createdAt.trim().isNotEmpty
-        ? current.createdAt
-        : now;
-    final createdBy = current.createdBy.trim().isNotEmpty
-        ? current.createdBy
-        : email;
 
-    final voucherToSave = enriched.copyWith(
-      status: VoucherStatus.saved,
-      cloudId: cloudId,
-      createdBy: createdBy,
-      updatedBy: email,
-      createdAt: createdAt,
-      updatedAt: now,
-      isDeleted: false,
-      deletedAt: null,
+    // Shared with the MCP server: totals, status, cloud id, audit fields,
+    // and the invoice date persisted into created_at.
+    final voucherToSave = VoucherFactory.prepareForSave(
+      current,
+      nowUtcIso: now,
+      userEmail: email,
+      newCloudId: () => const Uuid().v4(),
     );
 
     try {
       late final int voucherId;
-      late final String operation;
 
       if (current.id == null) {
-        operation = 'create';
-        voucherId = await DatabaseHelper.instance.insertVoucher(
+        voucherId = await DatabaseHelper.instance.insertVoucherWithRows(
           voucherToSave.toDbMap(),
+          (id) => [for (final row in current.rows) row.toDbMap(id)],
         );
-        for (final row in current.rows) {
-          await DatabaseHelper.instance.insertVoucherRow(row.toDbMap(voucherId));
-        }
       } else {
-        operation = 'update';
         voucherId = current.id!;
         await DatabaseHelper.instance.updateVoucherWithRows(
           voucherId,
@@ -239,15 +212,6 @@ class VoucherNotifier extends ChangeNotifier {
         id: voucherId,
         status: VoucherStatus.saved,
       );
-
-      final savedRow = await DatabaseHelper.instance.getVoucherById(voucherId);
-      if (savedRow != null && cloudId.isNotEmpty) {
-        await SyncManager.instance.pushInvoiceChange(
-          cloudId: cloudId,
-          operation: operation,
-          invoiceDbRow: savedRow,
-        );
-      }
 
       current = savedVoucher;
       _upsertSavedVoucher(savedVoucher);

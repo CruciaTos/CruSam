@@ -72,7 +72,7 @@ class _SalaryAnalyticsEmployeeTableState
                   Expanded(
                     child: ListView.separated(
                       itemCount: employees.length,
-                      separatorBuilder: (_, __) =>
+                      separatorBuilder: (_, _) =>
                           const Divider(height: 1, color: AppColors.slate100),
                       itemBuilder: (ctx, i) => _EmployeeRowGroup(
                         summary: employees[i],

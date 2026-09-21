@@ -6,7 +6,7 @@
 // `.instance.config` synchronously without threading it through every call.
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/salary_formula_config_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryFormulaNotifier extends ChangeNotifier {
   SalaryFormulaNotifier._();

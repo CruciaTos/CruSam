@@ -84,7 +84,6 @@ class SemanticIndexFormatter {
 
     final keptLines = <String>[];
     var usedChars = 0;
-    var cutIndex = result.matched.length; // index of the first dropped record
 
     for (var i = 0; i < result.matched.length; i++) {
       final line = result.matched[i].entry.displayText;
@@ -92,7 +91,6 @@ class SemanticIndexFormatter {
       final cost = line.length + 1;
 
       if (usedChars + cost > budgetForRecords) {
-        cutIndex = i;
         break;
       }
 

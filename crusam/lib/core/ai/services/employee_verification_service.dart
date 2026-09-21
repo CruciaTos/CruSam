@@ -1,5 +1,5 @@
 import 'package:crusam/core/ai/services/file_extraction_service.dart';
-import 'package:crusam/data/models/employee_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class ExtractedEmployeeRecord {
   ExtractedEmployeeRecord({

@@ -26,8 +26,8 @@ import '../../../data/db/database_helper.dart';
 import '../../../data/db/email_log_repository.dart';
 import '../../../data/models/email_log_model.dart';
 import '../../../shared/models/output_format.dart';
-import '../models/salary_disbursement_model.dart';
 import '../services/salary_email_export_service.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SendDisbursementDialog extends StatefulWidget {
   final SalaryDisbursementModel disbursement;
@@ -225,7 +225,8 @@ class _SendDisbursementDialogState extends State<SendDisbursementDialog> {
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
+        // Scrolls when the window is too short to show the whole dialog.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,

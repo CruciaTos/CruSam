@@ -193,7 +193,7 @@ class AutonomousSyncService {
         } else if (result is AiToolFailure) {
           manager.skip();
           failed++;
-          errors.add('${change.displayTitle}: ${(result as AiToolFailure).reason}');
+          errors.add('${change.displayTitle}: ${(result).reason}');
         }
       } catch (e) {
         manager.skip();

@@ -12,12 +12,10 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../../../shared/widgets/skeleton.dart';
-import '../../../shared/utils/format_utils.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/employee_model.dart';
 import '../../master_data/presentation/employee_form_screen.dart';
 import '../../vouchers/notifiers/voucher_notifier.dart';
 import '../notifiers/dashboard_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Computed analytics model — derives all stats from raw data once
@@ -248,7 +246,7 @@ class _WelcomeBanner extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.indigo600.withOpacity(0.3)),
+        border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -300,8 +298,8 @@ class _QuickActionChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.indigo600.withOpacity(0.2),
-            border: Border.all(color: AppColors.indigo600.withOpacity(0.4)),
+            color: AppColors.indigo600.withValues(alpha: 0.2),
+            border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.4)),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
@@ -417,7 +415,7 @@ class _MetricCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(sub,
@@ -639,7 +637,7 @@ class _BarChartBody extends StatelessWidget {
                     colors: touched
                         ? [AppColors.indigo400, AppColors.indigo600]
                         : [
-                            AppColors.indigo600.withOpacity(0.7),
+                            AppColors.indigo600.withValues(alpha: 0.7),
                             AppColors.indigo600,
                           ],
                     begin: Alignment.bottomCenter,
@@ -743,7 +741,7 @@ class _InsightRow extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(icon, size: 13, color: color),
@@ -926,12 +924,12 @@ class _VoucherRowState extends State<_VoucherRow> {
               const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: _hovered
-                ? AppColors.indigo600.withOpacity(0.08)
-                : AppColors.slate800.withOpacity(0.4),
+                ? AppColors.indigo600.withValues(alpha: 0.08)
+                : AppColors.slate800.withValues(alpha: 0.4),
             border: Border.all(
                 color: _hovered
-                    ? AppColors.indigo600.withOpacity(0.3)
-                    : AppColors.slate700.withOpacity(0.3)),
+                    ? AppColors.indigo600.withValues(alpha: 0.3)
+                    : AppColors.slate700.withValues(alpha: 0.3)),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(children: [
@@ -981,8 +979,8 @@ class _VoucherRowState extends State<_VoucherRow> {
                       horizontal: 6, vertical: 1),
                   decoration: BoxDecoration(
                     color: saved
-                        ? AppColors.emerald700.withOpacity(0.2)
-                        : const Color(0xFFF59E0B).withOpacity(0.2),
+                        ? AppColors.emerald700.withValues(alpha: 0.2)
+                        : const Color(0xFFF59E0B).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -1038,9 +1036,9 @@ class _EmployeeBreakdownPanel extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppColors.indigo600.withOpacity(0.15),
+                    color: AppColors.indigo600.withValues(alpha: 0.15),
                     border: Border.all(
-                        color: AppColors.indigo600.withOpacity(0.3)),
+                        color: AppColors.indigo600.withValues(alpha: 0.3)),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
@@ -1211,10 +1209,10 @@ class _MiniStat extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.slate800.withOpacity(0.5),
+          color: AppColors.slate800.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(8),
           border:
-              Border.all(color: AppColors.slate700.withOpacity(0.5)),
+              Border.all(color: AppColors.slate700.withValues(alpha: 0.5)),
         ),
         child: Row(children: [
           Icon(icon, size: 16, color: color),

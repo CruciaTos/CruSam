@@ -2,7 +2,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import 'database_helper.dart';
-import 'package:crusam/features/salary/models/salary_snapshot_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalarySnapshotRepository {
   SalarySnapshotRepository._();
@@ -119,78 +119,15 @@ class SalarySnapshotRepository {
   }) async {
     await _ensureTables();
     final db = await _db();
-    final key = keyFor(payload.month, payload.year);
-    final now = _nowIso();
-    final json = payload.encode();
-
-    final existing = await db.query(
-      tableSnapshots,
-      where: 'snapshot_key = ?',
-      whereArgs: [key],
-      limit: 1,
+    // Shared with the MCP server (crusam_core), in one transaction.
+    final snapshotId = await db.transaction(
+      (txn) => SalarySnapshotStore.save(
+        txn,
+        snapshotName: snapshotName,
+        payload: payload,
+        nowIso: _nowIso(),
+      ),
     );
-
-    int snapshotId;
-    if (existing.isNotEmpty) {
-      snapshotId = existing.first['id'] as int;
-      await db.update(
-        tableSnapshots,
-        {
-          'snapshot_name': snapshotName,
-          'month': payload.month,
-          'year': payload.year,
-          'payload': json,
-          'updated_at': now,
-        },
-        where: 'id = ?',
-        whereArgs: [snapshotId],
-      );
-      await db.delete(
-        tableEmployees,
-        where: 'snapshot_id = ?',
-        whereArgs: [snapshotId],
-      );
-    } else {
-      snapshotId = await db.insert(tableSnapshots, {
-        'snapshot_key': key,
-        'snapshot_name': snapshotName,
-        'month': payload.month,
-        'year': payload.year,
-        'payload': json,
-        'created_at': now,
-        'updated_at': now,
-      });
-    }
-
-    final batch = db.batch();
-    for (final emp in payload.employees) {
-      batch.insert(tableEmployees, {
-        'snapshot_id': snapshotId,
-        'employee_id': emp.employeeId,
-        'employee_name': emp.employeeName,
-        'code': emp.code,
-        'pf_no': emp.pfNo,
-        'month': payload.month,
-        'year': payload.year,
-        'attendance': emp.days,
-        'gross_salary': emp.earnedGross,
-        'deductions': emp.totalDeduction.toDouble(),
-        'bonus': emp.bonus,
-        'net_salary': emp.netSalary,
-        'pf': emp.pf,
-        'esic': emp.esic,
-        'msw': emp.msw,
-        'pt': emp.pt,
-        // ── full earnings breakdown (new) ──────────────────────────────
-        'basic_charges': emp.basicCharges,   // master basic
-        'other_charges': emp.otherCharges,   // master other
-        'master_gross': emp.grossSalary,     // master gross
-        'earned_basic': emp.earnedBasic,
-        'earned_other': emp.earnedOther,
-        'created_at': now,
-      });
-    }
-    await batch.commit(noResult: true);
 
     final row = await db.query(
       tableSnapshots,

@@ -3,12 +3,10 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/company_config_model.dart';
-import '../models/salary_disbursement_model.dart';
 import 'package:crusam/data/db/salary_disbursement_repository.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../services/salary_disbursement_service.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryDisbursementNotifier extends ChangeNotifier {
   SalaryDisbursementNotifier._() {

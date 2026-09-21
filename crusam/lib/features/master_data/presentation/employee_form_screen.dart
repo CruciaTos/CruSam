@@ -2,13 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/sync/drive_service.dart';
-import '../../../core/sync/sync_models.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 import '../../../shared/widgets/app_text_field.dart';
 
 class EmployeeFormScreen extends StatefulWidget {
@@ -176,34 +174,21 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
         gender: _gender,
       );
 
-      final employeeData = {
-        ...emp.toMap(),
-        'cloud_id': cloudId,
-        'created_at': createdAt,
-        'updated_at': now,
-        'is_deleted': 0,
-        'deleted_at': null,
-      };
+      // Same row shape the MCP server writes (crusam_core).
+      final employeeData = EmployeeStore.formRow(
+        emp,
+        cloudId: cloudId,
+        createdAt: createdAt,
+        nowUtcIso: now,
+      );
 
       if (widget.employee?['id'] != null) {
         await DatabaseHelper.instance.updateEmployee(
           widget.employee!['id'] as int,
           employeeData,
         );
-        // Use the new pushEmployeeChange method – it adds the pending entry
-        // and starts the background upload automatically.
-        await SyncManager.instance.pushEmployeeChange(
-          cloudId: cloudId,
-          operation: 'update',
-          employeeDbRow: employeeData,
-        );
       } else {
         await DatabaseHelper.instance.insertEmployee(employeeData);
-        await SyncManager.instance.pushEmployeeChange(
-          cloudId: cloudId,
-          operation: 'create',
-          employeeDbRow: employeeData,
-        );
       }
 
       if (mounted) Navigator.pop(context, true);
@@ -242,26 +227,12 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
     try {
       final now = DateTime.now().toUtc().toIso8601String();
       final cloudId = widget.employee?['cloud_id'] as String? ?? const Uuid().v4();
-      final deletePayload = {
-        ...?widget.employee,
-        'cloud_id': cloudId,
-        'is_deleted': 1,
-        'deleted_at': now,
-        'updated_at': now,
-      };
-
       await DatabaseHelper.instance.updateEmployee(id, {
         'cloud_id': cloudId,
         'is_deleted': 1,
         'deleted_at': now,
         'updated_at': now,
       });
-
-      await SyncManager.instance.pushEmployeeChange(
-        cloudId: cloudId,
-        operation: 'delete',
-        employeeDbRow: deletePayload,
-      );
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -304,7 +275,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _codeDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          value: _selectedCode,
+          initialValue: _selectedCode,
           decoration: const InputDecoration(labelText: 'Code'),
           items: _codeList
               .map((c) =>
@@ -328,7 +299,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: AppSpacing.md),
             child: DropdownButtonFormField<String>(
-              value: _selectedBank,
+              initialValue: _selectedBank,
               decoration: const InputDecoration(labelText: 'Bank Details'),
               isExpanded: true,
               items: _bankOptions
@@ -365,7 +336,7 @@ class _EmployeeFormScreenState extends State<EmployeeFormScreen> {
   Widget _zoneDropdown() => Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.md),
         child: DropdownButtonFormField<String>(
-          value: _selectedZone,
+          initialValue: _selectedZone,
           decoration: const InputDecoration(labelText: 'Zone'),
           items: _zoneOptions
               .map((z) =>

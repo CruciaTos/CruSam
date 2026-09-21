@@ -4,11 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'core/email/email_outbox_processor.dart';
 import 'core/migration/data_migration_service.dart';
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/app_paths.dart';
-import 'core/sync/drive_service.dart';
 import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/updater/update_dialog.dart';
@@ -16,26 +16,11 @@ import 'core/updater/update_notifier.dart';
 import 'features/auth/notifiers/auth_notifier.dart';
 import 'features/master_data/notifiers/employee_notifier.dart';
 import 'features/salary/notifier/salary_formula_notifier.dart';
+import 'shared/document_hooks.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // No login required – skip all session checks
-  // await AuthNotifier.instance.checkSession();
-  await ExportPreferencesNotifier.instance.load();
-  // Loaded (and awaited) before runApp so every static salary-formula
-  // calculation — most of which run synchronously off SalaryFormulaEngine —
-  // sees the saved PF/ESIC/PT/employer-contribution config from first paint.
-  await SalaryFormulaNotifier.instance.load();
-  // Restores the saved Gmail connection (if any) so the app doesn't ask the
-  // user to reconnect every launch — stays connected until they manually
-  // disconnect in Profile. Not awaited, same as EmployeeNotifier.load() and
-  // UpdateNotifier.checkForUpdate() below: this is a local-first desktop app
-  // and startup shouldn't hang on a network call (OIDC discovery + possible
-  // token refresh) if internet happens to be slow or unavailable. Whenever
-  // it resolves, GoogleAuthService's own ChangeNotifier updates anything
-  // listening (e.g. GmailAccountCard) automatically.
-  GoogleAuthService.instance.restoreSession();
+  wireSharedDocumentHooks();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     // Resolve the canonical, per-user app-data directory (via path_provider
@@ -58,10 +43,27 @@ Future<void> main() async {
     await databaseFactory.setDatabasesPath(appDataDir.path);
   }
 
+  // No login required – skip all session checks
+  // await AuthNotifier.instance.checkSession();
+  await ExportPreferencesNotifier.instance.load();
+  // Loaded (and awaited) before runApp so every static salary-formula
+  // calculation — most of which run synchronously off SalaryFormulaEngine —
+  // sees the saved PF/ESIC/PT/employer-contribution config from first paint.
+  await SalaryFormulaNotifier.instance.load();
+  // Restores the saved Gmail connection (if any) so the app doesn't ask the
+  // user to reconnect every launch — stays connected until they manually
+  // disconnect in Profile. Not awaited, same as EmployeeNotifier.load() and
+  // UpdateNotifier.checkForUpdate() below: this is a local-first desktop app
+  // and startup shouldn't hang on a network call (OIDC discovery + possible
+  // token refresh) if internet happens to be slow or unavailable. Whenever
+  // it resolves, GoogleAuthService's own ChangeNotifier updates anything
+  // listening (e.g. GmailAccountCard) automatically.
+  GoogleAuthService.instance.restoreSession();
+
   EmployeeNotifier.instance.load(); // Load local employee data
+  // Sends emails Claude queued via the CruSam MCP server (send_email).
+  EmailOutboxProcessor.instance.start();
   UpdateNotifier.instance.checkForUpdate();
-  // Cloud sync disabled on startup – manual backup/restore remains available
-  // unawaited(SyncManager.instance.syncOnStartup());
 
   runApp(const AartiApp());
 }

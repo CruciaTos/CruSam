@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SettingsNotifier extends ChangeNotifier {
   CompanyConfigModel config = const CompanyConfigModel();
