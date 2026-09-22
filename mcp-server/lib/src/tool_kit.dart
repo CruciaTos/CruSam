@@ -297,11 +297,16 @@ Object? _clean(Object? v) => switch (v) {
       _ => v,
     };
 
+/// Runs one tool call. [onSuccess] sees the arguments and result of every
+/// successful call (the server records UI events with it).
 Future<CallToolResult> runTool(ToolDef def, CallToolRequest request,
-    void Function(String, Object, StackTrace) onCrash) async {
+    void Function(String, Object, StackTrace) onCrash,
+    {Future<void> Function(ToolDef, Args, Map<String, Object?>)? onSuccess}) async {
   try {
     final args = Args(request.arguments);
-    return okResult(await def.run(args));
+    final result = await def.run(args);
+    if (onSuccess != null) await onSuccess(def, args, result);
+    return okResult(result);
   } on ValidationError catch (e) {
     return errorResult(e.toString());
   } on ToolError catch (e) {

@@ -16,6 +16,18 @@ class SettingsNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-reads the saved config (e.g. after Claude changed it) and notifies
+  /// only if it differs, so unrelated database changes don't reset the
+  /// form. Returns whether it changed.
+  Future<bool> reloadIfChanged() async {
+    final map = await DatabaseHelper.instance.getCompanyConfig();
+    final fresh = map != null ? CompanyConfigModel.fromMap(map) : const CompanyConfigModel();
+    if (mapEquals(fresh.toMap(), config.toMap())) return false;
+    config = fresh;
+    notifyListeners();
+    return true;
+  }
+
   void update(CompanyConfigModel Function(CompanyConfigModel) fn) {
     config = fn(config);
     notifyListeners();

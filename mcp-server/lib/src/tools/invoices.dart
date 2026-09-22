@@ -451,8 +451,8 @@ class InvoiceTools extends ToolGroup {
           if (warnings.isNotEmpty || poWarnings.isNotEmpty)
             'warnings': [...warnings, ...poWarnings],
           if (!dryRun)
-            'note': 'Saved. If the CruSam app is open, reopen the Invoices '
-                'screen to see it (the app caches the list).',
+            'note': 'Saved. The CruSam app, if open, shows it within a '
+                'second or two.',
         };
 
     if (dryRun) {

@@ -17,7 +17,7 @@ import '../../data/db/database_helper.dart';
 import '../../data/db/email_log_repository.dart';
 import '../../data/models/email_log_model.dart';
 import '../../shared/models/generated_document.dart';
-import '../sync/google_auth_service.dart';
+import 'email_account.dart';
 import 'email_suggestions_cache.dart';
 import 'gmail_service.dart';
 
@@ -42,12 +42,12 @@ class EmailOutboxProcessor {
     }
     _timer = Timer.periodic(_interval, (_) => processNow());
     // Send right away when an account gets connected in Profile.
-    GoogleAuthService.instance.addListener(processNow);
+    EmailAccount.changes.addListener(processNow);
     unawaited(processNow());
   }
 
   void stop() {
-    GoogleAuthService.instance.removeListener(processNow);
+    EmailAccount.changes.removeListener(processNow);
     _timer?.cancel();
     _timer = null;
   }
@@ -55,12 +55,12 @@ class EmailOutboxProcessor {
   /// Sends every queued email. Skipped while no Gmail account is connected —
   /// the emails simply wait in the queue.
   Future<void> processNow() async {
-    if (_running || !GoogleAuthService.instance.isSignedIn) return;
+    if (_running || !EmailAccount.canSend) return;
     _running = true;
     try {
       final db = await DatabaseHelper.instance.database;
       for (final email in await EmailOutboxStore.queued(db)) {
-        if (!GoogleAuthService.instance.isSignedIn) break;
+        if (!EmailAccount.canSend) break;
         await _send(email);
       }
     } catch (e) {
@@ -87,7 +87,7 @@ class EmailOutboxProcessor {
         recipientTo: email.to,
         recipientCc: email.cc,
         subject: email.subject,
-        sentBy: GoogleAuthService.instance.userEmail ?? '',
+        sentBy: EmailAccount.senderEmail,
         attachmentFormats: email.attachmentFormats,
       ));
 

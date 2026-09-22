@@ -46,9 +46,14 @@ Claude Desktop ──stdio──> server.exe ──> aarti.db  (the same SQLite 
   Both the server and the app now wait up to 5 seconds (`busy_timeout`)
   instead of failing. If the server still can't get the lock, it changes
   nothing and tells Claude to retry.
-- **Stale screens:** the app keeps lists in memory. Reopen the Invoices,
-  Employees or Saved Salary screen, or restart the app, to see Claude's
-  changes.
+- **Live screens:** the app notices the server's writes within about a
+  second and reloads what's on screen (an "Updated" pill shows it happened).
+- **Follow Claude:** after each tool call the server records which screen
+  shows the result (`ui_events` table). With Follow Claude on, the app pops
+  up as a compact, always-on-top window next to Claude Desktop, opens that
+  screen, highlights the row and says what Claude did. Salary steps show
+  Claude's saved month on the salary screens; "Back to my month" restores
+  the user's own. `show_in_app` points at a screen without changing data.
 - **Open edits:** if an invoice is open in the Voucher Builder and you save it
   there after Claude changed it, the app's version wins.
 

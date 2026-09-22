@@ -27,6 +27,20 @@ class SalaryFormulaNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-reads the saved config (e.g. after Claude changed it) and notifies
+  /// only if it differs, so an open Formula Settings screen isn't reset for
+  /// unrelated database changes. Returns whether it changed.
+  Future<bool> reloadIfChanged() async {
+    final map = await DatabaseHelper.instance.getSalaryFormulaConfig();
+    final fresh = map != null
+        ? SalaryFormulaConfigModel.fromMap(map)
+        : const SalaryFormulaConfigModel();
+    if (mapEquals(fresh.toMap(), config.toMap())) return false;
+    config = fresh;
+    notifyListeners();
+    return true;
+  }
+
   void update(SalaryFormulaConfigModel Function(SalaryFormulaConfigModel) fn) {
     config = fn(config);
     notifyListeners();

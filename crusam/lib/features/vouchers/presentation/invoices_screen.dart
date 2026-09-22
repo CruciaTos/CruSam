@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
+import '../../../shared/widgets/claude_highlight.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../core/preferences/export_preferences_notifier.dart';
@@ -25,7 +27,8 @@ class InvoicesScreen extends StatefulWidget {
   State<InvoicesScreen> createState() => _InvoicesScreenState();
 }
 
-class _InvoicesScreenState extends State<InvoicesScreen> {
+class _InvoicesScreenState extends State<InvoicesScreen>
+    with ReloadOnDbChange, ClaudeListFocus {
   List<VoucherModel> _vouchers = [];
   Map<int, EmailLogModel> _sentLogs = {};
   CompanyConfigModel _config = const CompanyConfigModel();
@@ -38,9 +41,16 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void onDbChanged() => _load(silent: true);
+
+  @override
+  List<String> get claudeKeys =>
+      [for (final v in _vouchers) UiEventStore.invoiceFocus(v.id ?? 0)];
+
+  Future<void> _load({bool silent = false}) async {
     if (!mounted) return;
-    setState(() => _loading = true);
+    if (!silent) setState(() => _loading = true);
     final vMaps = await DatabaseHelper.instance.getAllVouchers();
     final cfgMap = await DatabaseHelper.instance.getCompanyConfig();
     if (cfgMap != null) _config = CompanyConfigModel.fromMap(cfgMap);
@@ -56,6 +66,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         _sentLogs = sentLogs;
         _loading = false;
       });
+      claudeListChanged();
     }
   }
 
@@ -240,11 +251,14 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
             else
               Expanded(
                 child: ListView.builder(
+                  controller: claudeScroll,
                   padding: const EdgeInsets.only(bottom: 8),
                   itemCount: _vouchers.length,
                   itemBuilder: (context, index) {
                     final v = _vouchers[index];
-                    return _InvoiceCard(
+                    return ClaudeHighlight(
+                      focusKey: UiEventStore.invoiceFocus(v.id ?? 0),
+                      child: _InvoiceCard(
                       voucher: v,
                       sentLog: v.id != null ? _sentLogs[v.id] : null,
                       onEdit: () => _editVoucher(context, v),
@@ -254,6 +268,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
                       },
                       onSendEmail: v.status == VoucherStatus.saved ? () => _quickSendEmail(v) : null,
                       onDelete: () => _deleteVoucher(v),
+                    ),
                     );
                   },
                 ),

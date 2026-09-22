@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
@@ -26,7 +27,8 @@ class SalaryBillsScreen extends StatefulWidget {
   State<SalaryBillsScreen> createState() => _SalaryBillsScreenState();
 }
 
-class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
+class _SalaryBillsScreenState extends State<SalaryBillsScreen>
+    with ReloadOnDbChange {
   static final _dateFormat = DateFormat('dd/MM/yyyy');
 
   final _marginNotifier = MarginSettingsNotifier();
@@ -79,6 +81,9 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   void _onClientGstChanged()  => SalaryDataNotifier.instance.setClientGstin(_clientGstCtrl.text);
   void _onDateChanged()       => SalaryDataNotifier.instance.setDateDisplay(_dateCtrl.text);
   void _onDescChanged()       => SalaryDataNotifier.instance.setItemDescription(_descCtrl.text);
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {

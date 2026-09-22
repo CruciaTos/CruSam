@@ -4,10 +4,12 @@
 // with the CruSam MCP server via crusam_core's ClientStore). Clients that so
 // far only appear on invoices are listed too and can be saved in one click.
 
-import 'package:crusam_core/crusam_core.dart' show ClientModel, ClientStore;
+import 'package:crusam_core/crusam_core.dart' show ClientModel, ClientStore, UiEventStore;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
+import '../../../shared/widgets/claude_highlight.dart';
 import '../../../data/db/database_helper.dart';
 
 class ClientsScreen extends StatefulWidget {
@@ -24,7 +26,8 @@ class _Entry {
   const _Entry(this.client, this.saved, this.invoiceCount);
 }
 
-class _ClientsScreenState extends State<ClientsScreen> {
+class _ClientsScreenState extends State<ClientsScreen>
+    with ReloadOnDbChange, ClaudeListFocus {
   List<_Entry> _entries = [];
   String _query = '';
   bool _loading = true;
@@ -36,11 +39,20 @@ class _ClientsScreenState extends State<ClientsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void onDbChanged() => _load(silent: true);
+
+  @override
+  List<String> get claudeKeys =>
+      [for (final e in _visible) UiEventStore.clientFocus(e.client.id ?? 0)];
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final db = await DatabaseHelper.instance.database;
       await ClientStore.ensureTable(db);
@@ -198,9 +210,14 @@ class _ClientsScreenState extends State<ClientsScreen> {
                               child: Text('No clients yet.',
                                   style: TextStyle(color: AppColors.slate500)))
                           : ListView.separated(
+                              controller: claudeScroll,
                               itemCount: items.length,
                               separatorBuilder: (context, index) => const SizedBox(height: 8),
-                              itemBuilder: (_, i) => _tile(items[i]),
+                              itemBuilder: (_, i) => ClaudeHighlight(
+                                focusKey: UiEventStore.clientFocus(items[i].client.id ?? 0),
+                                borderRadius: BorderRadius.circular(10),
+                                child: _tile(items[i]),
+                              ),
                             ),
             ),
           ],

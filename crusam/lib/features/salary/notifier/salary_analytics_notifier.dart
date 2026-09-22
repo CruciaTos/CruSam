@@ -54,10 +54,12 @@ class SalaryAnalyticsNotifier extends ChangeNotifier {
     }
   }
 
-  Future<void> refresh() async {
-    isLoading = true;
-    error = null;
-    notifyListeners();
+  Future<void> refresh({bool silent = false}) async {
+    if (!silent) {
+      isLoading = true;
+      error = null;
+      notifyListeners();
+    }
     try {
       availableMonths = await _repo.getAvailableMonths();
       await _refreshSnapshot();

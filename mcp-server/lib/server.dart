@@ -6,6 +6,7 @@ import 'src/log.dart';
 import 'src/tool_kit.dart';
 import 'src/exports/export_env.dart';
 import 'src/tools/activity.dart';
+import 'src/tools/app.dart';
 import 'src/tools/clients.dart';
 import 'src/tools/documents.dart';
 import 'src/tools/email.dart';
@@ -13,6 +14,7 @@ import 'src/tools/employees.dart';
 import 'src/tools/invoices.dart';
 import 'src/tools/salary.dart';
 import 'src/tools/settings.dart';
+import 'src/ui_events.dart';
 import 'src/workflows.dart';
 
 export 'src/config.dart';
@@ -22,7 +24,7 @@ export 'src/exports/export_env.dart';
 export 'src/log.dart';
 export 'src/workflows.dart';
 
-const serverVersion = '1.2.0';
+const serverVersion = '1.4.0';
 
 /// All tool groups. To add capabilities (notes, follow-ups, …) write a new
 /// ToolGroup in lib/src/tools/ and add it here.
@@ -37,6 +39,7 @@ List<ToolGroup> buildToolGroups(ToolContext ctx, {ExportEnv? exportEnv}) {
     DocumentTools(ctx, env),
     ActivityTools(ctx),
     EmailTools(ctx),
+    AppTools(ctx),
   ];
 }
 
@@ -56,6 +59,8 @@ Creating invoices from an image or list:
    with find_clients. Show the user any non-confident match.
 4. create_invoice with dry_run=true, show rows + totals + warnings, and wait
    for the user's go-ahead before dry_run=false.
+The user may be watching in the CruSam app: each tool call opens the matching
+screen there automatically. show_in_app points at something while explaining.
 Emailing documents: create the files with an export_* tool, then send_email
 with the returned paths. The CruSam app sends it through its connected Gmail
 account; check list_email_outbox afterwards.
@@ -70,13 +75,14 @@ base class CrusamMcpServer extends MCPServer with ToolsSupport, PromptsSupport {
           implementation: Implementation(name: 'crusam', version: serverVersion),
           instructions: _instructions,
         ) {
+    final uiEvents = UiEvents(ctx);
     for (final group in buildToolGroups(ctx)) {
       for (final def in group.tools) {
         registerTool(
           def.tool,
           (request) => runTool(def, request, (name, e, st) {
             Log.error('Tool $name crashed', e, st);
-          }),
+          }, onSuccess: uiEvents.record),
           // Arguments are validated by each tool with field-specific messages.
           validateArguments: false,
         );

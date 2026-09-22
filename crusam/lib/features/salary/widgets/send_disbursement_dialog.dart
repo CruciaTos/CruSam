@@ -18,7 +18,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/email/email_suggestions_cache.dart';
-import '../../../core/sync/google_auth_service.dart';
+import '../../../core/email/email_account.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -140,7 +140,7 @@ class _SendDisbursementDialogState extends State<SendDisbursementDialog> {
       return;
     }
 
-    if (!GoogleAuthService.instance.isSignedIn) {
+    if (!EmailAccount.canSend) {
       setState(() => _error =
           'Not connected to Gmail — connect an account in Profile first.');
       return;
@@ -167,7 +167,7 @@ class _SendDisbursementDialogState extends State<SendDisbursementDialog> {
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
-        sentBy: GoogleAuthService.instance.userEmail ?? '',
+        sentBy: EmailAccount.senderEmail,
         attachmentFormats: OutputFormat.excel.name,
       ));
 
@@ -220,7 +220,7 @@ class _SendDisbursementDialogState extends State<SendDisbursementDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final connected = GoogleAuthService.instance.isSignedIn;
+    final connected = EmailAccount.canSend;
 
     return Dialog(
       child: ConstrainedBox(

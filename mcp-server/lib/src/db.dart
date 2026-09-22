@@ -84,6 +84,7 @@ class CrusamDb {
       // Additive, idempotent: the address-book table used by client tools.
       await ClientStore.ensureTable(db);
       await EmailOutboxStore.ensureTable(db);
+      await UiEventStore.ensureTable(db);
     }
     Log.info('Opened ${config.dbPath} (schema v$version, '
         '${config.readOnly ? 'read-only' : 'read-write'})');

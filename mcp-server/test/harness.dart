@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:crusam_mcp/server.dart';
 import 'package:crusam_mcp/src/tool_kit.dart';
+import 'package:crusam_mcp/src/ui_events.dart';
 import 'package:dart_mcp/server.dart';
 import 'package:path/path.dart' as p;
 
@@ -22,6 +23,10 @@ class Harness {
   final CrusamDb store;
   final ToolContext ctx;
   final Map<String, ToolDef> tools;
+
+  /// Record UI events after successful calls, as the real server does.
+  bool recordUiEvents = false;
+  late final _uiEvents = UiEvents(ctx);
 
   Harness._(this.dir, this.store, this.ctx, this.tools);
 
@@ -62,7 +67,8 @@ class Harness {
   Future<(bool, dynamic)> call(String name, Map<String, Object?> args) async {
     final def = tools[name] ?? (throw ArgumentError('no tool $name'));
     final res = await runTool(def, CallToolRequest(name: name, arguments: args),
-        (n, e, st) => throw StateError('$n crashed: $e\n$st'));
+        (n, e, st) => throw StateError('$n crashed: $e\n$st'),
+        onSuccess: recordUiEvents ? _uiEvents.record : null);
     final text = (res.content.first as TextContent).text;
     final isError = res.isError ?? false;
     return (isError, isError ? text : jsonDecode(text));

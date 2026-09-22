@@ -1,6 +1,7 @@
 // lib/features/salary/presentation/salary_analytics_screen.dart
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_analytics_notifier.dart';
@@ -15,8 +16,12 @@ class SalaryAnalyticsScreen extends StatefulWidget {
   State<SalaryAnalyticsScreen> createState() => _SalaryAnalyticsScreenState();
 }
 
-class _SalaryAnalyticsScreenState extends State<SalaryAnalyticsScreen> {
+class _SalaryAnalyticsScreenState extends State<SalaryAnalyticsScreen>
+    with ReloadOnDbChange {
   final _notifier = SalaryAnalyticsNotifier.instance;
+
+  @override
+  void onDbChanged() => _notifier.refresh(silent: true);
 
   @override
   void initState() {

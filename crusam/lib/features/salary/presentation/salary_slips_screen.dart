@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
@@ -22,7 +23,8 @@ class SalarySlipsScreen extends StatefulWidget {
   State<SalarySlipsScreen> createState() => _SalarySlipsScreenState();
 }
 
-class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
+class _SalarySlipsScreenState extends State<SalarySlipsScreen>
+    with ReloadOnDbChange {
   final _stateCtrl = SalaryStateController.instance;
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -35,6 +37,9 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
   int _currentPage = 0;
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {

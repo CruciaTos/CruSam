@@ -223,7 +223,8 @@ class SalaryTools extends ToolGroup {
         'saved': true,
         'saved_salary_id': id,
         if (existing != null) 'replaced_previous': true,
-        'note': 'If the app is open, reload it from the Saved Salary screen.',
+        'note': 'The app\'s Saved Salary list updates by itself; to work on '
+            'this month in the app\'s salary screens, load it from there.',
       };
     },
   );

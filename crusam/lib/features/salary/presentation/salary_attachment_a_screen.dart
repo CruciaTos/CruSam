@@ -1,6 +1,7 @@
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
@@ -27,7 +28,8 @@ class SalaryAttachmentAScreen extends StatefulWidget {
       _SalaryAttachmentAScreenState();
 }
 
-class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
+class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen>
+    with ReloadOnDbChange {
   final _marginNotifier = MarginSettingsNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -67,6 +69,9 @@ class _SalaryAttachmentAScreenState extends State<SalaryAttachmentAScreen> {
   void _onDescChanged() {
     SalaryDataNotifier.instance.setItemDescriptionAttachmentA(_descCtrl.text);
   }
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {

@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
+import 'package:crusam_core/crusam_core.dart' show UiEventStore;
+import '../../../shared/widgets/claude_highlight.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../notifier/salary_snapshot_notifier.dart';
@@ -22,12 +25,29 @@ class SalarySnapshotsScreen extends StatefulWidget {
   State<SalarySnapshotsScreen> createState() => _SalarySnapshotsScreenState();
 }
 
-class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
+class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen>
+    with ReloadOnDbChange, ClaudeListFocus {
   final _notifier = SalarySnapshotNotifier.instance;
+
+  @override
+  void onDbChanged() => _notifier.loadSnapshotList(silent: true);
+
+  @override
+  List<String> get claudeKeys => [
+        for (final s in _notifier.summaries)
+          UiEventStore.salaryMonthFocus(s.snapshot.month, s.snapshot.year),
+      ];
+
+  @override
+  void dispose() {
+    _notifier.removeListener(claudeListChanged);
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    _notifier.addListener(claudeListChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notifier.loadSnapshotList();
     });
@@ -196,10 +216,15 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                       : summaries.isEmpty
                           ? const _EmptyState()
                           : ListView.separated(
+                              controller: claudeScroll,
                               itemCount: summaries.length,
                               separatorBuilder: (_, _) =>
                                   const SizedBox(height: 8),
-                              itemBuilder: (ctx, i) => _SavedSalaryCard(
+                              itemBuilder: (ctx, i) => ClaudeHighlight(
+                                focusKey: UiEventStore.salaryMonthFocus(
+                                    summaries[i].snapshot.month,
+                                    summaries[i].snapshot.year),
+                                child: _SavedSalaryCard(
                                 summary: summaries[i],
                                 isActive:
                                     _notifier.activeSnapshot?.id ==
@@ -208,6 +233,7 @@ class _SalarySnapshotsScreenState extends State<SalarySnapshotsScreen> {
                                 onSend: () => _onSend(summaries[i]),
                                 onRename: () => _onRename(summaries[i]),
                                 onDelete: () => _onDelete(summaries[i]),
+                              ),
                               ),
                             ),
                 ),

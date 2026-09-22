@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:crusam_core/crusam_core.dart';
 import 'package:uuid/uuid.dart';
-import '../../../core/sync/google_auth_service.dart';
+import '../../../core/email/email_account.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../data/db/database_helper.dart';
@@ -177,8 +177,8 @@ class VoucherNotifier extends ChangeNotifier {
     if (current.title.trim().isEmpty) return false;
 
     final now = DateTime.now().toUtc().toIso8601String();
-    final email = GoogleAuthService.instance.userEmail?.trim().toLowerCase() ??
-        'unknown';
+    final sender = EmailAccount.senderEmail.trim().toLowerCase();
+    final email = sender.isEmpty ? 'unknown' : sender;
 
     // Shared with the MCP server: totals, status, cloud id, audit fields,
     // and the invoice date persisted into created_at.

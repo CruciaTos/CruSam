@@ -4,15 +4,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'core/claude/claude_connect_ui.dart';
+import 'core/claude/claude_connection_service.dart';
+import 'core/email/app_password_account.dart';
 import 'core/email/email_outbox_processor.dart';
 import 'core/migration/data_migration_service.dart';
 import 'core/preferences/export_preferences_notifier.dart';
 import 'core/router/app_router.dart';
 import 'core/storage/app_paths.dart';
+import 'core/sync/claude_follow_controller.dart';
+import 'core/sync/db_change_watcher.dart';
 import 'core/sync/google_auth_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/updater/update_dialog.dart';
 import 'core/updater/update_notifier.dart';
+import 'core/window/window_mode_controller.dart';
+import 'core/window/window_mode_transition.dart';
 import 'features/auth/notifiers/auth_notifier.dart';
 import 'features/master_data/notifiers/employee_notifier.dart';
 import 'features/salary/notifier/salary_formula_notifier.dart';
@@ -21,6 +28,8 @@ import 'shared/document_hooks.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   wireSharedDocumentHooks();
+  // Full/compact window switching (Follow Claude pops up a compact window).
+  await WindowModeController.instance.init();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     // Resolve the canonical, per-user app-data directory (via path_provider
@@ -59,10 +68,16 @@ Future<void> main() async {
   // it resolves, GoogleAuthService's own ChangeNotifier updates anything
   // listening (e.g. GmailAccountCard) automatically.
   GoogleAuthService.instance.restoreSession();
+  // Gmail app password (the simple way to send email; see Profile).
+  await AppPasswordAccount.instance.load();
 
   EmployeeNotifier.instance.load(); // Load local employee data
   // Sends emails Claude queued via the CruSam MCP server (send_email).
   EmailOutboxProcessor.instance.start();
+  // Reloads what's on screen when Claude (via the MCP server) changes data,
+  // and plays back Claude's steps ("Follow Claude").
+  ClaudeFollowController.instance.load();
+  DbChangeWatcher.instance.start();
   UpdateNotifier.instance.checkForUpdate();
 
   runApp(const AartiApp());
@@ -84,6 +99,13 @@ class _AartiAppState extends State<AartiApp> {
     UpdateNotifier.instance.addListener(_onUpdateStateChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onUpdateStateChanged();
+    });
+    // Offer to connect (or update) CruSam in Claude Desktop, once per
+    // version. Waits for the update check so the two dialogs don't stack.
+    Future<void>.delayed(const Duration(seconds: 5), () async {
+      // After an app update, point Claude at the new server version.
+      await ClaudeConnectionService.keepUpToDate();
+      if (!UpdateNotifier.instance.hasUpdate) await ClaudeConnectUi.maybePrompt();
     });
   }
 
@@ -112,5 +134,6 @@ class _AartiAppState extends State<AartiApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         routerConfig: AppRouter.router,
+        builder: (context, child) => WindowModeTransition(child: child!),
       );
 }

@@ -19,12 +19,16 @@ class DashboardNotifier extends ChangeNotifier {
     if (!_isDisposed) notifyListeners();
   }
 
-  Future<void> load() async {
+  /// [silent] keeps the current numbers on screen instead of the skeleton
+  /// (background refresh after an external change).
+  Future<void> load({bool silent = false}) async {
     if (_isDisposed) return;
 
-    isLoading = true;
-    error = null;
-    _safeNotifyListeners();
+    if (!silent) {
+      isLoading = true;
+      error = null;
+      _safeNotifyListeners();
+    }
     try {
       final empMaps = await DatabaseHelper.instance.getAllEmployees();
       if (_isDisposed) return;

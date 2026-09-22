@@ -31,4 +31,5 @@ export 'src/salary/salary_math.dart';
 export 'src/salary/salary_month.dart';
 export 'src/salary/salary_snapshot_store.dart';
 export 'src/text/fuzzy_name.dart';
+export 'src/ui/ui_event_store.dart';
 export 'src/util/format_utils.dart';

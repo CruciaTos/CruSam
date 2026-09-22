@@ -1,6 +1,8 @@
 // lib/core/email/gmail_service.dart
 //
-// Sends an email with one or more attachments via the Gmail API.
+// Sends an email with one or more attachments via the Gmail API, or — when
+// the Google sign-in isn't connected — with a Gmail app password over SMTP
+// (see AppPasswordAccount).
 // Built entirely on the OAuth client GoogleAuthService already provides —
 // no new auth plumbing here, just the Gmail-specific request shape.
 //
@@ -19,6 +21,7 @@ import 'package:googleapis/gmail/v1.dart' as gmail;
 
 import '../../shared/models/generated_document.dart';
 import '../sync/google_auth_service.dart';
+import 'app_password_account.dart';
 
 class GmailNotSignedInException implements Exception {
   @override
@@ -116,6 +119,21 @@ class GmailService {
   }) async {
     if (attachments.isEmpty) {
       throw GmailSendException('No attachments selected to send.');
+    }
+
+    // No Google sign-in: send with the Gmail app password, if one is set up.
+    if (!GoogleAuthService.instance.isSignedIn && AppPasswordAccount.instance.connected) {
+      try {
+        return await AppPasswordAccount.instance.send(
+          to: to,
+          cc: cc,
+          subject: subject,
+          bodyText: bodyText,
+          attachments: attachments,
+        );
+      } catch (e) {
+        throw GmailSendException(AppPasswordAccount.describeError(e));
+      }
     }
 
     final api = await _api();

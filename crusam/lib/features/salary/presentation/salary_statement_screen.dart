@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
@@ -29,7 +30,8 @@ class SalaryStatementScreen extends StatefulWidget {
   State<SalaryStatementScreen> createState() => _SalaryStatementScreenState();
 }
 
-class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
+class _SalaryStatementScreenState extends State<SalaryStatementScreen>
+    with ReloadOnDbChange {
   final _stateCtrl = SalaryStateController.instance;
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -46,6 +48,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
   // ── Track route visibility for MSW‑only refresh ──────────────────────────
   bool _isRouteCurrent = false;
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {

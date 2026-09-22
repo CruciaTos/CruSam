@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../shared/widgets/app_card.dart';
@@ -158,7 +159,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with ReloadOnDbChange {
   final _notifier = DashboardNotifier();
 
   @override
@@ -166,6 +168,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _notifier.load();
   }
+
+  @override
+  void onDbChanged() => _notifier.load(silent: true);
 
   @override
   void dispose() {
@@ -327,13 +332,17 @@ class _HeroMetrics extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (ctx, c) {
           final cols = c.maxWidth > 900 ? 4 : c.maxWidth > 600 ? 2 : 1;
-          return GridView.count(
-            crossAxisCount: cols,
+          return GridView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-            childAspectRatio: cols == 4 ? 1.9 : 2.2,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
+              // Fixed height: content is fixed-size, so an aspect ratio
+              // overflows at some window widths.
+              mainAxisExtent: 128,
+            ),
             children: [
               _MetricCard(
                 icon: Icons.people_outline,
@@ -410,28 +419,38 @@ class _MetricCard extends StatelessWidget {
                 ),
                 child: Icon(icon, size: 16, color: accent),
               ),
+              const SizedBox(width: 8),
               const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
+              Flexible(
+                flex: 8,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: accent,
+                          fontWeight: FontWeight.w500)),
                 ),
-                child: Text(sub,
-                    style: TextStyle(
-                        fontSize: 10,
-                        color: accent,
-                        fontWeight: FontWeight.w500)),
               ),
             ]),
             const Spacer(),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -0.5)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: -0.5)),
+            ),
             const SizedBox(height: 2),
             Text(label,
                 style: AppTextStyles.small.copyWith(color: AppColors.slate400)),

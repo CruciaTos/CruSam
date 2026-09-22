@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
+import '../../../shared/widgets/claude_highlight.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
@@ -21,7 +23,8 @@ class SalaryDisbursementsScreen extends StatefulWidget {
 }
 
 class _SalaryDisbursementsScreenState
-    extends State<SalaryDisbursementsScreen> {
+    extends State<SalaryDisbursementsScreen>
+    with ReloadOnDbChange {
   final _notifier = SalaryDisbursementNotifier.instance;
 
   // ── Generate + Export ──────────────────────────────────────────────────────
@@ -95,6 +98,9 @@ class _SalaryDisbursementsScreenState
       backgroundColor: isError ? Colors.red.shade700 : null,
     ));
   }
+
+  @override
+  void onDbChanged() => _notifier.load(silent: true);
 
   @override
   void initState() {
@@ -390,11 +396,14 @@ class _LeftPane extends StatelessWidget {
             ),
           )
         else
-          ...notifier.history.map((d) => _HistoryCard(
-                disbursement: d,
-                onExport:     () => onExport(d),
-                onSend:       () => onSend(d),
-                onDelete:     () => onDelete(d),
+          ...notifier.history.map((d) => ClaudeHighlight(
+                focusKey: UiEventStore.disbursementFocus(d.id ?? 0),
+                child: _HistoryCard(
+                  disbursement: d,
+                  onExport:     () => onExport(d),
+                  onSend:       () => onSend(d),
+                  onDelete:     () => onDelete(d),
+                ),
               )),
       ],
     );

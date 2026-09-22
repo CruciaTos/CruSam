@@ -66,11 +66,17 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
-  Future<void> load({bool forceReload = false}) async {
-    if (_loading && !forceReload) return;
-    _loading = true;
-    _error = '';
-    notifyListeners();
+  /// [silent] refreshes in the background (after an external change)
+  /// without the loading state.
+  Future<void> load({bool forceReload = false, bool silent = false}) async {
+    if (silent) {
+      if (_loading || !_hasLoadedOnce) return;
+    } else {
+      if (_loading && !forceReload) return;
+      _loading = true;
+      _error = '';
+      notifyListeners();
+    }
 
     try {
       final n = SalaryDataNotifier.instance;

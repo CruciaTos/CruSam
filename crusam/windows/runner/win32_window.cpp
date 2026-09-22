@@ -218,8 +218,10 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_GETMINMAXINFO: {
-      // Smallest window the layouts are designed for: 960x520 logical
-      // pixels of content (plus the frame), scaled to the monitor's DPI.
+      // Fallback only: the window_manager plugin handles WM_GETMINMAXINFO
+      // first, and the app sets the minimum size there (full vs compact
+      // window, see WindowModeController). Smallest full window: 960x520
+      // logical pixels of content (plus the frame), scaled to the DPI.
       auto info = reinterpret_cast<MINMAXINFO*>(lparam);
       HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
       double scale = FlutterDesktopGetDpiForMonitor(monitor) / 96.0;

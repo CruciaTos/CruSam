@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/sync/claude_follow_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -92,6 +93,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   void initState() {
     super.initState();
     _notifier.addListener(_onModelChanged);
+    _claude.addListener(_onClaudeFocus);
 
     // Defer the load to avoid triggering ListenableBuilder
     // while the master screen is still being built.
@@ -132,13 +134,36 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     });
   }
 
-  void _onModelChanged() => setState(() {});
+  void _onModelChanged() {
+    setState(() {});
+    // The list may have loaded after Claude pointed at a row in it.
+    _onClaudeFocus();
+  }
+
+  // ── Follow Claude: highlight the employee Claude is working on ─────────
+  final _claude = ClaudeFollowController.instance;
+  int _claudeSerial = 0;
+
+  void _onClaudeFocus() {
+    if (!mounted || _claude.focusSerial == _claudeSerial) return;
+    final list = _filteredForTable;
+    for (var i = 0; i < list.length; i++) {
+      if (!_claude.isFocused(UiEventStore.employeeFocus(list[i].id ?? 0))) continue;
+      _claudeSerial = _claude.focusSerial;
+      setState(() => _focusedRowIndex = i);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _verticalScrollController.hasClients) _ensureRowVisible(i);
+      });
+      return;
+    }
+  }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _searchController.dispose();
     _notifier.removeListener(_onModelChanged);
+    _claude.removeListener(_onClaudeFocus);
     // NOTE: Do NOT dispose the singleton notifier
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();

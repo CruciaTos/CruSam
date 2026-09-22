@@ -34,6 +34,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:crusam/core/window/window_mode_controller.dart';
 
 /// Logical window sizes: the smallest window the app allows (see
 /// windows/runner), then maximized windows (screen minus taskbar and title
@@ -220,6 +221,17 @@ void main() {
           }
         }
       }
+
+      // Compact window (Follow Claude): every page, scaled into the slim
+      // always-on-top window, with its own header.
+      tester.view.physicalSize = const Size(580, 820);
+      WindowModeController.instance.debugSetMode(WindowMode.compact);
+      for (final route in routes) {
+        where = '$route @ compact 580x820';
+        AppRouter.router.go(route);
+        await settle();
+      }
+      WindowModeController.instance.debugSetMode(WindowMode.full);
 
       // Dialogs, on the smallest window and a common one.
       CompanyConfigModel config = const CompanyConfigModel();

@@ -12,6 +12,7 @@ import '../../auth/notifiers/auth_notifier.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/update_card.dart';
 import '../widgets/backup_restore_card.dart';
+import '../widgets/claude_connection_card.dart';
 import '../widgets/data_location_card.dart';
 import '../widgets/export_paths_card.dart';
 import '../widgets/gmail_account_card.dart';
@@ -65,6 +66,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const UpdateCard(),
                     const SizedBox(height: 12),
                     const GmailAccountCard(),        // ← moved here
+                    const SizedBox(height: 12),
+                    const ClaudeConnectionCard(),
                     const SizedBox(height: 12),
                     const ExportPathsCard(),
                     const SizedBox(height: 12),

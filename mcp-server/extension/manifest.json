@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "crusam",
   "display_name": "CruSam",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "description": "Read and update your CruSam data (employees, invoices, salaries) from Claude. Runs only on this computer.",
-  "long_description": "Connects Claude Desktop to the CruSam app's database on this computer. Claude can look up employees and clients, create invoices from a photo of a handwritten list (with a preview before saving), calculate and save salary months, create the same PDF and Excel documents as the app, and change settings. Emails are sent by the CruSam app itself through the Gmail account connected in its Profile screen, and only after you approve them. The server has no network access and backs up the database before its first change in each session.\n\nLeave 'CruSam database' empty to use the CruSam app's own database automatically.",
+  "long_description": "Connects Claude Desktop to the CruSam app's database on this computer. Claude can look up employees and clients, create invoices from a photo of a handwritten list (with a preview before saving), calculate and save salary months, create the same PDF and Excel documents as the app, and change settings. Emails are sent by the CruSam app itself through the Gmail account connected in its Profile screen, and only after you approve them. The server has no network access and backs up the database before its first change in each session. With the CruSam app open, you can watch Claude work: the app shows each screen Claude uses and highlights what it changed.\n\nLeave 'CruSam database' empty to use the CruSam app's own database automatically.",
   "author": {
     "name": "Soham Boridkar",
     "email": "sohamboridkar@gmail.com"
@@ -66,7 +66,8 @@
     { "name": "export_salary_documents", "description": "Salary bills, attachments, statement and slips" },
     { "name": "create_salary_disbursement" }, { "name": "export_salary_disbursement_excel" },
     { "name": "send_email", "description": "Email documents through the app's connected Gmail" },
-    { "name": "list_email_outbox" }, { "name": "cancel_email" }, { "name": "list_email_log" }
+    { "name": "list_email_outbox" }, { "name": "cancel_email" }, { "name": "list_email_log" },
+    { "name": "show_in_app", "description": "Point at a screen in the open CruSam app" }
   ],
   "prompts_generated": true,
   "prompts": [

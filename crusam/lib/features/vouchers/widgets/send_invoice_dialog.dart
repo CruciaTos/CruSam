@@ -16,7 +16,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/email/email_suggestions_cache.dart';
-import '../../../core/sync/google_auth_service.dart';
+import '../../../core/email/email_account.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -146,7 +146,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
       return;
     }
 
-    if (!GoogleAuthService.instance.isSignedIn) {
+    if (!EmailAccount.canSend) {
       setState(() => _error =
           'Not connected to Gmail — connect an account in Profile first.');
       return;
@@ -173,7 +173,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
-        sentBy: GoogleAuthService.instance.userEmail ?? '',
+        sentBy: EmailAccount.senderEmail,
         attachmentFormats: _formats.map((f) => f.name).join(','),
       ));
 
@@ -251,7 +251,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final connected = GoogleAuthService.instance.isSignedIn;
+    final connected = EmailAccount.canSend;
 
     return Dialog(
       child: ConstrainedBox(

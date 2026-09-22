@@ -1,6 +1,7 @@
 // crusam/lib/features/salary/notifier/salary_snapshot_notifier.dart
 import 'package:flutter/material.dart';
 
+import 'package:crusam/data/db/database_helper.dart';
 import 'package:crusam/data/db/salary_snapshot_repository.dart';
 import 'package:crusam_core/crusam_core.dart';
 import 'salary_data_notifier.dart';
@@ -88,10 +89,12 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       '${_monthNames[(month - 1).clamp(0, 11)]} $year';
 
   // ── Browse ─────────────────────────────────────────────────────────────────
-  Future<void> loadSnapshotList() async {
-    _loading = true;
-    _error = '';
-    notifyListeners();
+  Future<void> loadSnapshotList({bool silent = false}) async {
+    if (!silent) {
+      _loading = true;
+      _error = '';
+      notifyListeners();
+    }
     try {
       _snapshots = await _repo.getSnapshots();
       _summaries = _snapshots.map(_summarize).toList();
@@ -258,6 +261,9 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       final meta = await _repo.getSnapshot(snapshotId);
       _applyPayload(payload);
       _activeSnapshot = meta;
+      // The user chose a month themselves; nothing to go back to.
+      _parked = null;
+      _parkedActive = null;
       notifyListeners();
       return true;
     } catch (e) {
@@ -265,6 +271,56 @@ class SalarySnapshotNotifier extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  // ── Follow Claude: show Claude's saved month without losing yours ─────────
+  //
+  // Claude works on SAVED months; the salary screens show the live month.
+  // To show the user what Claude is doing, the live month is parked (exactly
+  // as Save would capture it, unsaved attendance included), Claude's month
+  // is applied, and [restoreParkedMonth] puts the user's month back.
+
+  SalarySnapshotPayload? _parked;
+  SalaryMonthSnapshotModel? _parkedActive;
+  String _claudePeriod = '';
+
+  /// "May 2026" while Claude's month is on screen instead of the user's.
+  String? get claudeMonthLabel => _parked == null ? null : _claudePeriod;
+
+  /// Shows the saved month [month]/[year] on the salary screens. Returns
+  /// false when there is no such saved month.
+  Future<bool> showMonthForClaude(int month, int year) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final meta = await SalarySnapshotStore.getByPeriod(db, month, year);
+      if (meta == null) return false;
+      final sc = SalaryStateController.instance;
+      if (sc.employees.isEmpty) await sc.loadEmployees();
+      if (_parked == null) {
+        _parked = _buildPayload();
+        _parkedActive = _activeSnapshot;
+      }
+      // Re-applied every time: Claude may have just re-saved it.
+      _applyPayload(SalarySnapshotPayload.decode(meta.payload));
+      _activeSnapshot = meta;
+      _claudePeriod = defaultNameFor(month, year);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('showMonthForClaude: $e');
+      return false;
+    }
+  }
+
+  /// Puts the user's own month back after [showMonthForClaude].
+  void restoreParkedMonth() {
+    final parked = _parked;
+    if (parked == null) return;
+    _applyPayload(parked);
+    _activeSnapshot = _parkedActive;
+    _parked = null;
+    _parkedActive = null;
+    notifyListeners();
   }
 
   // Aliases kept for naming-convention parity with the original brief.

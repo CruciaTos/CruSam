@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';                     // <-- added for immediate cloud_id generation
 import '../../core/storage/app_paths.dart';
-import '../../core/sync/google_auth_service.dart';
+import '../../core/email/email_account.dart';
 import '../seeds/employee_seed_data.dart';
 import 'package:path/path.dart' as p;
 import 'migrations/email_log_migration.dart';
@@ -544,8 +544,10 @@ class DatabaseHelper {
   }
 
   // --- Vouchers ---
-  String get _currentGoogleEmail =>
-      GoogleAuthService.instance.userEmail?.trim().toLowerCase() ?? 'unknown';
+  String get _currentGoogleEmail {
+    final email = EmailAccount.senderEmail.trim().toLowerCase();
+    return email.isEmpty ? 'unknown' : email;
+  }
 
   /// Inserts a new voucher into the database.
   ///

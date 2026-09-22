@@ -2,6 +2,12 @@
 #   mcp-server\dist\crusam.mcpb
 # Share that one file; the other person double-clicks it and clicks Install.
 # Usage (from anywhere):  powershell -ExecutionPolicy Bypass -File mcp-server\tool\package.ps1
+# -Version 1.4.0 stamps that version into the extension.
+# -NoPack stops after staging build\mcpb\server (bin\server.exe + lib + assets),
+# which installer\build_release.ps1 ships inside the app: its "Connect to
+# Claude" button sets Claude Desktop up with it (the Microsoft Store build of
+# Claude Desktop can't open .mcpb files).
+param([string]$Version, [switch]$NoPack)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot          # ...\mcp-server
 Set-Location $root
@@ -17,6 +23,12 @@ $stage = Join-Path $root 'build\mcpb'
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force (Join-Path $stage 'server') | Out-Null
 Copy-Item (Join-Path $root 'extension\manifest.json') $stage
+if ($Version) {
+  $mf = Join-Path $stage 'manifest.json'
+  $json = Get-Content $mf -Raw
+  $json = $json -replace '"version":\s*"[^"]*"', ('"version": "' + $Version + '"')
+  [IO.File]::WriteAllText($mf, $json)
+}
 # Keep the bundle layout (bin\server.exe + lib\sqlite3.dll): the exe finds
 # the DLL relative to itself.
 Copy-Item -Recurse (Join-Path $root 'build\cli\windows_x64\bundle\*') (Join-Path $stage 'server')
@@ -27,6 +39,11 @@ foreach ($rel in 'fonts\NotoSans-Regular.ttf', 'fonts\NotoSans-Bold.ttf',
   $dest = Join-Path $stage "server\assets\$rel"
   New-Item -ItemType Directory -Force (Split-Path -Parent $dest) | Out-Null
   Copy-Item (Join-Path $assets $rel) $dest
+}
+
+if ($NoPack) {
+  Write-Host "`nStaged server in $(Join-Path $stage 'server')"
+  exit 0
 }
 
 $dist = Join-Path $root 'dist'

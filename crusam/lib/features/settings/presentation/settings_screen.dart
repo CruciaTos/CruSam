@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/sync/google_auth_service.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../notifiers/settings_notifier.dart';
 import 'package:crusam_core/crusam_core.dart';
 
@@ -148,7 +149,8 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with ReloadOnDbChange {
   final _notifier = SettingsNotifier();
 
   late final _ctrl = <String, TextEditingController>{
@@ -164,6 +166,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'ifscCode':        TextEditingController(),
     'phone':           TextEditingController(),
   };
+
+  @override
+  void onDbChanged() => _notifier.reloadIfChanged();
 
   @override
   void initState() {
