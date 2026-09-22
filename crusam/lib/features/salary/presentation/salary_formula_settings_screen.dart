@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../data/models/salary_formula_config_model.dart';
 import '../notifier/salary_formula_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens — matches Company-Config settings_screen.dart
@@ -275,7 +275,7 @@ class _SalaryFormulaSettingsScreenState
                 borderRadius: BorderRadius.circular(_Tok.cRadius),
                 boxShadow   : [
                   BoxShadow(
-                    color     : Colors.black.withOpacity(0.04),
+                    color     : Colors.black.withValues(alpha: 0.04),
                     blurRadius: 12,
                     offset    : const Offset(0, 2),
                   ),

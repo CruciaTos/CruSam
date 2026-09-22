@@ -3,19 +3,19 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../data/models/employee_model.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/salary/notifier/salary_snapshot_notifier.dart';
 import '../widgets/salary_entry_table.dart';
 import '../widgets/shared_salary_widget.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ── Shared control sizing so the button / dropdown / MSW panel match exactly ──
 const double _kControlHeight = 46.0;
 const double _kControlRadius = 12.0;
 final List<BoxShadow> _kControlShadow = [
   BoxShadow(
-    color: Colors.black.withOpacity(0.18),
+    color: Colors.black.withValues(alpha: 0.18),
     blurRadius: 10,
     offset: const Offset(0, 3),
   ),
@@ -292,10 +292,10 @@ class SmoothDropdown<T> extends StatelessWidget {
       offset: Offset(0, height + 8),
       color: const Color(0xFF1E293B),
       elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.4),
+      shadowColor: Colors.black.withValues(alpha: 0.4),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(_kControlRadius),
-        side: BorderSide(color: AppColors.slate400.withOpacity(0.25)),
+        side: BorderSide(color: AppColors.slate400.withValues(alpha: 0.25)),
       ),
       constraints: BoxConstraints(minWidth: width, maxHeight: maxHeight),
       itemBuilder: (context) {
@@ -329,7 +329,7 @@ class SmoothDropdown<T> extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF1E293B),
           borderRadius: BorderRadius.circular(_kControlRadius),
-          border: Border.all(color: AppColors.slate400.withOpacity(0.35)),
+          border: Border.all(color: AppColors.slate400.withValues(alpha: 0.35)),
           boxShadow: _kControlShadow,
         ),
         child: Row(
@@ -463,7 +463,7 @@ class _ToolbarState extends State<_Toolbar> {
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.indigo600,
-                  disabledBackgroundColor: AppColors.indigo600.withOpacity(0.55),
+                  disabledBackgroundColor: AppColors.indigo600.withValues(alpha: 0.55),
                   foregroundColor: Colors.white,
                   elevation: 0,
                   shadowColor: Colors.transparent,
@@ -502,7 +502,7 @@ class _ToolbarState extends State<_Toolbar> {
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(_kControlRadius),
-                  border: Border.all(color: AppColors.slate400.withOpacity(0.35)),
+                  border: Border.all(color: AppColors.slate400.withValues(alpha: 0.35)),
                   boxShadow: _kControlShadow,
                 ),
                 child: Row(
@@ -539,7 +539,7 @@ class _ToolbarState extends State<_Toolbar> {
                     Container(
                       width: 1,
                       height: 20,
-                      color: AppColors.slate400.withOpacity(0.3),
+                      color: AppColors.slate400.withValues(alpha: 0.3),
                     ),
                     const SizedBox(width: 14),
                     Text(

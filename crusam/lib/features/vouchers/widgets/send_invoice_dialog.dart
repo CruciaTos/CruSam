@@ -16,20 +16,18 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/email/email_suggestions_cache.dart';
-import '../../../core/sync/google_auth_service.dart';
+import '../../../core/email/email_account.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/db/email_log_repository.dart';
-import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
-import '../../../data/models/voucher_model.dart';
 import '../../../shared/models/generated_document.dart';
 import '../../../shared/models/output_format.dart';
 import '../../../shared/widgets/output_format_picker.dart';
 import '../services/excel_export_service.dart';
-import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SendInvoiceDialog extends StatefulWidget {
   final VoucherModel       voucher;
@@ -148,7 +146,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
       return;
     }
 
-    if (!GoogleAuthService.instance.isSignedIn) {
+    if (!EmailAccount.canSend) {
       setState(() => _error =
           'Not connected to Gmail — connect an account in Profile first.');
       return;
@@ -175,7 +173,7 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject: _subjectCtrl.text.trim(),
-        sentBy: GoogleAuthService.instance.userEmail ?? '',
+        sentBy: EmailAccount.senderEmail,
         attachmentFormats: _formats.map((f) => f.name).join(','),
       ));
 
@@ -186,11 +184,8 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
       final docs = <GeneratedDocument>[];
 
       if (_formats.contains(OutputFormat.pdf)) {
-        // Full bundle (tax invoice + voucher pages), same as "Save PDF"
-        // produces to disk. Widget-based generator (vector pw.Widget tree),
-        // not the screenshot-based one — used here regardless of the
-        // 'useWidgetPdfForInvoiceVoucher' toggle, which only controls the
-        // separate "Save PDF" button.
+        // Full bundle (tax invoice + voucher pages) — the same generator
+        // "Save PDF" uses, so the emailed file matches the saved one.
         final pdfBytes = await WidgetPdfExportService.buildInvoiceBundleBytes(
           voucher: widget.voucher,
           config: widget.config,
@@ -256,12 +251,13 @@ class _SendInvoiceDialogState extends State<SendInvoiceDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final connected = GoogleAuthService.instance.isSignedIn;
+    final connected = EmailAccount.canSend;
 
     return Dialog(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Padding(
+        // Scrolls when the window is too short to show the whole dialog.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: Column(
             mainAxisSize: MainAxisSize.min,

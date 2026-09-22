@@ -27,25 +27,22 @@ import 'package:flutter/material.dart';
 
 import '../../../core/email/gmail_service.dart';
 import '../../../core/email/email_suggestions_cache.dart';
-import '../../../core/sync/google_auth_service.dart';
+import '../../../core/email/email_account.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
 import '../../../data/db/email_log_repository.dart';
-import '../../../data/models/company_config_model.dart';
 import '../../../data/models/email_log_model.dart';
-import '../../../data/models/margin_settings_model.dart';
 import '../../../shared/models/generated_document.dart';
 import '../../../shared/models/output_format.dart';
 import '../../../shared/widgets/output_format_picker.dart';
 import '../../../data/db/salary_disbursement_repository.dart';
-import '../models/salary_disbursement_model.dart';
-import '../models/salary_snapshot_model.dart';
 import '../notifier/salary_snapshot_notifier.dart';
 import '../notifier/salary_state_controller.dart';
 import '../services/salary_email_export_service.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SendSalaryDialog extends StatefulWidget {
   final SavedSalarySummary summary;
@@ -304,7 +301,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
       return;
     }
 
-    if (!GoogleAuthService.instance.isSignedIn) {
+    if (!EmailAccount.canSend) {
       setState(() => _error =
           'Not connected to Gmail — connect an account in Profile first.');
       return;
@@ -331,7 +328,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
         recipientTo: to,
         recipientCc: _ccCtrl.text.trim(),
         subject:     _subjectCtrl.text.trim(),
-        sentBy:      GoogleAuthService.instance.userEmail ?? '',
+        sentBy:      EmailAccount.senderEmail,
         attachmentFormats: _formats.map((f) => f.name).join(','),
       ));
 
@@ -398,8 +395,6 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   /// Delegates to SalaryEmailExportService based on the selected document
   /// type, returning every file the format picker has selected — one email,
   /// N attachments, per output-format-selector blueprint §4.2.
-  /// buildSalaryBill needs the dialog's BuildContext for off-screen widget
-  /// screenshot rendering.
   Future<List<GeneratedDocument>> _buildDocuments() async {
     final margins = EdgeInsets.fromLTRB(
       _margins.left,
@@ -438,7 +433,6 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
       case SalaryDocumentType.salaryBillExport:
         return [
           await SalaryEmailExportService.buildSalaryBill(
-            context:   context,
             config:    _config,
             margins:   margins,
             deptCode:  _selectedDept,
@@ -449,7 +443,6 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
       case SalaryDocumentType.salaryBillFinal:
         return [
           await SalaryEmailExportService.buildSalaryBill(
-            context:   context,
             config:    _config,
             margins:   margins,
             deptCode:  _selectedDept,
@@ -485,7 +478,8 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
+        // Scrolls when the window is too short to show the whole dialog.
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: _initialising ? _buildLoading() : _buildForm(),
         ),
@@ -516,7 +510,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
   // ── Form ──────────────────────────────────────────────────────────────────
 
   Widget _buildForm() {
-    final connected = GoogleAuthService.instance.isSignedIn;
+    final connected = EmailAccount.canSend;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -566,7 +560,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
         _FieldLabel('Document type'),
         const SizedBox(height: AppSpacing.xs),
         DropdownButtonFormField<SalaryDocumentType>(
-          value: _docType,
+          initialValue: _docType,
           isDense: true,
           decoration: const InputDecoration(
             border: OutlineInputBorder(),
@@ -616,7 +610,7 @@ class _SendSalaryDialogState extends State<SendSalaryDialog> {
           const SizedBox(height: AppSpacing.xs),
           if (_deptCodes.length > 1)
             DropdownButtonFormField<String>(
-              value: _selectedDept,
+              initialValue: _selectedDept,
               isDense: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),

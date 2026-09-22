@@ -1,0 +1,6 @@
+# Copy of real business data used for development/tests. Never commit.
+dev-data/
+.dart_tool/
+build/
+*.log
+dist/

@@ -1,4 +1,4 @@
-﻿// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
+// crusam/lib/core/ai/notifier/ai_chat_notifier.dart
 //
 // Features:
 //  1. _activeFileContext         — persists last uploaded file across follow‑ups
@@ -14,7 +14,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:crusam/core/ai/models/ai_provider.dart';
 import 'package:crusam/core/ai/models/app_context.dart';
@@ -87,7 +86,7 @@ class AiChatNotifier extends ChangeNotifier {
   String? _pendingStreamText;
   ChatPhase _chatPhase = ChatPhase.idle;
   StreamSubscription<String>? _streamSubscription;
-  String _lastUserQuery = '';
+  final String _lastUserQuery = '';
 
   // ── Pending action (interactive confirmation) ────────────────────────────
   Completer<bool>? _pendingActionCompleter;
@@ -274,8 +273,9 @@ class AiChatNotifier extends ChangeNotifier {
       'do it all',
       'apply all',
       'sync all',
-    ].contains(lower))
+    ].contains(lower)) {
       return true;
+    }
     return lower.startsWith('continue with') ||
         lower.startsWith('resume the') ||
         lower.startsWith('continue the') ||
@@ -608,8 +608,7 @@ class AiChatNotifier extends ChangeNotifier {
 
         // Regular file Q&A
         String analysisPrompt =
-            _buildFileContextBlock(extraction, fileName) +
-            'Using the data above, please answer: $userQuestion';
+            '${_buildFileContextBlock(extraction, fileName)}Using the data above, please answer: $userQuestion';
 
         _pendingStreamText = '💬 Analysing with $_selectedModel…';
         _chatPhase = ChatPhase.connecting;
@@ -684,7 +683,7 @@ class AiChatNotifier extends ChangeNotifier {
       _addMessage(
         ChatMessage(
           role: ChatRole.assistant,
-          text: '⚠️ Failed: ${(result as AiToolFailure).reason}',
+          text: '⚠️ Failed: ${(result).reason}',
           timestamp: DateTime.now(),
           isError: true,
         ),
@@ -877,7 +876,7 @@ class AiChatNotifier extends ChangeNotifier {
           _addMessage(
             ChatMessage(
               role: ChatRole.assistant,
-              text: '⚠️ Actions failed: ${(result as AiToolFailure).reason}',
+              text: '⚠️ Actions failed: ${(result).reason}',
               timestamp: DateTime.now(),
               isError: true,
             ),
@@ -1111,22 +1110,6 @@ class AiChatNotifier extends ChangeNotifier {
         )
         .toList();
   }
-
-  // ── System prompts ───────────────────────────────────────────────────────
-  String _buildImageAnalysisPrompt() => '''
-You are a professional data analyst embedded in Crusam, a business management app.
-The user has uploaded an image. Raw text has been extracted and provided as [IMAGE DATA].
-
-RESPONSE RULES (NON‑NEGOTIABLE)
-▸ Begin DIRECTLY — no greetings, no "Let me analyse…" phrases.
-▸ State the answer on the first line with the key entity in **bold**.
-▸ Use bullet points for details; markdown tables only when explicitly requested.
-▸ Use ₹ for Indian Rupee amounts.
-▸ Do NOT mention "image data", "extracted text", or internal operations.
-▸ If data is unclear, say so in one sentence.
-▸ Keep responses concise — answer + relevant details + one follow‑up question.
-▸ Never fabricate values not present in the data.
-''';
 
   String _buildFileAnalysisPrompt(AttachedFileType type) {
     final typeName = type.label;

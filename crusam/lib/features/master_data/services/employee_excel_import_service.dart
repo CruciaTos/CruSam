@@ -1,7 +1,7 @@
 import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:crusam_core/crusam_core.dart';
 
-import '../../../data/models/employee_model.dart';
 
 class ImportResult {
   final List<EmployeeModel> validEmployees;

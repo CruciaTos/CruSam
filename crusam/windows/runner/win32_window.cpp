@@ -216,6 +216,19 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
+
+    case WM_GETMINMAXINFO: {
+      // Fallback only: the window_manager plugin handles WM_GETMINMAXINFO
+      // first, and the app sets the minimum size there (full vs compact
+      // window, see WindowModeController). Smallest full window: 960x520
+      // logical pixels of content (plus the frame), scaled to the DPI.
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      double scale = FlutterDesktopGetDpiForMonitor(monitor) / 96.0;
+      info->ptMinTrackSize.x = Scale(976, scale);
+      info->ptMinTrackSize.y = Scale(559, scale);
+      return 0;
+    }
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);

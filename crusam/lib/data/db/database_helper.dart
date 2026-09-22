@@ -1,20 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:uuid/uuid.dart';                     // <-- added for immediate cloud_id generation
 import '../../core/storage/app_paths.dart';
-import '../../core/sync/sync_models.dart';
-import '../../core/sync/google_auth_service.dart';
-import '../models/employee_model.dart';
-import '../models/salary_formula_config_model.dart';
-import '../models/margin_settings_model.dart';
-import '../models/voucher_column_widths_model.dart';
-import '../models/bank_column_widths_model.dart';
+import '../../core/email/email_account.dart';
 import '../seeds/employee_seed_data.dart';
-import "package:crusam/core/sync/drive_service.dart";
 import 'package:path/path.dart' as p;
 import 'migrations/email_log_migration.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -24,11 +18,20 @@ class DatabaseHelper {
   Future<Database> get database async => _db ??= await _init();
 
   Future<Database> _init() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
     final path = await _resolveDbPath();
     return openDatabase(
       path,
       version: 6,
-      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+        // Wait (up to 5 s) instead of failing if the CruSam MCP server is
+        // writing at the same moment.
+        await db.rawQuery('PRAGMA busy_timeout = 5000');
+      },
       onCreate: (db, v) async {
         await _createTables(db);
         await _seedCompanyConfig(db);
@@ -202,17 +205,6 @@ class DatabaseHelper {
           [basic, other, gross, uanNo],
         );
       }
-    }
-  }
-
-  DateTime _parseUtcDateTime(String? value) {
-    if (value == null || value.isEmpty) {
-      return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
-    }
-    try {
-      return DateTime.parse(value).toUtc();
-    } catch (_) {
-      return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     }
   }
 
@@ -407,6 +399,11 @@ class DatabaseHelper {
       created_at            TEXT    NOT NULL DEFAULT (datetime('now'))
     )''');
 
+    // ── Client address book (also used by the CruSam MCP server). Additive;
+    //    invoices still store their own copy of the client details.
+    await ClientStore.ensureTable(db);
+    await EmailOutboxStore.ensureTable(db);
+
     // ── Gmail sending: one log table covers every document type as each
     //    gets wired up (invoices now, salary slips/disbursements later).
     await EmailLogMigration.migrate(db);
@@ -464,102 +461,6 @@ class DatabaseHelper {
 
   // ── Sync helpers ──────────────────────────────────────────────────────────
 
-  /// Returns true if there is at least one un-pushed local change for
-  /// [cloudId] sitting in the sync_pending queue.
-  ///
-  /// Used by [upsertEmployeeFromCloud] and [upsertVoucherFromCloud] to prevent
-  /// a stale Drive pull from overwriting a newer local edit that hasn't been
-  /// uploaded yet. If pending entries exist, the local version wins — the
-  /// queued push will correct Drive shortly after.
-  Future<bool> hasPendingSync(String cloudId) async {
-    final rows = await (await database).query(
-      'sync_pending',
-      columns: ['id'],
-      where: 'cloud_id = ?',
-      whereArgs: [cloudId],
-      limit: 1,
-    );
-    return rows.isNotEmpty;
-  }
-
-  /// Copies the live SQLite file to a timestamped backup in the same directory
-  /// before any sync pull runs.
-  ///
-  /// Call this once per app startup, from [SyncManager.syncOnStartup], BEFORE
-  /// [initializeDriveStructure] or any upsert. Keeps the 3 most recent
-  /// backups; older ones are silently pruned. Errors are non-fatal — a failure
-  /// here must never block the app from starting.
-  Future<void> createPreSyncBackup() async {
-    try {
-      final dbPath = await _resolveDbPath();
-      final src = File(dbPath);
-      if (!src.existsSync()) return;
-
-      final backupDir = src.parent;
-
-      // Timestamp format: 2025-06-05T08-30-00  (colons replaced so it's a
-      // valid filename on Windows and Linux)
-      final ts = DateTime.now()
-          .toUtc()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .replaceAll('.', '-')
-          .substring(0, 19);
-
-      final dest = File('${backupDir.path}${Platform.pathSeparator}aarti_backup_$ts.db');
-      await src.copy(dest.path);
-      debugPrint('DatabaseHelper.createPreSyncBackup: wrote ${dest.path}');
-
-      // Prune: keep only the 3 most recent backups (newest first by filename)
-      final backups = backupDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => p.basename(f.path).startsWith('aarti_backup_'))
-          .toList()
-        ..sort((a, b) => b.path.compareTo(a.path));
-
-      for (final old in backups.skip(3)) {
-        old.deleteSync();
-        debugPrint('DatabaseHelper.createPreSyncBackup: pruned ${old.path}');
-      }
-    } catch (e) {
-      // Non-fatal: log and continue. A backup failure must never crash startup.
-      debugPrint('DatabaseHelper.createPreSyncBackup error (non-fatal): $e');
-    }
-  }
-
-  /// Called by SyncManager bootstrap to stamp a cloud_id onto a local employee
-  /// that was created before sync was set up.
-  Future<void> assignCloudId(int localId, String cloudId, String now) async {
-    await (await database).update(
-      'employees',
-      {
-        'cloud_id': cloudId,
-        'updated_at': now,
-        'created_at': now, // safe: only runs when created_at may be null
-        'synced_at': now,
-      },
-      where: "id = ? AND (cloud_id IS NULL OR cloud_id = '')",   // ← FIXED: single quotes
-      whereArgs: [localId],
-    );
-  }
-
-  /// Called by SyncManager pull: marks a local employee deleted when the Drive
-  /// index says it has been soft-deleted on another device.
-  Future<void> softDeleteByCloudId(String cloudId) async {
-    final now = DateTime.now().toUtc().toIso8601String();
-    await (await database).update(
-      'employees',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-        'updated_at': now,
-      },
-      where: 'cloud_id = ? AND is_deleted = 0',
-      whereArgs: [cloudId],
-    );
-  }
-
   Future<Map<String, dynamic>?> getEmployeeById(int id) async {
     final rows = await (await database).query(
       'employees',
@@ -581,20 +482,6 @@ class DatabaseHelper {
     normalized['updated_at'] = now;
 
     final id = await db.insert('employees', normalized);
-
-    // Enqueue sync if the row already has a cloud_id (e.g. restored from Drive)
-    final cloudId = normalized['cloud_id'] as String?;
-    if (cloudId != null && cloudId.isNotEmpty) {
-      final inserted = await getEmployeeById(id);
-      if (inserted != null) {
-        await SyncManager.instance.pushEmployeeChange(
-          cloudId: cloudId,
-          operation: 'create',
-          employeeDbRow: inserted,
-        );
-      }
-    }
-    // If cloud_id is absent the bootstrap will assign one on next startup sync.
 
     return id;
   }
@@ -619,24 +506,6 @@ class DatabaseHelper {
         orderBy: 'sr_no ASC',
       );
 
-  /// Returns all active employees that already have a cloud_id.
-  /// Used by [SyncManager._enqueueAllEmployeesForPush] to re-push every
-  /// record to Drive on every app launch.
-  Future<List<Map<String, dynamic>>> getAllSyncedEmployees() async =>
-      (await database).query(
-        'employees',
-        where:
-            "(is_deleted = 0 OR is_deleted IS NULL) AND cloud_id IS NOT NULL AND cloud_id != ''",
-        orderBy: 'sr_no ASC',
-      );
-
-  Future<List<Map<String, dynamic>>> getDeletedSyncedEmployees() async =>
-      (await database).query(
-        'employees',
-        where: "is_deleted = 1 AND cloud_id IS NOT NULL AND cloud_id != ''",
-        orderBy: 'updated_at ASC',
-      );
-
   Future<List<Map<String, dynamic>>> searchEmployees(String q) async =>
       (await database).query(
         'employees',
@@ -653,17 +522,6 @@ class DatabaseHelper {
 
     final affected =
         await db.update('employees', normalized, where: 'id=?', whereArgs: [id]);
-
-    // Fetch the updated row to get cloud_id (may have been set by a prior sync)
-    final updated = await getEmployeeById(id);
-    final cloudId = updated?['cloud_id'] as String?;
-    if (cloudId != null && cloudId.isNotEmpty && updated != null) {
-      await SyncManager.instance.pushEmployeeChange(
-        cloudId: cloudId,
-        operation: 'update',
-        employeeDbRow: updated,
-      );
-    }
 
     return affected;
   }
@@ -682,25 +540,14 @@ class DatabaseHelper {
       whereArgs: [id],
     );
 
-    final cloudId = row['cloud_id'] as String?;
-    if (cloudId != null && cloudId.isNotEmpty) {
-      // Re-fetch to get the tombstone values
-      final tombstone = await getEmployeeById(id);
-      if (tombstone != null) {
-        await SyncManager.instance.pushEmployeeChange(
-          cloudId: cloudId,
-          operation: 'delete',
-          employeeDbRow: tombstone,
-        );
-      }
-    }
-
     return affected;
   }
 
   // --- Vouchers ---
-  String get _currentGoogleEmail =>
-      GoogleAuthService.instance.userEmail?.trim().toLowerCase() ?? 'unknown';
+  String get _currentGoogleEmail {
+    final email = EmailAccount.senderEmail.trim().toLowerCase();
+    return email.isEmpty ? 'unknown' : email;
+  }
 
   /// Inserts a new voucher into the database.
   ///
@@ -708,8 +555,23 @@ class DatabaseHelper {
   /// so that it is visible to other devices without waiting for a full launch
   /// cycle. This prevents two devices from creating competing local records
   /// with the same missing `cloud_id`.
-  Future<int> insertVoucher(Map<String, dynamic> data) async {
+  /// Inserts an invoice and its rows in one transaction, so a failure can
+  /// never leave an invoice without its rows.
+  Future<int> insertVoucherWithRows(
+    Map<String, dynamic> voucherData,
+    List<Map<String, dynamic>> Function(int voucherId) rows,
+  ) async {
     final db = await database;
+    return db.transaction((txn) async {
+      final id = await txn.insert('vouchers', _newVoucherPayload(voucherData));
+      for (final row in rows(id)) {
+        await txn.insert('voucher_rows', row);
+      }
+      return id;
+    });
+  }
+
+  Map<String, dynamic> _newVoucherPayload(Map<String, dynamic> data) {
     final now = DateTime.now().toUtc().toIso8601String();
     final payload = Map<String, dynamic>.from(data);
     payload['created_at'] ??= now;
@@ -717,30 +579,10 @@ class DatabaseHelper {
     payload['created_by'] ??= _currentGoogleEmail;
     payload['updated_by'] ??= _currentGoogleEmail;
     payload['is_deleted'] ??= 0;
-
-    // ── Immediate cloud_id assignment ───────────────────────────────────────
-    // Without this the record is invisible to other devices until the next
-    // app startup, leading to divergence when two devices create a record
-    // that would otherwise have the same natural key.
     if (payload['cloud_id'] == null || (payload['cloud_id'] as String).isEmpty) {
       payload['cloud_id'] = const Uuid().v4();
     }
-
-    final id = await db.insert('vouchers', payload);
-
-    // Push immediately — don't wait for next launch
-    final cloudId = payload['cloud_id'] as String;
-    final inserted = await getVoucherById(id);
-    if (inserted != null) {
-      // Rows are not yet attached at insert time; send an empty list.
-      await SyncManager.instance.pushInvoiceChange(
-        cloudId: cloudId,
-        operation: 'create',
-        invoiceDbRow: Map<String, dynamic>.from(inserted)..['rows'] = [],
-      );
-    }
-
-    return id;
+    return payload;
   }
 
   Future<Map<String, dynamic>?> getVoucherById(int id) async {
@@ -787,23 +629,7 @@ class DatabaseHelper {
       for (final row in rows) {
         await txn.insert('voucher_rows', row);
       }
-    });
-
-    // ── Push immediately after successful local update ──────────────────────
-    final cloudId = voucherData['cloud_id'] as String?;
-    if (cloudId != null && cloudId.isNotEmpty) {
-      final updatedRows = await getRowsByVoucherId(voucherId);
-      final updatedHeader = await getVoucherById(voucherId);
-      if (updatedHeader != null) {
-        await SyncManager.instance.pushInvoiceChange(
-          cloudId: cloudId,
-          operation: 'update',
-          invoiceDbRow: Map<String, dynamic>.from(updatedHeader)
-            ..['rows'] = updatedRows,
-        );
-      }
-    }
-  }
+    });  }
 
   Future<List<Map<String, dynamic>>> getAllVouchers() async =>
       (await database).query(
@@ -820,18 +646,12 @@ class DatabaseHelper {
         orderBy: 'id DESC',
       );
 
-  Future<int> insertVoucherRow(Map<String, dynamic> data) async =>
-      (await database).insert('voucher_rows', data);
-
   Future<List<Map<String, dynamic>>> getRowsByVoucherId(int id) async =>
       (await database).query(
         'voucher_rows',
         where: 'voucher_id=?',
         whereArgs: [id],
       );
-
-  Future<void> deleteVoucherRows(int voucherId) async => (await database)
-      .delete('voucher_rows', where: 'voucher_id=?', whereArgs: [voucherId]);
 
   Future<void> deleteVoucher(int id) async {
     final db = await database;
@@ -848,89 +668,7 @@ class DatabaseHelper {
       },
       where: 'id=?',
       whereArgs: [id],
-    );
-
-    final cloudId = row['cloud_id'] as String?;
-    if (cloudId != null && cloudId.isNotEmpty) {
-      final tombstone = await getVoucherById(id);
-      if (tombstone != null) {
-        await SyncManager.instance.pushInvoiceChange(
-          cloudId: cloudId,
-          operation: 'delete',
-          invoiceDbRow: tombstone,
-        );
-      }
-    }
-  }
-
-  Future<void> assignVoucherCloudId(
-    int localId,
-    String cloudId,
-    String now,
-    String createdBy,
-    String updatedBy,
-  ) async {
-    await (await database).rawUpdate('''
-      UPDATE vouchers
-      SET cloud_id = ?,
-          created_by = CASE
-            WHEN created_by IS NULL OR TRIM(created_by) = '' THEN ?
-            ELSE created_by
-          END,
-          updated_by = CASE
-            WHEN updated_by IS NULL OR TRIM(updated_by) = '' THEN ?
-            ELSE updated_by
-          END,
-          created_at = CASE
-            WHEN created_at IS NULL OR TRIM(created_at) = '' THEN ?
-            ELSE created_at
-          END,
-          updated_at = ?,
-          synced_at = ?
-      WHERE id = ? AND (cloud_id IS NULL OR cloud_id = '')
-    ''', [cloudId, createdBy, updatedBy, now, now, now, localId]);
-  }
-
-  Future<void> softDeleteVoucherByCloudId(String cloudId) async {
-    final now = DateTime.now().toUtc().toIso8601String();
-    await (await database).update(
-      'vouchers',
-      {
-        'is_deleted': 1,
-        'deleted_at': now,
-        'updated_at': now,
-      },
-      where: 'cloud_id = ? AND is_deleted = 0',
-      whereArgs: [cloudId],
-    );
-  }
-
-  Future<void> saveDraft(
-    Map<String, dynamic> header,
-    List<Map<String, dynamic>> rows,
-  ) async {
-    final db = await database;
-    await db.transaction((txn) async {
-      await txn.insert(
-        'voucher_draft',
-        header,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
-      await txn.delete('voucher_draft_rows');
-      for (final row in rows) {
-        await txn.insert('voucher_draft_rows', row);
-      }
-    });
-  }
-
-  Future<Map<String, dynamic>?> getDraftHeader() async {
-    final rows = await (await database).query(
-      'voucher_draft',
-      where: 'id=1',
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first;
-  }
+    );  }
 
   Future<List<Map<String, dynamic>>> getDraftRows() async =>
       (await database).query('voucher_draft_rows');
@@ -1114,199 +852,4 @@ class DatabaseHelper {
       'user_id': userId,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
-
-  // --- Sync Methods ---
-  Future<int> addPendingSync(SyncPendingEntry entry) async {
-    return (await database).insert('sync_pending', {
-      'entity_type': entry.entityType,
-      'cloud_id': entry.cloudId,
-      'operation': entry.operation,
-      'payload': jsonEncode(entry.payload),
-      'local_updated_at': entry.localUpdatedAt,
-    });
-  }
-
-  Future<List<Map<String, dynamic>>> getPendingSyncs() async {
-    return (await database).query(
-      'sync_pending',
-      orderBy: 'created_at ASC',
-    );
-  }
-
-  Future<int> removePendingSync(int id) async {
-    return (await database).delete(
-      'sync_pending',
-      where: 'id=?',
-      whereArgs: [id],
-    );
-  }
-
-  Future<Map<String, dynamic>?> getEmployeeByCloudId(String cloudId) async {
-    final rows = await (await database).query(
-      'employees',
-      where: 'cloud_id=?',
-      whereArgs: [cloudId],
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first;
-  }
-
-  Future<Map<String, dynamic>?> getVoucherByCloudId(String cloudId) async {
-    final rows = await (await database).query(
-      'vouchers',
-      where: 'cloud_id=?',
-      whereArgs: [cloudId],
-      limit: 1,
-    );
-    return rows.isEmpty ? null : rows.first;
-  }
-
-  /// Applies a Drive-pulled employee record to the local database.
-  ///
-  /// Merge rules (in priority order):
-  /// 1. Strip the integer primary key from the payload so we never collide
-  ///    with a different local row that happens to share the same id integer.
-  /// 2. If the record doesn't exist locally → insert it.
-  /// 3. If a pending local change exists for this cloud_id → local wins.
-  /// 4. If Drive's updated_at is strictly newer than local → overwrite local.
-  /// 5. Otherwise → no-op.
-  Future<int> upsertEmployeeFromCloud(Map<String, dynamic> data) async {
-    final db = await database;
-    final cloudId = data['cloud_id'] as String?;
-    if (cloudId == null || cloudId.isEmpty) return 0;
-
-    // ── FIX: always strip the integer id from the Drive payload ──────────
-    // The local integer id is device-specific.  Using it on a different
-    // device causes silent row-clobbering (replacing the wrong employee).
-    final insertData = Map<String, dynamic>.from(data)..remove('id');
-    insertData['is_deleted'] = _boolToInt(insertData['is_deleted']);
-    insertData['created_at'] = (insertData['created_at'] as String?) ??
-        DateTime.now().toUtc().toIso8601String();
-    insertData['updated_at'] = (insertData['updated_at'] as String?) ??
-        DateTime.now().toUtc().toIso8601String();
-
-    final existing = await getEmployeeByCloudId(cloudId);
-    final cloudUpdatedAt = _parseUtcDateTime(insertData['updated_at'] as String?);
-
-    if (existing == null) {
-      // New record: insert without an id so autoincrement assigns one
-      return await db.insert('employees', insertData,
-          conflictAlgorithm: ConflictAlgorithm.ignore);
-    }
-
-    final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
-    if (cloudUpdatedAt.isAfter(localUpdatedAt)) {
-      if (await hasPendingSync(cloudId)) {
-        debugPrint(
-          'upsertEmployeeFromCloud: skipping cloud overwrite — '
-          'pending local change exists for $cloudId',
-        );
-        return 0;
-      }
-
-      final normalized = _normalizeEmployeeData(insertData);
-      normalized['updated_at'] = cloudUpdatedAt.toIso8601String();
-      normalized['created_at'] =
-          (normalized['created_at'] as String?) ??
-              (existing['created_at'] as String?) ??
-              DateTime.now().toUtc().toIso8601String();
-
-      // Update by cloud_id, never by integer id
-      return await db.update(
-        'employees',
-        normalized,
-        where: 'cloud_id = ?',
-        whereArgs: [cloudId],
-      );
-    }
-
-    return 0;
-  }
-
-  /// Applies a Drive-pulled voucher record to the local database.
-  ///
-  /// Merge rules match upsertEmployeeFromCloud above.
-  Future<int> upsertVoucherFromCloud(Map<String, dynamic> data) async {
-    final db = await database;
-    final cloudId = data['cloud_id'] as String?;
-    if (cloudId == null || cloudId.isEmpty) return 0;
-
-    final rows = ((data['rows'] as List<dynamic>?) ?? [])
-        .map((e) => Map<String, dynamic>.from(e as Map))
-        .toList();
-
-    // ── FIX: strip integer id from header ────────────────────────────────
-    final header = Map<String, dynamic>.from(data)
-      ..remove('rows')
-      ..remove('id');
-    header['is_deleted'] = _boolToInt(header['is_deleted']);
-    header['created_at'] = (header['created_at'] as String?) ??
-        DateTime.now().toUtc().toIso8601String();
-    header['updated_at'] = (header['updated_at'] as String?) ??
-        DateTime.now().toUtc().toIso8601String();
-
-    final existing = await getVoucherByCloudId(cloudId);
-    final cloudUpdatedAt = _parseUtcDateTime(header['updated_at'] as String?);
-
-    if (existing == null) {
-      return await db.transaction((txn) async {
-        final localId = await txn.insert('vouchers', header,
-            conflictAlgorithm: ConflictAlgorithm.ignore);
-        for (final row in rows) {
-          await txn.insert('voucher_rows', _invoiceRowToDb(row, localId));
-        }
-        return localId;
-      });
-    }
-
-    final localUpdatedAt = _parseUtcDateTime(existing['updated_at'] as String?);
-    if (!cloudUpdatedAt.isAfter(localUpdatedAt)) return 0;
-
-    if (await hasPendingSync(cloudId)) {
-      debugPrint(
-        'upsertVoucherFromCloud: skipping cloud overwrite — '
-        'pending local change exists for $cloudId',
-      );
-      return 0;
-    }
-
-    final localId = existing['id'] as int;
-    return await db.transaction((txn) async {
-      await txn.update(
-        'vouchers',
-        header, // id already stripped above
-        where: 'cloud_id = ?',
-        whereArgs: [cloudId],
-      );
-      await txn.delete('voucher_rows', where: 'voucher_id = ?', whereArgs: [localId]);
-      for (final row in rows) {
-        await txn.insert('voucher_rows', _invoiceRowToDb(row, localId));
-      }
-      return localId;
-    });
-  }
-
-  int _boolToInt(dynamic value) {
-    if (value is bool) return value ? 1 : 0;
-    if (value is num) return value.toInt() == 0 ? 0 : 1;
-    if (value is String) return value == 'true' || value == '1' ? 1 : 0;
-    return 0;
-  }
-
-  Map<String, dynamic> _invoiceRowToDb(Map<String, dynamic> row, int voucherId) => {
-        'voucher_id': voucherId,
-        'employee_id': row['employee_id']?.toString() ?? '',
-        'employee_name': row['employee_name']?.toString() ?? '',
-        'amount': (row['amount'] as num?)?.toDouble() ?? 0,
-        'from_date': row['from_date']?.toString() ?? '',
-        'to_date': row['to_date']?.toString() ?? '',
-        'ifsc_code': row['ifsc_code']?.toString() ?? '',
-        'credit_account': row['credit_account']?.toString() ?? '',
-        'sb_code': row['sb_code']?.toString() ?? '10',
-        'bank_detail': row['bank_detail']?.toString() ?? '',
-        'place': row['place']?.toString() ?? '',
-        'dept_code': row['dept_code']?.toString() ?? '',
-        'debit_account': row['debit_account']?.toString() ?? '',
-        'debit_account_name': row['debit_account_name']?.toString() ?? '',
-      };
 }

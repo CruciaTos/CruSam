@@ -1,29 +1,18 @@
-import 'package:crusam/data/models/margin_settings_model.dart';
-import 'package:crusam/features/pdf/service/widget_pdf_export_service.dart';
+import 'package:crusam/features/pdf/service/pdf_file_saver.dart';
+import 'package:crusam/features/pdf/widgets/pdf_pages_preview.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../data/models/company_config_model.dart';
 import '../notifiers/voucher_notifier.dart';
 import '../services/excel_export_service.dart';
 import '../notifiers/margin_settings_notifier.dart';
 import '../notifiers/voucher_column_widths_notifier.dart';
 import '../notifiers/bank_column_widths_notifier.dart';
-import '../services/pdf_export_service.dart';
-import 'tax_invoice_preview.dart';
-import 'voucher_pdf_preview.dart';
-import 'bank_disbursement_preview.dart';
-import 'package:crusam/data/models/bank_column_widths_model.dart'; 
-import 'package:crusam/data/models/voucher_column_widths_model.dart';
 import 'package:pdf/widgets.dart' as pw;
-import '../../../../core/preferences/export_preferences_notifier.dart';
 import '../../../shared/widgets/full_screen_loader.dart'; // <-- added import
-import '../../../data/models/voucher_model.dart' show VoucherStatus;
 import 'send_invoice_dialog.dart';
-
-export 'voucher_pdf_preview.dart'     show VoucherColWidths;
-export 'bank_disbursement_preview.dart' show BankColWidths;
+import 'package:crusam_core/crusam_core.dart';
 
 enum PreviewType   { invoice, bank }
 enum _MarginTarget { taxInvoice, voucherPdf }
@@ -110,7 +99,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
     showLoader(context, message: 'Exporting Excel…');  // <-- added
     try {
       final voucher = widget.notifier.enriched;
-      await (widget.type == PreviewType.invoice
+      (widget.type == PreviewType.invoice
           ? await ExcelExportService.exportTaxInvoice(voucher, widget.config)
           : await ExcelExportService.exportBankDisbursement(
               voucher,
@@ -124,7 +113,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
         SnackBar(content: Text('Export failed: $e'), backgroundColor: Colors.red.shade700),
       );
     } finally {
-      hideLoader(context);  // <-- added as first line of finally
+      hideLoader();  // <-- added as first line of finally
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -136,43 +125,21 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
   try {
     final voucher = widget.notifier.enriched;
     if (widget.type == PreviewType.invoice) {
-      // ── Conditional: widget-based vs screenshot-based ─────────────────────
-      final useWidget =
-          ExportPreferencesNotifier.instance.useWidgetPdfForInvoiceVoucher;
-      if (useWidget) {
-        await WidgetPdfExportService.exportTaxInvoiceAndVoucher(
-          voucher: voucher,
-          config:  widget.config,
-          taxMargins: pw.EdgeInsets.fromLTRB(
-            _marginNotifier1.settings.left,
-            _marginNotifier1.settings.top,
-            _marginNotifier1.settings.right,
-            _marginNotifier1.settings.bottom,
-          ),
-          voucherMargins: pw.EdgeInsets.fromLTRB(
-            _marginNotifier2.settings.left,
-            _marginNotifier2.settings.top,
-            _marginNotifier2.settings.right,
-            _marginNotifier2.settings.bottom,
-          ),
-        );
-      } else {
-        // Existing screenshot method — untouched
-        await PdfExportService.exportInvoiceBundle(
-          context: context,
-          voucher: voucher,
-          config:  widget.config,
-          taxInvoiceMargins: _marginsFrom(_marginNotifier1),
-          voucherMargins:    _marginsFrom(_marginNotifier2),
-        );
-      }
+      await WidgetPdfExportService.exportTaxInvoiceAndVoucher(
+        voucher:        voucher,
+        config:         widget.config,
+        taxMargins:     _pdfMargins(_marginNotifier1),
+        voucherMargins: _pdfMargins(_marginNotifier2),
+        colWidths:      _voucherColWidths,
+        fileName:
+            'tax_invoice_voucher_${PdfFileSaver.slug(voucher.billNo)}',
+      );
     } else {
-      // Bank disbursement — always screenshot, no change
-      await PdfExportService.exportBankDisbursement(
-        context: context,
-        voucher: voucher,
-        config:  widget.config,
-        margins: _marginsFrom(_marginNotifier1),
+      await WidgetPdfExportService.exportBankDisbursement(
+        voucher:   voucher,
+        config:    widget.config,
+        margins:   _pdfMargins(_marginNotifier1),
+        colWidths: _bankColWidths,
       );
     }
   } catch (e) {
@@ -183,14 +150,59 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
           backgroundColor: Colors.red.shade700),
     );
   } finally {
-    hideLoader(context);   // <-- added as first line of finally
+    hideLoader();   // <-- added as first line of finally
     if (mounted) setState(() => _exporting = false);
   }
 }
 
-  static EdgeInsets _marginsFrom(MarginSettingsNotifier n) => EdgeInsets.fromLTRB(
+  static pw.EdgeInsets _pdfMargins(MarginSettingsNotifier n) => pw.EdgeInsets.fromLTRB(
         n.settings.left, n.settings.top, n.settings.right, n.settings.bottom,
       );
+
+  VoucherColWidths get _voucherColWidths =>
+      _voucherColumnWidthsToVoucherColWidths(_voucherColWidthsNotifier.settings);
+
+  BankColWidths get _bankColWidths =>
+      _bankColumnWidthsToBankColWidths(_bankColWidthsNotifier.settings);
+
+  /// Same PDF the Save PDF button writes, rendered on screen.
+  Widget _documentPreview(VoucherModel voucher) {
+    final margins1 = _marginNotifier1.settings.toMap();
+    if (widget.type == PreviewType.invoice) {
+      return PdfPagesPreview(
+        inputs: [
+          voucher.toJson(),
+          voucher.date,
+          widget.config.toMap(),
+          margins1,
+          _marginNotifier2.settings.toMap(),
+          _voucherColWidthsNotifier.settings.toMap(),
+        ],
+        build: () => WidgetPdfExportService.buildInvoiceBundleBytes(
+          voucher:        voucher,
+          config:         widget.config,
+          taxMargins:     _pdfMargins(_marginNotifier1),
+          voucherMargins: _pdfMargins(_marginNotifier2),
+          colWidths:      _voucherColWidths,
+        ),
+      );
+    }
+    return PdfPagesPreview(
+      inputs: [
+        voucher.toJson(),
+        voucher.date,
+        widget.config.toMap(),
+        margins1,
+        _bankColWidthsNotifier.settings.toMap(),
+      ],
+      build: () => WidgetPdfExportService.buildBankDisbursementBytes(
+        voucher:   voucher,
+        config:    widget.config,
+        margins:   _pdfMargins(_marginNotifier1),
+        colWidths: _bankColWidths,
+      ),
+    );
+  }
 
   // ── Send Email ───────────────────────────────────────────────────────────
   // Opens the compose dialog — the actual send happens there, not here.
@@ -244,7 +256,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                         if (_activePanel == _ActivePanel.margins)
                           ListenableBuilder(
                             listenable: _activeMarginNotifier,
-                            builder: (_, __) => _MarginPanel(
+                            builder: (_, _) => _MarginPanel(
                               notifier: _activeMarginNotifier,
                               showTargetSelector:
                                   widget.type == PreviewType.invoice,
@@ -260,7 +272,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                           widget.type == PreviewType.invoice
                               ? ListenableBuilder(
                                   listenable: _voucherColWidthsNotifier,
-                                  builder: (_, __) => _ColWidthPanel(
+                                  builder: (_, _) => _ColWidthPanel(
                                     entries: _voucherColWidthsNotifier.settings.entries,
                                     totalWidth: _voucherColWidthsNotifier.settings.totalWidth,
                                     onChanged: (i, v) => _updateVoucherColumnWidth(i, v),
@@ -271,7 +283,7 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                                 )
                               : ListenableBuilder(
                                   listenable: _bankColWidthsNotifier,
-                                  builder: (_, __) => _ColWidthPanel(
+                                  builder: (_, _) => _ColWidthPanel(
                                     entries: _bankColWidthsNotifier.settings.entries,
                                     totalWidth: _bankColWidthsNotifier.settings.totalWidth,
                                     onChanged: (i, v) => _updateBankColumnWidth(i, v),
@@ -290,37 +302,15 @@ class _InvoicePreviewDialogState extends State<InvoicePreviewDialog> {
                               _voucherColWidthsNotifier,
                               _bankColWidthsNotifier,
                             ]),
-                            builder: (_, __) => SingleChildScrollView(
+                            builder: (_, _) => SingleChildScrollView(
                               padding: const EdgeInsets.all(AppSpacing.xxl),
                               child: Center(
                                 child: ConstrainedBox(
+                                  // Wide enough for a landscape sheet at
+                                  // print size; portrait sheets never scale up.
                                   constraints:
-                                      const BoxConstraints(maxWidth: 800),
-                                  child: widget.type == PreviewType.invoice
-                                      ? Column(children: [
-                                          TaxInvoicePreview(
-                                            voucher: voucher,
-                                            config:  widget.config,
-                                            margins: _marginsFrom(_marginNotifier1),
-                                          ),
-                                          const SizedBox(height: 32),
-                                          VoucherPdfPreview(
-                                            voucher:   voucher,
-                                            config:    widget.config,
-                                            colWidths: _voucherColumnWidthsToVoucherColWidths(
-                                              _voucherColWidthsNotifier.settings,
-                                            ),
-                                            margins:   _marginsFrom(_marginNotifier2),
-                                          ),
-                                        ])
-                                      : BankDisbursementPreview(
-                                          voucher:   voucher,
-                                          config:    widget.config,
-                                          colWidths: _bankColumnWidthsToBankColWidths(
-                                            _bankColWidthsNotifier.settings,
-                                          ),
-                                          margins:   _marginsFrom(_marginNotifier1),
-                                        ),
+                                      const BoxConstraints(maxWidth: 1140),
+                                  child: _documentPreview(voucher),
                                 ),
                               ),
                             ),
@@ -584,7 +574,9 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
     super.didUpdateWidget(old);
     // When entries count changes (switching invoice ↔ bank), rebuild controllers.
     if (old.entries.length != widget.entries.length) {
-      for (final c in _ctrls) c.dispose();
+      for (final c in _ctrls) {
+        c.dispose();
+      }
       _ctrls = _buildCtrls(widget.entries);
       return;
     }
@@ -597,7 +589,9 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
 
   @override
   void dispose() {
-    for (final c in _ctrls) c.dispose();
+    for (final c in _ctrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -654,7 +648,7 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                 itemCount: widget.entries.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                separatorBuilder: (_, _) => const SizedBox(height: 6),
                 itemBuilder: (_, i) {
                   final label = widget.entries[i].$1;
                   return Row(children: [
@@ -681,8 +675,9 @@ class _ColWidthPanelState extends State<_ColWidthPanel> {
                           ),
                           onChanged: (v) {
                             final val = double.tryParse(v);
-                            if (val != null && val >= 10)
+                            if (val != null && val >= 10) {
                               widget.onChanged(i, val);
+                            }
                           },
                         ),
                       ),
@@ -730,7 +725,9 @@ class _MarginPanelState extends State<_MarginPanel> {
         'right':  TextEditingController(text: s.right.toStringAsFixed(1)),
       };
 
-  void _disposeCtrls() { for (final c in _ctrls.values) c.dispose(); }
+  void _disposeCtrls() { for (final c in _ctrls.values) {
+    c.dispose();
+  } }
 
   @override
   void didUpdateWidget(covariant _MarginPanel old) {
@@ -864,7 +861,7 @@ class _MarginDiagram extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
         listenable: notifier,
-        builder: (_, __) {
+        builder: (_, _) {
           final s = notifier.settings;
           const maxM = 80.0, boxW = 80.0, boxH = 100.0;
           return Center(

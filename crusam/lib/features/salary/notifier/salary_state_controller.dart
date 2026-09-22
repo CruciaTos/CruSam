@@ -1,10 +1,9 @@
 // lib/features/salary/notifier/salary_state_controller.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
-import '../../../data/models/employee_model.dart';
 import '../../../data/db/database_helper.dart';
-import '../services/salary_formula_engine.dart';
 import 'salary_data_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryStateController extends ChangeNotifier {
   SalaryStateController._();
@@ -133,9 +132,13 @@ class SalaryStateController extends ChangeNotifier {
     _safeNotify();
   }
 
-  Future<void> loadEmployees() async {
-    isLoading = true;
-    _safeNotify();
+  /// [silent] skips the loading state (background refresh after an
+  /// external change).
+  Future<void> loadEmployees({bool silent = false}) async {
+    if (!silent) {
+      isLoading = true;
+      _safeNotify();
+    }
     try {
       final maps = await DatabaseHelper.instance.getAllEmployees();
       _employees = maps

@@ -12,70 +12,16 @@ import '../../auth/notifiers/auth_notifier.dart';
 import '../widgets/avatar_widget.dart';
 import '../widgets/update_card.dart';
 import '../widgets/backup_restore_card.dart';
+import '../widgets/claude_connection_card.dart';
 import '../widgets/data_location_card.dart';
 import '../widgets/export_paths_card.dart';
 import '../widgets/gmail_account_card.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – consistent with the indigo theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-
-  static const tsBody = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-  );
-
-  static const double radius  = 6.0;
-  static const double cRadius = 10.0;
-  static const double padH    = 18.0;
-  static const double padV    = 16.0;
-}
+typedef _Tok = InkTokens;
 
 // ════════════════════════════════════════════════════════════════════════════
 //  ProfileScreen
@@ -87,7 +33,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _auth = AuthNotifier.instance;
 
   static const _localUserName = 'Crusam User';
   static const _localAuthMethod = 'Local (PC)';
@@ -122,9 +67,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 12),
                     const GmailAccountCard(),        // ← moved here
                     const SizedBox(height: 12),
-                    const ExportPathsCard(),
+                    const ClaudeConnectionCard(),
                     const SizedBox(height: 12),
-                    const _PdfMethodCard(),
+                    const ExportPathsCard(),
                     const SizedBox(height: 12),
                     const BackupRestoreCard(),
                     const SizedBox(height: 12),
@@ -238,93 +183,16 @@ class _LocalInfoCard extends StatelessWidget {
   );
 }
 
-// ── PDF method card ────────────────────────────────────────────────────────
-class _PdfMethodCard extends StatelessWidget {
-  const _PdfMethodCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final prefs = ExportPreferencesNotifier.instance;
-    return ListenableBuilder(
-      listenable: prefs,
-      builder: (ctx, _) => _ThemedCard(
-        title: 'PDF Generation',
-        icon: Icons.picture_as_pdf_outlined,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      prefs.useWidgetPdfForInvoiceVoucher
-                          ? 'Widget-based (Better Quality)'
-                          : 'Screenshot-based (Default)',
-                      style: _Tok.tsInput.copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      prefs.useWidgetPdfForInvoiceVoucher
-                          ? 'Generates PDF using structured pw widgets — crisp text, no rasterization.'
-                          : 'Captures a screenshot of the preview — matches on-screen appearance exactly.',
-                      style: _Tok.tsMeta,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Switch(
-                value: prefs.useWidgetPdfForInvoiceVoucher,
-                activeColor: _Tok.inkLight,
-                onChanged: (v) => prefs.setUseWidgetPdf(v),
-              ),
-            ],
-          ),
-          if (prefs.useWidgetPdfForInvoiceVoucher) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: _Tok.surfaceAlt,
-                border: Border.all(color: _Tok.inkLight.withOpacity(0.3)),
-                borderRadius: BorderRadius.circular(_Tok.radius),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, size: 14, color: _Tok.inkLight),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Widget PDF is active for Tax Invoice & Voucher exports.',
-                      style: _Tok.tsMeta.copyWith(
-                        color: _Tok.inkLight,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 // ── Generic themed card wrapper ────────────────────────────────────────────
 class _ThemedCard extends StatelessWidget {
   final String title;
   final IconData icon;
   final List<Widget> children;
-  final Widget? trailing;
 
   const _ThemedCard({
     required this.title,
     required this.icon,
     required this.children,
-    this.trailing,
   });
 
   @override
@@ -335,7 +203,7 @@ class _ThemedCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(_Tok.cRadius),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.04),
+          color: Colors.black.withValues(alpha: 0.04),
           blurRadius: 12,
           offset: const Offset(0, 2),
         ),
@@ -370,7 +238,6 @@ class _ThemedCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(title.toUpperCase(), style: _Tok.tsCardTitle.copyWith(fontSize: 12)),
               const Spacer(),
-              if (trailing != null) trailing!,
             ],
           ),
         ),

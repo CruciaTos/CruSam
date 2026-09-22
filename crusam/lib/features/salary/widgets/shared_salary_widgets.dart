@@ -10,8 +10,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../data/models/margin_settings_model.dart';
 import 'package:crusam/features/vouchers/notifiers/margin_settings_notifier.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ── Month / Year badge ─────────────────────────────────────────────────────────
 

@@ -5,6 +5,10 @@ import 'package:particles_network/particles_network.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/theme/app_spacing.dart';
+import '../../core/sync/claude_follow_controller.dart';
+import '../../core/sync/db_change_watcher.dart';
+import '../../core/window/window_mode_controller.dart';
+import 'package:window_manager/window_manager.dart' show DragToMoveArea, windowManager;
 import '../../features/auth/notifiers/auth_notifier.dart';
 import 'package:crusam/features/master_data/notifiers/employee_notifier.dart';
 // ── AI chat integration ─────────────────────────────────────────────────────
@@ -12,8 +16,10 @@ import '../../core/ai/presentation/ai_context_builder.dart';
 import 'package:crusam/features/vouchers/notifiers/voucher_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
+import 'package:crusam/features/salary/notifier/salary_snapshot_notifier.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
 import '../../shared/widgets/ai_chat_panel.dart';   // ← AiChatScreen lives here
+import '../../shared/widgets/min_height_scroll.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dark Slate Color Scheme – Minimal & Eye‑Friendly
@@ -21,16 +27,13 @@ import '../../shared/widgets/ai_chat_panel.dart';   // ← AiChatScreen lives he
 class _ShellColors {
   static const background = Color(0xFF0B1120);
   static const surface = Color(0xFF1E293B);
-  static const surfaceGlass = Color(0xE61E293B);
   static const border = Color(0xFF334155);
   static const primary = Color(0xFF3B82F6);
   static const primaryLight = Color(0xFF60A5FA);
-  static const primaryMuted = Color(0x1A3B82F6);
   static const textPrimary = Color(0xFFF8FAFC);
   static const textSecondary = Color(0xFF94A3B8);
   static const textDisabled = Color(0xFF64748B);
   static const iconDefault = Color(0xFF94A3B8);
-  static const iconActive = Color(0xFFFFFFFF);
   static const divider = Color(0xFF334155);
   static const hoverOverlay = Color(0x1AF8FAFC);
   static const selectedOverlay = Color(0x261E3A8A);
@@ -48,6 +51,7 @@ class _Route extends _NavItem {
   final String path, label;
   final IconData icon;
   final int? badge; // optional trailing count – layout slot only, wire up when real counts exist
+  // ignore: unused_element_parameter
   const _Route(this.path, this.icon, this.label, {this.badge});
 }
 
@@ -64,6 +68,7 @@ const _kNav = <_NavItem>[
   _Route('/employees',        Icons.people_outline,           'Employee Master Data'),
   _Route('/vouchers',         Icons.description_outlined,     'Voucher'),
   _Route('/invoices',         Icons.receipt_outlined,         'Invoices'),
+  _Route('/clients',          Icons.business_outlined,        'Clients'),
   _Route('/settings',         Icons.settings_outlined,        'Company-Config'),
   _Route('/salary-formula-settings', Icons.calculate_outlined, 'Salary Formula'),
   _Route('/salary-employees', Icons.badge_outlined,           'Employee Salary'),
@@ -141,7 +146,7 @@ class _ShellScreenState extends State<ShellScreen> {
   Color get _handleLineColor {
     final atLimit = _panelWidth == _minPanelWidth;
     if (atLimit) {
-      return _ShellColors.squeezeLimit.withOpacity(_handleHovered ? 0.8 : 0.4);
+      return _ShellColors.squeezeLimit.withValues(alpha: _handleHovered ? 0.8 : 0.4);
     }
     return _handleHovered ? Colors.white54 : Colors.white24;
   }
@@ -163,6 +168,20 @@ class _ShellScreenState extends State<ShellScreen> {
       _open.contains(label) ? _open.remove(label) : _open.add(label));
 
   @override
+  void initState() {
+    super.initState();
+    WindowModeController.instance.addListener(_onWindowMode);
+  }
+
+  @override
+  void dispose() {
+    WindowModeController.instance.removeListener(_onWindowMode);
+    super.dispose();
+  }
+
+  void _onWindowMode() => setState(() {});
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final loc = GoRouterState.of(context).uri.toString();
@@ -175,6 +194,9 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (WindowModeController.instance.isCompact) {
+      return _CompactShell(title: _pageTitle, child: widget.child);
+    }
     if (MediaQuery.sizeOf(context).width < 768) return _MobileShell(child: widget.child);
 
     final w = _expanded ? AppSpacing.sidebarExpanded : AppSpacing.sidebarCollapsed;
@@ -186,7 +208,8 @@ class _ShellScreenState extends State<ShellScreen> {
           child: RepaintBoundary(
             child: Container(
               color: _ShellColors.background,
-              child: const ParticleNetwork(
+              child: const _PausedWhenInactive(
+                child: ParticleNetwork(
                 particleColor: Color(0x3394A3B8),
                 lineColor: Color(0x1A3B82F6),
                 particleCount: 80,
@@ -197,6 +220,7 @@ class _ShellScreenState extends State<ShellScreen> {
                 touchActivation: false,
                 gravityType: GravityType.none,
                 gravityStrength: 0.08,
+                ),
               ),
             ),
           ),
@@ -212,24 +236,32 @@ class _ShellScreenState extends State<ShellScreen> {
               border: Border(right: BorderSide(color: _ShellColors.border)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 12,
                   offset: const Offset(2, 0),
                 ),
               ],
             ),
+            // The sidebar is always laid out at its final width; while the
+            // container animates, it is revealed or clipped rather than
+            // squeezed (squeezing overflowed every row mid-animation).
             child: ClipRect(
-              child: _expanded
-                  ? _ExpandedSidebar(
-                      active: _activePath,
-                      openGroups: _open,
-                      onNavigate: (p) => context.go(p),
-                      onToggle: _toggle,
-                    )
-                  : _CollapsedSidebar(
-                      active: _activePath,
-                      onNavigate: (p) => context.go(p),
-                    ),
+              child: OverflowBox(
+                alignment: Alignment.centerLeft,
+                minWidth: w,
+                maxWidth: w,
+                child: _expanded
+                    ? _ExpandedSidebar(
+                        active: _activePath,
+                        openGroups: _open,
+                        onNavigate: (p) => context.go(p),
+                        onToggle: _toggle,
+                      )
+                    : _CollapsedSidebar(
+                        active: _activePath,
+                        onNavigate: (p) => context.go(p),
+                      ),
+              ),
             ),
           ),
           // ───── Central area + resizable AI panel on the right ─────
@@ -243,8 +275,11 @@ class _ShellScreenState extends State<ShellScreen> {
                   onAiTap: _togglePanel,
                   isPanelOpen: _isPanelOpen,
                 ),
-                Expanded(child: widget.child),
+                // Pages get at least 520 px; shorter windows scroll the page.
+                Expanded(child: MinHeightScroll(minHeight: 520, child: widget.child)),
               ]),
+              // ── "Updated" pill / Claude activity banner ──
+              ..._claudeOverlays(top: AppSpacing.headerHeight + 12),
               // ── Resizable AI chat panel ──
               if (_isPanelOpen) ...[
                 // Backdrop (tap to close)
@@ -252,7 +287,7 @@ class _ShellScreenState extends State<ShellScreen> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _closePanel,
-                    child: Container(color: Colors.black.withOpacity(0.18)),
+                    child: Container(color: Colors.black.withValues(alpha: 0.18)),
                   ),
                 ),
                 // Panel itself
@@ -304,7 +339,7 @@ class _ShellScreenState extends State<ShellScreen> {
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.30),
+                                    color: Colors.black.withValues(alpha: 0.30),
                                     blurRadius: 24,
                                     offset: const Offset(-6, 0),
                                   ),
@@ -354,7 +389,7 @@ class _ExpandedSidebar extends StatelessWidget {
     Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
+        border: Border(top: BorderSide(color: _ShellColors.divider.withValues(alpha: 0.5))),
       ),
       child: _buildBottomActions(context),
     ),
@@ -384,7 +419,7 @@ class _ExpandedSidebar extends StatelessWidget {
           out.add(SizedBox(height: depth == 0 ? 10 : 4));
           if (depth == 0) {
             out.add(Divider(
-              color: _ShellColors.divider.withOpacity(0.4),
+              color: _ShellColors.divider.withValues(alpha: 0.4),
               indent: 2,
               endIndent: 2,
               height: 1,
@@ -460,7 +495,7 @@ class _CollapsedSidebar extends StatelessWidget {
     Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: _ShellColors.divider.withOpacity(0.5))),
+        border: Border(top: BorderSide(color: _ShellColors.divider.withValues(alpha: 0.5))),
       ),
       child: Column(
         children: [
@@ -558,7 +593,7 @@ class _NavBadge extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
-          color: _ShellColors.divider.withOpacity(emphasized ? 0.5 : 0.3),
+          color: _ShellColors.divider.withValues(alpha: emphasized ? 0.5 : 0.3),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -847,7 +882,7 @@ class _GroupPopup extends StatelessWidget {
             border: Border.all(color: _ShellColors.border, width: 0.5),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.4),
+                  color: Colors.black.withValues(alpha: 0.4),
                   blurRadius: 20,
                   offset: const Offset(4, 6))
             ],
@@ -863,7 +898,7 @@ class _GroupPopup extends StatelessWidget {
                     width: 22,
                     height: 22,
                     decoration: BoxDecoration(
-                      color: _ShellColors.primary.withOpacity(0.1),
+                      color: _ShellColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(5),
                     ),
                     child: Icon(group.icon, size: 13, color: _ShellColors.primary),
@@ -954,7 +989,7 @@ class _SidebarHeader extends StatelessWidget {
         decoration: expanded
             ? BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: _ShellColors.divider.withOpacity(0.5)),
+                  bottom: BorderSide(color: _ShellColors.divider.withValues(alpha: 0.5)),
                 ),
               )
             : null,
@@ -962,32 +997,11 @@ class _SidebarHeader extends StatelessWidget {
           mainAxisAlignment:
               expanded ? MainAxisAlignment.start : MainAxisAlignment.center,
           children: [
-            Container(
+            Image.asset(
+              'assets/images/crusam_logo.png',
               width: 32,
               height: 32,
-              decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      _ShellColors.primary,
-                      _ShellColors.primary.withOpacity(0.7),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: _ShellColors.primary.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]),
-              alignment: Alignment.center,
-              child: const Text('DZ',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14)),
+              filterQuality: FilterQuality.medium,
             ),
             if (expanded) ...[
               const SizedBox(width: 10),
@@ -1046,6 +1060,7 @@ class _HeaderState extends State<_Header> {
       child: Row(children: [
         IconButton(
           onPressed: widget.onToggle,
+          tooltip: widget.expanded ? 'Collapse sidebar' : 'Expand sidebar',
           icon: Icon(
             widget.expanded ? Icons.chevron_left : Icons.chevron_right,
             color: _ShellColors.iconDefault,
@@ -1055,6 +1070,11 @@ class _HeaderState extends State<_Header> {
         Text(widget.title,
             style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
         const Spacer(),
+
+        const _FollowClaudeToggle(),
+        const SizedBox(width: 4),
+        const _WindowModeButton(),
+        const SizedBox(width: 4),
 
         // AI Assistant – opens resizable right‑side panel
         MouseRegion(
@@ -1134,4 +1154,479 @@ class _MobileShell extends StatelessWidget {
   const _MobileShell({required this.child});
   @override
   Widget build(BuildContext context) => Scaffold(body: child);
+}
+
+/// Freezes animations below it while the app window is not focused (for
+/// example while working in Claude Desktop next to it), so the background
+/// doesn't redraw 60 times a second for nobody.
+class _PausedWhenInactive extends StatefulWidget {
+  const _PausedWhenInactive({required this.child});
+  final Widget child;
+
+  @override
+  State<_PausedWhenInactive> createState() => _PausedWhenInactiveState();
+}
+
+class _PausedWhenInactiveState extends State<_PausedWhenInactive> {
+  late final AppLifecycleListener _listener;
+  bool _active = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = AppLifecycleListener(
+      onStateChange: (state) {
+        final active = state == AppLifecycleState.resumed;
+        if (active != _active && mounted) setState(() => _active = active);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      TickerMode(enabled: _active, child: widget.child);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// _UpdatedPill – Instagram-style "Updated" toast shown for a moment whenever
+// DbChangeWatcher reloads data changed outside the app (e.g. by Claude).
+// ══════════════════════════════════════════════════════════════════════════
+class _UpdatedPill extends StatefulWidget {
+  const _UpdatedPill();
+
+  @override
+  State<_UpdatedPill> createState() => _UpdatedPillState();
+}
+
+class _UpdatedPillState extends State<_UpdatedPill> {
+  static const _visibleFor = Duration(milliseconds: 2500);
+
+  bool _visible = false;
+  Timer? _hideTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    DbChangeWatcher.instance.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    DbChangeWatcher.instance.removeListener(_onChange);
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  void _onChange() {
+    // Claude's activity banner already says what changed.
+    if (!mounted || DbChangeWatcher.instance.lastChangeExplained) return;
+    setState(() => _visible = true);
+    _hideTimer?.cancel();
+    _hideTimer = Timer(_visibleFor, () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: AnimatedSlide(
+          offset: _visible ? Offset.zero : const Offset(0, -0.6),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          child: AnimatedOpacity(
+            opacity: _visible ? 1 : 0,
+            duration: const Duration(milliseconds: 220),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: _ShellColors.primary,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.refresh_rounded, size: 15, color: Colors.white),
+                  SizedBox(width: 6),
+                  Text('Updated',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// Follow Claude – header toggle + activity banner (see ClaudeFollowController)
+// ══════════════════════════════════════════════════════════════════════════
+class _FollowClaudeToggle extends StatelessWidget {
+  const _FollowClaudeToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ClaudeFollowController.instance;
+    return ListenableBuilder(
+      listenable: c,
+      builder: (ctx, _) {
+        final on = c.follow;
+        final color = on ? _ShellColors.primaryLight : _ShellColors.iconDefault;
+        return Tooltip(
+          message: on
+              ? 'Follow Claude is on: the app opens whatever Claude is working on'
+              : "Follow Claude is off: Claude's steps show in a banner only",
+          child: InkWell(
+            onTap: () => c.setFollow(!on),
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: on ? _ShellColors.primary.withValues(alpha: 0.14) : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                    color: on ? _ShellColors.primary.withValues(alpha: 0.6) : _ShellColors.border),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(on ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    size: 15, color: color),
+                const SizedBox(width: 6),
+                Text('Follow Claude',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ClaudeActivityBanner extends StatelessWidget {
+  const _ClaudeActivityBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ClaudeFollowController.instance;
+    return ListenableBuilder(
+      listenable: c,
+      builder: (ctx, _) {
+        final e = c.current;
+        final visible = e != null;
+        return IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedSlide(
+            offset: visible ? Offset.zero : const Offset(0, -0.4),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: visible ? 1 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: e == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      constraints: const BoxConstraints(maxWidth: 620),
+                      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+                      decoration: BoxDecoration(
+                        color: _ShellColors.surface,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: _ShellColors.primary.withValues(alpha: 0.55)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.auto_awesome, size: 15, color: _ShellColors.primaryLight),
+                        const SizedBox(width: 8),
+                        const Text('Claude',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: _ShellColors.primaryLight)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Text(
+                              e.message,
+                              key: ValueKey(e.id),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 12.5, color: _ShellColors.textPrimary),
+                            ),
+                          ),
+                        ),
+                        if (c.canView) ...[
+                          const SizedBox(width: 6),
+                          TextButton(
+                            onPressed: c.view,
+                            style: TextButton.styleFrom(
+                              foregroundColor: _ShellColors.primaryLight,
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              minimumSize: const Size(0, 28),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            child: const Text('View',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                        const SizedBox(width: 2),
+                        IconButton(
+                          onPressed: c.dismiss,
+                          tooltip: 'Hide',
+                          icon: const Icon(Icons.close, size: 14, color: _ShellColors.textSecondary),
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ]),
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Shown while Claude's saved month is on the salary screens instead of the
+/// user's own (see SalarySnapshotNotifier.showMonthForClaude).
+class _ClaudeMonthBar extends StatelessWidget {
+  const _ClaudeMonthBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final n = SalarySnapshotNotifier.instance;
+    return ListenableBuilder(
+      listenable: n,
+      builder: (ctx, _) {
+        final label = n.claudeMonthLabel;
+        return IgnorePointer(
+          ignoring: label == null,
+          child: AnimatedSlide(
+            offset: label == null ? const Offset(0, 0.5) : Offset.zero,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            child: AnimatedOpacity(
+              opacity: label == null ? 0 : 1,
+              duration: const Duration(milliseconds: 260),
+              child: label == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+                      decoration: BoxDecoration(
+                        color: _ShellColors.surface,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(color: _ShellColors.border),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.auto_awesome, size: 14, color: _ShellColors.primaryLight),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text("Salary screens are showing Claude's $label",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12.5, color: _ShellColors.textPrimary)),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          onPressed: n.restoreParkedMonth,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _ShellColors.primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            minimumSize: const Size(0, 30),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          child: const Text('Back to my month',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                        ),
+                      ]),
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The "Updated" pill, Claude's activity banner and the "Back to my month"
+/// bar, shared by the full and compact shells. [top] is where the banner
+/// sits (just under the header).
+List<Widget> _claudeOverlays({required double top}) => [
+      Positioned(
+        top: top,
+        left: 0,
+        right: 0,
+        child: const Center(child: _UpdatedPill()),
+      ),
+      Positioned(
+        top: top,
+        left: 12,
+        right: 12,
+        child: const Center(child: _ClaudeActivityBanner()),
+      ),
+      const Positioned(
+        bottom: 16,
+        left: 12,
+        right: 12,
+        child: Center(child: _ClaudeMonthBar()),
+      ),
+    ];
+
+// ══════════════════════════════════════════════════════════════════════════
+// Compact window (see WindowModeController)
+// ══════════════════════════════════════════════════════════════════════════
+
+/// Header button: switch between the full and the compact window.
+class _WindowModeButton extends StatelessWidget {
+  const _WindowModeButton();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = WindowModeController.instance;
+    return IconButton(
+      onPressed: c.toggle,
+      tooltip: c.isCompact ? 'Full window' : 'Compact window',
+      icon: Icon(
+        c.isCompact ? Icons.open_in_full_rounded : Icons.close_fullscreen_rounded,
+        size: c.isCompact ? 16 : 18,
+        color: _ShellColors.iconDefault,
+      ),
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _CompactShell extends StatelessWidget {
+  final String title;
+  final Widget child;
+  const _CompactShell({required this.title, required this.child});
+
+  /// Pages are designed for at least this much width (the full window's
+  /// smallest content area); narrower, they are shown scaled down.
+  static const _designWidth = 720.0;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: _ShellColors.background,
+        body: Column(children: [
+          _CompactHeader(title: title),
+          Expanded(
+            child: Stack(children: [
+              Positioned.fill(
+                child: _ScaledPage(
+                  designWidth: _designWidth,
+                  child: MinHeightScroll(minHeight: 520, child: child),
+                ),
+              ),
+              ..._claudeOverlays(top: 10),
+            ]),
+          ),
+        ]),
+      );
+}
+
+class _CompactHeader extends StatelessWidget {
+  final String title;
+  const _CompactHeader({required this.title});
+
+  static const height = 44.0;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: height,
+        padding: const EdgeInsets.only(left: 12, right: 4),
+        decoration: const BoxDecoration(
+          color: _ShellColors.navColor,
+          border: Border(bottom: BorderSide(color: _ShellColors.border)),
+        ),
+        child: Row(children: [
+          // The title bar is hidden in compact mode; drag the window here.
+          Expanded(
+            child: DragToMoveArea(
+              child: SizedBox.expand(
+                child: Row(children: [
+                  Image.asset('assets/images/crusam_logo.png',
+                      width: 20, height: 20, filterQuality: FilterQuality.medium),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _ShellColors.textPrimary)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+          const _FollowClaudeToggle(),
+          const _WindowModeButton(),
+          IconButton(
+            onPressed: () => windowManager.minimize(),
+            tooltip: 'Minimize',
+            icon: const Icon(Icons.remove_rounded, size: 18, color: _ShellColors.iconDefault),
+            visualDensity: VisualDensity.compact,
+          ),
+        ]),
+      );
+}
+
+/// Lays [child] out at [designWidth] and scales it down to fit when the space
+/// is narrower: a live, fully interactive miniature. Text is drawn at the
+/// scaled size, so it stays sharp.
+class _ScaledPage extends StatelessWidget {
+  final double designWidth;
+  final Widget child;
+  const _ScaledPage({required this.designWidth, required this.child});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, c) {
+          if (c.maxWidth >= designWidth) return child;
+          final scale = c.maxWidth / designWidth;
+          return ClipRect(
+            child: FittedBox(
+              fit: BoxFit.fitWidth,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: designWidth,
+                height: c.maxHeight / scale,
+                child: child,
+              ),
+            ),
+          );
+        },
+      );
 }

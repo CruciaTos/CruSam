@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/theme/app_spacing.dart';
-import '../../../data/models/employee_model.dart';
-import '../services/salary_formula_engine.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryEntryTable extends StatefulWidget {
   final List<EmployeeModel> employees;
@@ -309,12 +308,15 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Top row
-            Row(
+            // Top row. Wraps instead of overflowing on narrow windows.
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 6,
               children: [
                 // Left: Total Gross
                 _chip('Total Gross', '₹${totalGrossFull.toStringAsFixed(0)}', AppColors.indigo400),
-                const Spacer(),
                 // Centered group: Basic | Other
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -324,18 +326,20 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                     _chip('Total Other', '₹${totalOther.toStringAsFixed(0)}', AppColors.indigo400),
                   ],
                 ),
-                const Spacer(),
                 // Right: Net Payable
                 _chip('Net Payable', '₹${totalNet.toStringAsFixed(0)}', const Color.fromARGB(255, 12, 186, 47)),
               ],
             ),
             const SizedBox(height: 8),
             // Bottom row
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 16,
+              runSpacing: 6,
               children: [
                 // Left: Total Deductions
                 _chip('Total Deductions', '₹$totalTd', Colors.redAccent),
-                const Spacer(),
                 // Centered group: PF | ESIC | PT
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -347,7 +351,6 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
                     _chip('Total PT', '₹$totalPt', Colors.redAccent),
                   ],
                 ),
-                const Spacer(),
                 // Right: MSW (if applicable)
                 if (widget.isMsw)
                   _chip('Total MSW', '₹$totalMsw', AppColors.amber700)
@@ -480,7 +483,7 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+        color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(4)),
       child: Text(label,
           style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w600)),
     ),

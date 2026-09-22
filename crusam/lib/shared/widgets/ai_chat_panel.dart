@@ -3,7 +3,6 @@
 // ============================================================
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -27,10 +26,8 @@ class _K {
   static const surfaceElevated = Color(0xFF252525);
 
   static const border = Color(0x1AFFFFFF);
-  static const borderFocus = Color(0x33FFFFFF);
 
   static const accent = Color(0xFF8AB4F8);
-  static const accentMuted = Color(0xFF5F8BCF);
 
   static const online = Color(0xFF66BB6A);
   static const error = Color(0xFFEF5350);
@@ -43,8 +40,6 @@ class _K {
   static const aiBubble = surface;
 
   static const r8 = Radius.circular(8);
-  static const r12 = Radius.circular(12);
-  static const rFull = Radius.circular(999);
 }
 
 // =============================================================================
@@ -507,10 +502,8 @@ class BatchSyncBar extends StatelessWidget {
   final AiChatNotifier notifier;
 
   static const _accent = Color(0xFF8AB4F8);
-  static const _surface = Color(0xFF1E1E1E);
   static const _border = Color(0x1AFFFFFF);
   static const _error = Color(0xFFEF5350);
-  static const _textSecondary = Color(0xFF9AA0A6);
   static const _online = Color(0xFF66BB6A);
 
   @override
@@ -521,7 +514,7 @@ class BatchSyncBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: _accent.withOpacity(0.08),
+        color: _accent.withValues(alpha: 0.08),
         border: const Border(
           top: BorderSide(color: _border),
           bottom: BorderSide(color: _border),
@@ -571,9 +564,9 @@ class BatchSyncBar extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: _error.withOpacity(0.12),
+                color: _error.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: _error.withOpacity(0.4)),
+                border: Border.all(color: _error.withValues(alpha: 0.4)),
               ),
               child: const Text(
                 'Stop',
@@ -953,7 +946,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
   Widget build(BuildContext context) {
     final isUser = widget.message.role == ChatRole.user;
     final bgColor = widget.message.isError
-        ? _K.error.withOpacity(0.08)
+        ? _K.error.withValues(alpha: 0.08)
         : isUser
             ? _K.userBubble
             : _K.aiBubble;
@@ -974,8 +967,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
         extractedContent = displayText
             .substring(start + '[EXTRACTED_TEXT]'.length, end)
             .trim();
-        displayText = '🔍 **Image text extracted** (tap to view)  \n' +
-            '${extractedContent!.split('\n').take(2).join('\n')}${extractedContent!.split('\n').length > 2 ? '…' : ''}';
+        displayText = '🔍 **Image text extracted** (tap to view)  \n' '${extractedContent.split('\n').take(2).join('\n')}${extractedContent.split('\n').length > 2 ? '…' : ''}';
       }
     }
 
@@ -1162,7 +1154,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             _MsgAction(
                               icon: Icons.delete_outline,
                               tooltip: 'Delete',
-                              color: _K.error.withOpacity(0.7),
+                              color: _K.error.withValues(alpha: 0.7),
                               onTap: widget.onDelete!,
                             ),
                         ],
@@ -1419,7 +1411,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
               width: 6,
               height: 6,
               decoration: BoxDecoration(
-                color: _K.accent.withOpacity(opacity),
+                color: _K.accent.withValues(alpha: opacity),
                 shape: BoxShape.circle,
               ),
             );
@@ -1829,7 +1821,7 @@ class _ErrorBanner extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: _K.error.withOpacity(0.1),
+        color: _K.error.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1942,7 +1934,7 @@ class _InputArea extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _K.accent.withOpacity(0.08),
+                  color: _K.accent.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -1965,7 +1957,7 @@ class _InputArea extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: _K.accent.withOpacity(0.08),
+                color: _K.accent.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -2246,7 +2238,7 @@ class _SlashCommandsOverlay extends StatelessWidget {
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(vertical: 4),
         itemCount: commands.length,
-        separatorBuilder: (_, __) =>
+        separatorBuilder: (_, _) =>
             const Divider(height: 1, color: _K.border),
         itemBuilder: (context, i) {
           final cmd = commands[i];
@@ -2390,7 +2382,7 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
                     label: 'Model', icon: Icons.chat_outlined),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: widget.notifier.selectedModel,
+                  initialValue: widget.notifier.selectedModel,
                   items: widget.notifier.availableModels
                       .map((m) => DropdownMenuItem(
                             value: m.id,
@@ -2464,41 +2456,6 @@ class _ModelPickerSheetState extends State<_ModelPickerSheet> {
           ),
         );
       },
-    );
-  }
-}
-
-class _ModelInfoLine extends StatelessWidget {
-  const _ModelInfoLine({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: _K.textSecondary),
-        const SizedBox(width: 8),
-        Text('$label: ',
-            style: const TextStyle(
-                color: _K.textSecondary, fontSize: 13)),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-                color: _K.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
     );
   }
 }

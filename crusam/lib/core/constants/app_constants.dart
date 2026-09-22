@@ -1,20 +1,18 @@
-class AppConstants {
-  static const deptCodes = ['I&L', 'F&B', 'A&P', 'P&S'];
+import 'package:crusam_core/crusam_core.dart';
 
-  static const itemDescriptions = [
-    'Local and outstation travelling expenses with daily allowance including mobile expenses and material.',
-    'Service Charges for the month of',
-    'Manpower Supply Charges',
-    'Maintenance Services',
-    'Consultancy Fees',
-  ];
+// Values live in crusam_core (AppDefaults / InvoiceRates) so the MCP server
+// uses the same ones.
+class AppConstants {
+  static const deptCodes = AppDefaults.deptCodes;
+
+  static const itemDescriptions = AppDefaults.itemDescriptions;
 
   static const defaultAartiAcNo = '0680651100000338';
   static const defaultSbCode    = '10';
-  static const cgstRate         = 0.09;
-  static const sgstRate         = 0.09;
+  static const cgstRate         = InvoiceRates.cgst;
+  static const sgstRate         = InvoiceRates.sgst;
 
-  static const defaultClientName    = 'M/s Diversey India Hygiene Private Ltd.';
-  static const defaultClientAddress = '501,5th flr,Ackruti center point, MIDC Central Road,Andheri (East), Mumbai-400093';
-  static const defaultClientGstin   = '27AABCC1597Q1Z2';
+  static const defaultClientName    = AppDefaults.defaultClientName;
+  static const defaultClientAddress = AppDefaults.defaultClientAddress;
+  static const defaultClientGstin   = AppDefaults.defaultClientGstin;
 }

@@ -6,7 +6,7 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'database_helper.dart';
-import '../../features/salary/models/salary_disbursement_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 extension SalaryDisbursementRepository on DatabaseHelper {
   // ── Disbursement batch CRUD ───────────────────────────────────────────────

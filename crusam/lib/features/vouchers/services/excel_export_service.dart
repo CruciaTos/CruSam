@@ -6,11 +6,9 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 import '../../../core/preferences/export_preferences_notifier.dart';
-import '../../../shared/utils/format_utils.dart';
-import '../../../data/models/voucher_model.dart';
-import '../../../data/models/company_config_model.dart';
 
 import 'package:crusam/features/profile/widgets/export_paths_card.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 /// Excel export helper. Uses Syncfusion XlsIO for bank disbursement sheets,
 /// and a Python script for tax invoices (legacy).
@@ -97,7 +95,7 @@ class ExcelExportService {
         idbiToOther: idbiToOther, idbiToIdbi: idbiToIdbi);
   }
 
-  static Future<_ExportPaths> exportAll(
+  static Future<ExcelExportPaths> exportAll(
     VoucherModel voucher,
     CompanyConfigModel config,
   ) => _runGenerator(
@@ -437,21 +435,6 @@ class ExcelExportService {
     range.cellStyle.borders.all.lineStyle = LineStyle.thin;
   }
 
-  // ── Month name from voucher date (YYYY-MM-DD) ──────────────────────────────
-  static String _monthFromDate(String date) {
-    if (date.isEmpty) return '';
-    try {
-      final dt = DateTime.parse(date);
-      const months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December',
-      ];
-      return months[dt.month - 1];
-    } catch (_) {
-      return '';
-    }
-  }
-
   // ── File saving with auto‑increment ───────────────────────────────────────
   static Future<String> _saveExcelFileWithIncrement(
     List<int> bytes,
@@ -483,7 +466,7 @@ class ExcelExportService {
   }
 
   // ── Python‑based invoice export (unchanged) ────────────────────────────────
-  static Future<_ExportPaths> _runGenerator(
+  static Future<ExcelExportPaths> _runGenerator(
     VoucherModel voucher,
     CompanyConfigModel config,
     {ExportPathTarget? outputTarget}
@@ -509,7 +492,7 @@ class ExcelExportService {
           .where((l) => l.isNotEmpty)
           .toList();
       if (lines.length < 2) throw Exception('Unexpected output from excel_generator.py');
-      return _ExportPaths(invoicePath: lines[0], bankPath: lines[1]);
+      return ExcelExportPaths(invoicePath: lines[0], bankPath: lines[1]);
     } finally {
       try { await jsonFile.delete(); } catch (_) {}
     }
@@ -521,15 +504,6 @@ class ExcelExportService {
     final assetContent = await rootBundle.loadString('assets/scripts/excel_generator.py');
     await scriptFile.writeAsString(assetContent);
     return scriptFile.path;
-  }
-
-  static String _fmtDate(String iso) {
-    if (iso.isEmpty) return '';
-    if (iso.length == 10 && iso.contains('-')) {
-      final p = iso.split('-');
-      return '${p[2]}/${p[1]}/${p[0]}';
-    }
-    return iso;
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -608,8 +582,8 @@ class ExcelExportService {
       };
 }
 
-class _ExportPaths {
+class ExcelExportPaths {
   final String invoicePath;
   final String bankPath;
-  const _ExportPaths({required this.invoicePath, required this.bankPath});
+  const ExcelExportPaths({required this.invoicePath, required this.bankPath});
 }

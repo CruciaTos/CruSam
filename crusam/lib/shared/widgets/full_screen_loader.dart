@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 void showLoader(BuildContext context, {String? message}) =>
     _FullScreenLoader._show(context, message: message);
 
-void hideLoader(BuildContext context) => _FullScreenLoader._hide();
+/// Removes the loader. Needs no context, so it is safe after an await even
+/// if the calling screen has been disposed.
+void hideLoader([BuildContext? _]) => _FullScreenLoader._hide();
 
 // ── Internal singleton ────────────────────────────────────────────────────────
 
@@ -58,7 +60,7 @@ class _LoaderController extends ChangeNotifier {
 
 class _LoaderWidget extends StatefulWidget {
   final _LoaderController controller;
-  const _LoaderWidget({super.key, required this.controller});
+  const _LoaderWidget({required this.controller});
 
   @override
   State<_LoaderWidget> createState() => _LoaderWidgetState();
@@ -149,13 +151,13 @@ class _LoaderWidgetState extends State<_LoaderWidget>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.55),
+                    color: Colors.black.withValues(alpha: 0.55),
                     blurRadius: 48,
                     offset: const Offset(0, 14),
                   ),
                   // Indigo ambient glow on the card itself
                   BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.12),
+                    color: const Color(0xFF4F46E5).withValues(alpha: 0.12),
                     blurRadius: 64,
                     spreadRadius: -8,
                   ),
@@ -178,7 +180,7 @@ class _LoaderWidgetState extends State<_LoaderWidget>
                           [_orbitCtrl, _pulseAnim, _glowAnim],
                         ),
                         // builder receives NO child — the painter owns drawing.
-                        builder: (_, __) => CustomPaint(
+                        builder: (_, _) => CustomPaint(
                           painter: _OrbitPainter(
                             orbitProgress: _orbitCtrl.value,
                             pulseProgress: _pulseAnim.value,
@@ -330,7 +332,7 @@ class _OrbitPainter extends CustomPainter {
       Paint()
         ..style       = PaintingStyle.stroke
         ..strokeWidth = 1.5
-        ..color       = _indigo.withOpacity(opacity)
+        ..color       = _indigo.withValues(alpha: opacity)
         ..maskFilter  = const MaskFilter.blur(BlurStyle.normal, 5),
     );
   }
@@ -343,7 +345,7 @@ class _OrbitPainter extends CustomPainter {
       Paint()
         ..style       = PaintingStyle.stroke
         ..strokeWidth = 0.6
-        ..color       = const Color(0xFF4F46E5).withOpacity(0.12),
+        ..color       = const Color(0xFF4F46E5).withValues(alpha: 0.12),
     );
   }
 
@@ -374,7 +376,7 @@ class _OrbitPainter extends CustomPainter {
       canvas.drawCircle(
         Offset(tx, ty),
         r,
-        Paint()..color = color.withOpacity(opacity * 0.75),
+        Paint()..color = color.withValues(alpha: opacity * 0.75),
       );
     }
 
@@ -388,7 +390,7 @@ class _OrbitPainter extends CustomPainter {
       dot,
       dotRadius * 2.6,
       Paint()
-        ..color      = color.withOpacity(0.28)
+        ..color      = color.withValues(alpha: 0.28)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
 
@@ -399,7 +401,7 @@ class _OrbitPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(lx - dotRadius * 0.28, ly - dotRadius * 0.28),
       dotRadius * 0.32,
-      Paint()..color = Colors.white.withOpacity(0.65),
+      Paint()..color = Colors.white.withValues(alpha: 0.65),
     );
   }
 
@@ -413,7 +415,7 @@ class _OrbitPainter extends CustomPainter {
       center,
       coreR * 2.8,
       Paint()
-        ..color      = _indigo.withOpacity(0.22 + pulse * 0.12)
+        ..color      = _indigo.withValues(alpha: 0.22 + pulse * 0.12)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
     );
 

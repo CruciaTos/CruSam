@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/margin_settings_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class MarginSettingsNotifier extends ChangeNotifier {
   MarginSettings settings = const MarginSettings();

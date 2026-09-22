@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import 'package:crusam/data/models/bank_column_widths_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class BankColumnWidthsNotifier extends ChangeNotifier {
   BankColumnWidthsSettings _settings = const BankColumnWidthsSettings();

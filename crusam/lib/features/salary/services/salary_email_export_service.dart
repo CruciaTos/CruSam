@@ -14,22 +14,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:pdf/widgets.dart' as pw;
 
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/employee_model.dart';
 import '../../../shared/models/generated_document.dart';
-import '../../vouchers/services/pdf_export_service.dart';
-import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../notifier/salary_disbursement_notifier.dart';
 import '../notifier/salary_state_controller.dart';
-import '../widgets/attachment_a_preview.dart';
-import '../widgets/attachment_b_preview.dart';
-import '../widgets/salary_bill_preview.dart';
-import '../widgets/salary_statement_preview.dart';
-import 'salary_pdf_export_service.dart';
 import 'salary_statement_excel_export_service.dart';
-import 'salary_statement_pdf_service.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 /// Every document type the Saved Salary screen can send by email.
 enum SalaryDocumentType {
@@ -118,6 +110,7 @@ class SalaryEmailExportService {
       isFeb: n.isFeb,
       daysMap: daysMap,
       daysInMonth: n.totalDays,
+      departmentCode: deptCode == 'All' ? '' : deptCode,
     );
 
     return GeneratedDocument(
@@ -172,7 +165,6 @@ class SalaryEmailExportService {
   // whatever was selected before, so this never leaves global state changed
   // behind the scenes.
   static Future<GeneratedDocument> buildSalaryBill({
-    required BuildContext context,
     required CompanyConfigModel config,
     required EdgeInsets margins,
     required String deptCode,
@@ -185,71 +177,55 @@ class SalaryEmailExportService {
     try {
       sc.setCompanyCode(deptCode);
 
-      final pages = <Widget>[
-        ...SalaryBillPreview.buildPdfPages(
-          config: config,
-          margins: margins,
-          invoiceBaseAmount: sc.invoiceTotal,
-          billNo: n.billNo,
-          date: n.dateDisplay,
-          poNo: n.poNo,
-          itemDescription: _defaultItemDescription,
-          customerName: n.clientName,
-          customerAddress: n.clientAddr,
-          customerGst: n.clientGstin,
-        ),
-        if (finalised) ...[
-          ...AttachmentAPreview.buildPdfPages(
-            config: config,
-            margins: margins,
-            itemAmount: sc.totalGrossFull,
-            pfAmount: sc.attachmentAPf,
-            esicAmount: sc.attachmentAEsic,
-            totalAfterTax: sc.attachmentATotal,
-            billNo: n.billNo,
-            date: n.dateDisplay,
-            poNo: n.poNo,
-            itemDescription: _defaultItemDescription,
-            customerName: n.clientName,
-            customerAddress: n.clientAddr,
-            customerGst: n.clientGstin,
-          ),
-          ...AttachmentBPreview.buildPdfPages(
-            config: config,
-            margins: margins,
-            employeeCount: sc.employeeCount,
-            billNo: n.billNo,
-            date: n.dateDisplay,
-            poNo: n.poNo,
-            itemDescription: _defaultItemDescription,
-            customerName: n.clientName,
-            customerAddress: n.clientAddr,
-            customerGst: n.clientGstin,
-          ),
-          ...SalaryStatementPreview.buildPdfPages(
-            config: config,
-            margins: margins,
-            employees: sc.filteredEmployees,
-            monthName: n.monthName,
-            year: n.year,
-            isMsw: n.isMsw,
-            mswAmount: n.mswAmount,
-            isFeb: n.isFeb,
-            applyMsw: n.applyMsw,
-            daysMap: _daysMapFor(sc.filteredEmployees, n),
-            daysInMonth: n.totalDays,
-          ),
-        ],
-      ];
+      final header = SalaryBillHeader(
+        billNo: n.billNo,
+        date: n.dateDisplay,
+        poNo: n.poNo,
+        customerName: n.clientName,
+        customerAddress: n.clientAddr,
+        customerGst: n.clientGstin,
+        departmentCode: deptCode == 'All' ? '' : deptCode,
+        period: n.periodLabel,
+      );
 
-      final bytes = await PdfExportService.buildWidgetsBytes(
-        context: context,
-        pages: pages,
-        assetPathsToPrecache: const [
-          'assets/images/aarti_logo.png',
-          'assets/images/aarti_signature.png',
-          'assets/images/letterhead.png',
+      final bytes = await SalaryBillPdfService.buildBytes(
+        config: config,
+        margins: pw.EdgeInsets.fromLTRB(
+            margins.left, margins.top, margins.right, margins.bottom),
+        departmentCode: header.departmentCode,
+        pages: [
+          SalaryBillPdfService.salaryInvoiceSpec(
+            header: header,
+            itemDescription: _defaultItemDescription,
+            invoiceBaseAmount: sc.invoiceTotal,
+          ),
+          if (finalised) ...[
+            SalaryBillPdfService.attachmentASpec(
+              header: header,
+              itemDescription: _defaultItemDescription,
+              itemAmount: sc.totalEarnedGross,
+              pfAmount: sc.attachmentAPf,
+              esicAmount: sc.attachmentAEsic,
+            ),
+            SalaryBillPdfService.attachmentBSpec(
+              header: header,
+              itemDescription: _defaultItemDescription,
+              employeeCount: sc.employeeCount,
+            ),
+          ],
         ],
+        statement: finalised
+            ? SalaryStatementInput(
+                employees: sc.filteredEmployees,
+                monthName: n.monthName,
+                year: n.year,
+                isMsw: n.isMsw,
+                mswAmount: n.mswAmount,
+                isFeb: n.isFeb,
+                daysMap: _daysMapFor(sc.filteredEmployees, n),
+                daysInMonth: n.totalDays,
+              )
+            : null,
       );
 
       final slug =

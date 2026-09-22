@@ -1,78 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/widgets.dart' as pw;
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/margin_settings_model.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
+import '../../pdf/service/pdf_file_saver.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
-import '../../vouchers/services/pdf_export_service.dart';
-import '../widgets/attachment_a_preview.dart';
-import '../widgets/attachment_b_preview.dart';
 import '../widgets/salary_bill_preview.dart';
-import '../widgets/salary_statement_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
+import 'package:crusam_core/crusam_core.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – matching the InvoicesScreen theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-  static const badgeBg     = Color(0xFF1E1B4B);
-  static const badgeFg     = Color(0xFFFFFFFF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-  static const fxcond = 'NotoSansExtraCondensed';
-
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padH     = 18.0;
-  static const double padV     = 16.0;
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-}
+typedef _Tok = InkTokens;
 
 class SalaryBillsScreen extends StatefulWidget {
   const SalaryBillsScreen({super.key});
@@ -80,7 +27,8 @@ class SalaryBillsScreen extends StatefulWidget {
   State<SalaryBillsScreen> createState() => _SalaryBillsScreenState();
 }
 
-class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
+class _SalaryBillsScreenState extends State<SalaryBillsScreen>
+    with ReloadOnDbChange {
   static final _dateFormat = DateFormat('dd/MM/yyyy');
 
   final _marginNotifier = MarginSettingsNotifier();
@@ -133,6 +81,9 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
   void _onClientGstChanged()  => SalaryDataNotifier.instance.setClientGstin(_clientGstCtrl.text);
   void _onDateChanged()       => SalaryDataNotifier.instance.setDateDisplay(_dateCtrl.text);
   void _onDescChanged()       => SalaryDataNotifier.instance.setItemDescription(_descCtrl.text);
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {
@@ -210,6 +161,20 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     return code == 'All' ? '' : code;
   }
 
+  pw.EdgeInsets get _pdfMargins => pw.EdgeInsets.fromLTRB(
+        _margins.left, _margins.top, _margins.right, _margins.bottom);
+
+  SalaryBillHeader get _billHeader => SalaryBillHeader(
+        billNo:          _billNoCtrl.text,
+        date:            _dateCtrl.text,
+        poNo:            _poNoCtrl.text,
+        customerName:    _clientNameCtrl.text,
+        customerAddress: _clientAddrCtrl.text,
+        customerGst:     _clientGstCtrl.text,
+        departmentCode:  _departmentCode,
+        period:          SalaryDataNotifier.instance.periodLabel,
+      );
+
   Future<void> _exportPdf() async {
     if (_exporting) return;
     setState(() => _exporting = true);
@@ -217,30 +182,17 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
-      await PdfExportService.exportWidgets(
-        context: context,
-        pages: SalaryBillPreview.buildPdfPages(
-          config:            _config,
-          margins:           _margins,
-          billNo:            _billNoCtrl.text,
-          date:              _dateCtrl.text,
-          poNo:              _poNoCtrl.text,
-          itemDescription:   n.itemDescription,
-          customerName:      _clientNameCtrl.text,
-          customerAddress:   _clientAddrCtrl.text,
-          customerGst:       _clientGstCtrl.text,
-          invoiceBaseAmount: sc.invoiceTotal,
-          departmentCode:    _departmentCode,
-        ),
-        fileNameSlug: 'salary_invoice_'
-            '${_billNoCtrl.text.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_')}',
-        filePrefix:   'salary_invoice',
-        shareSubject: 'Salary Invoice',
-        assetPathsToPrecache: [
-          'assets/images/aarti_logo.png',
-          'assets/images/aarti_signature.png',
-          'assets/images/letterhead.png',
+      await SalaryBillPdfService.export(
+        config:   _config,
+        margins:  _pdfMargins,
+        pages: [
+          SalaryBillPdfService.salaryInvoiceSpec(
+            header:            _billHeader,
+            itemDescription:   n.itemDescription,
+            invoiceBaseAmount: sc.invoiceTotal,
+          ),
         ],
+        fileName: 'salary_invoice_${PdfFileSaver.slug(_billNoCtrl.text)}',
       );
     } catch (e) {
       if (!mounted) return;
@@ -251,7 +203,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         ),
       );
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -269,79 +221,41 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         if (e.id != null) daysMap[e.id!] = n.getDays(e.id!);
       }
 
-      final pages = <Widget>[
-        ...SalaryBillPreview.buildPdfPages(
-          config:            _config,
-          margins:           _margins,
-          invoiceBaseAmount: sc.invoiceTotal,
-          billNo:            _billNoCtrl.text,
-          date:              _dateCtrl.text,
-          poNo:              _poNoCtrl.text,
-          itemDescription:   n.itemDescription,
-          customerName:      _clientNameCtrl.text,
-          customerAddress:   _clientAddrCtrl.text,
-          customerGst:       _clientGstCtrl.text,
-          departmentCode:    _departmentCode,
-        ),
-        ...AttachmentAPreview.buildPdfPages(
-          config:          _config,
-          margins:         _margins,
-          itemAmount:      sc.totalGrossFull,
-          pfAmount:        sc.attachmentAPf,
-          esicAmount:      sc.attachmentAEsic,
-          totalAfterTax:   sc.attachmentATotal,
-          billNo:          _billNoCtrl.text,
-          date:            _dateCtrl.text,
-          poNo:            _poNoCtrl.text,
-          itemDescription: n.itemDescriptionAttachmentA,
-          customerName:    _clientNameCtrl.text,
-          customerAddress: _clientAddrCtrl.text,
-          customerGst:     _clientGstCtrl.text,
-          departmentCode:  _departmentCode,
-        ),
-        ...AttachmentBPreview.buildPdfPages(
-          config:          _config,
-          margins:         _margins,
-          employeeCount:   sc.employeeCount,
-          billNo:          _billNoCtrl.text,
-          date:            _dateCtrl.text,
-          poNo:            _poNoCtrl.text,
-          itemDescription: n.itemDescriptionAttachmentB,
-          customerName:    _clientNameCtrl.text,
-          customerAddress: _clientAddrCtrl.text,
-          customerGst:     _clientGstCtrl.text,
-          departmentCode:  _departmentCode,
-        ),
-        ...SalaryStatementPreview.buildPdfPages(
-          config:      _config,
-          margins:     _margins,
+      final header = _billHeader;
+      await SalaryBillPdfService.export(
+        config:  _config,
+        margins: _pdfMargins,
+        pages: [
+          SalaryBillPdfService.salaryInvoiceSpec(
+            header:            header,
+            itemDescription:   n.itemDescription,
+            invoiceBaseAmount: sc.invoiceTotal,
+          ),
+          SalaryBillPdfService.attachmentASpec(
+            header:          header,
+            itemDescription: n.itemDescriptionAttachmentA,
+            itemAmount:      sc.totalEarnedGross,
+            pfAmount:        sc.attachmentAPf,
+            esicAmount:      sc.attachmentAEsic,
+          ),
+          SalaryBillPdfService.attachmentBSpec(
+            header:          header,
+            itemDescription: n.itemDescriptionAttachmentB,
+            employeeCount:   sc.employeeCount,
+          ),
+        ],
+        statement: SalaryStatementInput(
           employees:   sc.filteredEmployees,
           monthName:   n.monthName,
           year:        n.year,
           isMsw:       n.isMsw,
           mswAmount:   n.mswAmount,
           isFeb:       n.isFeb,
-          applyMsw:    n.applyMsw,
           daysMap:     daysMap,
           daysInMonth: n.totalDays,
-          departmentCode: _departmentCode,   // ← Added here
         ),
-      ];
-
-      final slug =
-          'final_invoice_${_billNoCtrl.text.replaceAll(RegExp(r'[/\\:*?"<>|]'), '_')}';
-
-      await PdfExportService.exportWidgets(
-        context:      context,
-        pages:        pages,
-        fileNameSlug: slug,
-        filePrefix:   'final_invoice',
-        shareSubject: 'Final Invoice',
-        assetPathsToPrecache: [
-          'assets/images/aarti_logo.png',
-          'assets/images/aarti_signature.png',
-          'assets/images/letterhead.png',
-        ],
+        departmentCode: _departmentCode,
+        fileName: 'final_invoice_${PdfFileSaver.slug(_billNoCtrl.text)}',
       );
     } catch (e) {
       if (!mounted) return;
@@ -352,7 +266,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
         ),
       );
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _finalisingInvoice = false);
     }
   }
@@ -451,7 +365,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                         borderRadius: BorderRadius.circular(_Tok.cRadius),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 12,
                             offset: const Offset(0, 2),
                           ),
@@ -502,6 +416,7 @@ class _SalaryBillsScreenState extends State<SalaryBillsScreen> {
                               date:              _dateCtrl.text,
                               poNo:              _poNoCtrl.text,
                               itemDescription:   n.itemDescription,
+                              period:            n.periodLabel,
                               invoiceBaseAmount: sc.invoiceTotal,
                               departmentCode:    _departmentCode,
                             ),
@@ -701,9 +616,11 @@ class _LeftPane extends StatelessWidget {
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: _Tok.tsMeta),
+            Expanded(
+              child: Text(label, style: _Tok.tsMeta, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Text(
               value,
               style: _Tok.tsInput.copyWith(

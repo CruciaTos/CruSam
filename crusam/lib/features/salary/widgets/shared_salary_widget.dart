@@ -19,7 +19,7 @@ class SavedSalaryIndicatorBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.indigo50,
         borderRadius: BorderRadius.circular(AppSpacing.radius),
-        border: Border.all(color: AppColors.indigo600.withOpacity(0.25)),
+        border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.25)),
       ),
       child: Row(
         children: [

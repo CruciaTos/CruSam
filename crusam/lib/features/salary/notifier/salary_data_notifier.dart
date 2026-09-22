@@ -4,6 +4,9 @@ import 'package:flutter/scheduler.dart';
 import '../../../core/constants/app_constants.dart';
 
 class SalaryDataNotifier extends ChangeNotifier {
+  /// Re-notifies listeners, e.g. when a screen becomes visible again.
+  void refresh() => notifyListeners();
+
   SalaryDataNotifier._();
   static final SalaryDataNotifier instance = SalaryDataNotifier._();
   bool _disposed = false;

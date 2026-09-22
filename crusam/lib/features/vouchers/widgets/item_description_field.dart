@@ -269,7 +269,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
               position: _slideAnimation,
               child: Material(
                 elevation: 8,
-                shadowColor: Colors.black.withOpacity(0.90),
+                shadowColor: Colors.black.withValues(alpha: 0.90),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
@@ -336,7 +336,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                                       _overlayEntry?.markNeedsBuild();
                                     },
                                     hoverColor: AppColors.slate25,
-                                    splashColor: AppColors.primary.withOpacity(0.1),
+                                    splashColor: AppColors.primary.withValues(alpha: 0.1),
                                     child: Container(
                                       color: isHighlighted ? AppColors.slate25 : Colors.transparent,
                                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -489,7 +489,7 @@ class _ItemDescriptionFieldState extends State<ItemDescriptionField>
                   boxShadow: (isOpen || _hasFocus)
                       ? [
                           BoxShadow(
-                            color: AppColors.primary.withOpacity(0.2),
+                            color: AppColors.primary.withValues(alpha: 0.2),
                             blurRadius: 6,
                             offset: const Offset(0, 1),
                           ),

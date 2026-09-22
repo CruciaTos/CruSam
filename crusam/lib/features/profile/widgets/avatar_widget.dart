@@ -1,21 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – consistent with the indigo theme used in other screens
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink        = Color(0xFF1E1B4B);
-  static const inkLight   = Color(0xFF3730A3);
-  static const inkMuted   = Color(0xFF818CF8);
-  static const surface    = Color(0xFFFFFFFF);
-  static const surfaceAlt = Color(0xFFEEF2FF);
-
-  static const fbody = 'NotoSans';
-  static const fcond = 'NotoSansCondensed';
-}
+typedef _Tok = InkTokens;
 
 class AvatarWidget extends StatelessWidget {
   final String displayName;

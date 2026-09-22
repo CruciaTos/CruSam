@@ -16,15 +16,11 @@ import 'package:crusam/data/db/salary_disbursement_repository.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:crusam/core/preferences/export_preferences_notifier.dart';
 import 'package:crusam/data/db/database_helper.dart';
-import 'package:crusam/data/models/company_config_model.dart';
-import 'package:crusam/data/models/employee_model.dart';
-import 'package:crusam/shared/utils/format_utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
 
-import '../models/salary_disbursement_model.dart';
 import '../notifier/salary_data_notifier.dart';
-import 'salary_formula_engine.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryDisbursementService {
   SalaryDisbursementService._();
@@ -81,8 +77,6 @@ class SalaryDisbursementService {
   // ─────────────────────────────────────────────────────────────────────────
   // 🖼️ SIGNATURE IMAGE (kept for format parity – no real image loaded)
   // ─────────────────────────────────────────────────────────────────────────
-  static const int _signatureColOffset = 8;
-  static const int _signatureRowOffset = 12;
 
   // ─────────────────────────────────────────────────────────────────────────
   // 📏 Column helpers
@@ -435,7 +429,7 @@ class SalaryDisbursementService {
     final Range sumCell = sheet.getRangeByIndex(excelRow, amountCol);
     if (hasData) {
       final String colLetter = _colIndexToLetter(amountCol);
-      sumCell.setFormula('SUM(${colLetter}5:${colLetter}$lastDataRow)');
+      sumCell.setFormula('SUM(${colLetter}5:$colLetter$lastDataRow)');
     } else {
       sumCell.setNumber(0);
     }
@@ -459,8 +453,7 @@ class SalaryDisbursementService {
   // ─────────────────────────────────────────────────────────────────────────
   static Future<void> _insertSignatureImage(Worksheet sheet, int lastDataRow) async {
     try {
-      final ByteData data = await rootBundle.load('');
-      final Uint8List bytes = data.buffer.asUint8List();
+      await rootBundle.load('');
       // … decode and add picture (code omitted – will fail safely)
     } catch (_) {}
   }

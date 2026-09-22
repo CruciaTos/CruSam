@@ -6,7 +6,7 @@
 // `.instance.config` synchronously without threading it through every call.
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/salary_formula_config_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryFormulaNotifier extends ChangeNotifier {
   SalaryFormulaNotifier._();
@@ -25,6 +25,20 @@ class SalaryFormulaNotifier extends ChangeNotifier {
         : const SalaryFormulaConfigModel();
     isLoading = false;
     notifyListeners();
+  }
+
+  /// Re-reads the saved config (e.g. after Claude changed it) and notifies
+  /// only if it differs, so an open Formula Settings screen isn't reset for
+  /// unrelated database changes. Returns whether it changed.
+  Future<bool> reloadIfChanged() async {
+    final map = await DatabaseHelper.instance.getSalaryFormulaConfig();
+    final fresh = map != null
+        ? SalaryFormulaConfigModel.fromMap(map)
+        : const SalaryFormulaConfigModel();
+    if (mapEquals(fresh.toMap(), config.toMap())) return false;
+    config = fresh;
+    notifyListeners();
+    return true;
   }
 
   void update(SalaryFormulaConfigModel Function(SalaryFormulaConfigModel) fn) {

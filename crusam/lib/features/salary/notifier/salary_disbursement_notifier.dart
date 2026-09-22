@@ -3,12 +3,10 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
-import '../../../data/models/company_config_model.dart';
-import '../models/salary_disbursement_model.dart';
 import 'package:crusam/data/db/salary_disbursement_repository.dart';
 import '../notifier/salary_data_notifier.dart';
 import '../services/salary_disbursement_service.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class SalaryDisbursementNotifier extends ChangeNotifier {
   SalaryDisbursementNotifier._() {
@@ -68,11 +66,17 @@ class SalaryDisbursementNotifier extends ChangeNotifier {
 
   // ── Load ───────────────────────────────────────────────────────────────────
 
-  Future<void> load({bool forceReload = false}) async {
-    if (_loading && !forceReload) return;
-    _loading = true;
-    _error = '';
-    notifyListeners();
+  /// [silent] refreshes in the background (after an external change)
+  /// without the loading state.
+  Future<void> load({bool forceReload = false, bool silent = false}) async {
+    if (silent) {
+      if (_loading || !_hasLoadedOnce) return;
+    } else {
+      if (_loading && !forceReload) return;
+      _loading = true;
+      _error = '';
+      notifyListeners();
+    }
 
     try {
       final n = SalaryDataNotifier.instance;

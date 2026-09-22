@@ -3,14 +3,15 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../core/sync/claude_follow_controller.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
-import '../../../data/models/employee_model.dart';
 import '../../../shared/widgets/app_card.dart';
 import '../notifiers/employee_notifier.dart';
 import '../services/employee_excel_import_service.dart';
 import 'employee_form_screen.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Column definition for the white table
@@ -44,7 +45,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
 
   Timer? _debounceTimer;
   bool _showHorizontalScrollbar = false;
-  bool _isImporting = false;
   bool _showColPanel = false;
   bool _insightsOpen = false;
 
@@ -93,6 +93,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   void initState() {
     super.initState();
     _notifier.addListener(_onModelChanged);
+    _claude.addListener(_onClaudeFocus);
 
     // Defer the load to avoid triggering ListenableBuilder
     // while the master screen is still being built.
@@ -133,13 +134,36 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
     });
   }
 
-  void _onModelChanged() => setState(() {});
+  void _onModelChanged() {
+    setState(() {});
+    // The list may have loaded after Claude pointed at a row in it.
+    _onClaudeFocus();
+  }
+
+  // ── Follow Claude: highlight the employee Claude is working on ─────────
+  final _claude = ClaudeFollowController.instance;
+  int _claudeSerial = 0;
+
+  void _onClaudeFocus() {
+    if (!mounted || _claude.focusSerial == _claudeSerial) return;
+    final list = _filteredForTable;
+    for (var i = 0; i < list.length; i++) {
+      if (!_claude.isFocused(UiEventStore.employeeFocus(list[i].id ?? 0))) continue;
+      _claudeSerial = _claude.focusSerial;
+      setState(() => _focusedRowIndex = i);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _verticalScrollController.hasClients) _ensureRowVisible(i);
+      });
+      return;
+    }
+  }
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _searchController.dispose();
     _notifier.removeListener(_onModelChanged);
+    _claude.removeListener(_onClaudeFocus);
     // NOTE: Do NOT dispose the singleton notifier
     _verticalScrollController.dispose();
     _horizontalScrollController.dispose();
@@ -223,50 +247,6 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
       _notifier.search(_searchController.text);
     }
     _clearRowFocus();
-  }
-
-  Future<void> _onImportExcel() async {
-    if (_isImporting) return;
-    setState(() => _isImporting = true);
-    try {
-      final result = await EmployeeExcelImportService.importFromFile();
-      if (!mounted) return;
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Import Preview'),
-          content: Text(
-            'Valid: ${result.validCount}\n'
-            'Duplicates (in file): ${result.duplicateCount}\n'
-            'Invalid: ${result.invalidCount}\n\nProceed?',
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel')),
-            ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Import')),
-          ],
-        ),
-      );
-      if (confirm != true) return;
-      final inserted =
-          await _notifier.importEmployees(result.validEmployees);
-      if (!mounted) return;
-      final skipped = (result.validEmployees.length - inserted) +
-          result.duplicateCount +
-          result.invalidCount;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported: $inserted, Skipped: $skipped')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Import failed')));
-    } finally {
-      if (mounted) setState(() => _isImporting = false);
-    }
   }
 
   void _resetFilters() {
@@ -619,7 +599,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
         ),
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
         border:
-            Border.all(color: AppColors.indigo600.withOpacity(0.3)),
+            Border.all(color: AppColors.indigo600.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -627,7 +607,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppColors.indigo600.withOpacity(0.2),
+              color: AppColors.indigo600.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(AppSpacing.radius),
             ),
             child: const Icon(Icons.people_outline,
@@ -678,7 +658,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             order: const NumericFocusOrder(1),
             child: _FocusGlow(
               focusNode: _addButtonFocusNode,
-              glowColor: AppColors.indigo400.withOpacity(0.4),
+              glowColor: AppColors.indigo400.withValues(alpha: 0.4),
               child: Focus(
                 focusNode: _addButtonFocusNode,
                 child: _HeaderButton(
@@ -699,7 +679,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
   Widget _buildSearchBar() {
     return _FocusGlow(
       focusNode: _searchFocusNode,
-      glowColor: AppColors.indigo400.withOpacity(0.4),
+      glowColor: AppColors.indigo400.withValues(alpha: 0.4),
       child: SizedBox(
         height: 38,
         child: Focus(
@@ -780,7 +760,7 @@ class _EmployeeListScreenState extends State<EmployeeListScreen> {
             child: _FocusGlow(
               focusNode: _tableFocusNode,
               glowColor:
-                  AppColors.indigo400.withOpacity(0.4),
+                  AppColors.indigo400.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(
                   AppSpacing.radiusMd),
               child: _tableCard(filtered),
@@ -1241,10 +1221,10 @@ class _HeaderButton extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: active
-              ? AppColors.indigo600.withOpacity(0.35)
-              : AppColors.indigo600.withOpacity(0.15),
+              ? AppColors.indigo600.withValues(alpha: 0.35)
+              : AppColors.indigo600.withValues(alpha: 0.15),
           border: Border.all(
-              color: AppColors.indigo600.withOpacity(0.4)),
+              color: AppColors.indigo600.withValues(alpha: 0.4)),
           borderRadius: BorderRadius.circular(AppSpacing.radius),
         ),
         child: Row(
@@ -1292,8 +1272,9 @@ class _StatsBar extends StatelessWidget {
         : salaries.reduce((a, b) => a > b ? a : b);
 
     String fmt(double v) {
-      if (v >= 100000)
+      if (v >= 100000) {
         return '₹${(v / 100000).toStringAsFixed(1)}L';
+      }
       if (v >= 1000) return '₹${(v / 1000).toStringAsFixed(1)}K';
       return '₹${v.toStringAsFixed(0)}';
     }
@@ -1480,9 +1461,9 @@ class _Filters extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
-                  color: AppColors.rose400.withOpacity(0.12),
+                  color: AppColors.rose400.withValues(alpha: 0.12),
                   border: Border.all(
-                      color: AppColors.rose400.withOpacity(0.4)),
+                      color: AppColors.rose400.withValues(alpha: 0.4)),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -1724,7 +1705,7 @@ class _InsightsPanel extends StatelessWidget {
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: rankColor.withOpacity(0.15),
+                      color: rankColor.withValues(alpha: 0.15),
                       shape: BoxShape.circle,
                     ),
                     child: Center(
@@ -2001,7 +1982,7 @@ class _HoverableTableRowState
           curve: Curves.easeOut,
           decoration: BoxDecoration(
             color: widget.isFocused
-                ? AppColors.indigo50.withOpacity(0.4)
+                ? AppColors.indigo50.withValues(alpha: 0.4)
                 : Colors.transparent,
             border: Border(
               bottom: BorderSide(
@@ -2019,7 +2000,7 @@ class _HoverableTableRowState
                     ? [
                         BoxShadow(
                           color: AppColors.indigo600
-                              .withOpacity(0.12),
+                              .withValues(alpha: 0.12),
                           blurRadius: 10,
                           spreadRadius: 1,
                           offset: const Offset(0, 0),

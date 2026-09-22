@@ -9,65 +9,16 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/sync/drive_service.dart';
-import '../../../core/sync/google_auth_service.dart';
 import '../../../data/db/backup_repository.dart';
 import '../../../data/db/database_helper.dart';
 import '../../master_data/notifiers/employee_notifier.dart';
 import '../../vouchers/notifiers/voucher_notifier.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – consistent with the indigo theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink        = Color(0xFF1E1B4B);
-  static const inkLight   = Color(0xFF3730A3);
-  static const inkMuted   = Color(0xFF818CF8);
-  static const border     = Color(0xFFC7D2FE);
-  static const divider    = Color(0xFFE0E7FF);
-  static const surface    = Color(0xFFFFFFFF);
-  static const surfaceAlt = Color(0xFFEEF2FF);
-
-  static const fbody = 'NotoSans';
-  static const fcond = 'NotoSansCondensed';
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsBody = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-  );
-
-  static const tsSmall = TextStyle(
-    fontFamily : fcond,
-    fontWeight : FontWeight.w500,
-    fontSize   : 11,
-    color      : inkMuted,
-  );
-
-  static const double radius  = 6.0;
-  static const double cRadius = 10.0;
-  static const double padH    = 18.0;
-  static const double padV    = 16.0;
-}
+typedef _Tok = InkTokens;
 
 class BackupRestoreCard extends StatefulWidget {
   const BackupRestoreCard({super.key});
@@ -79,7 +30,6 @@ class BackupRestoreCard extends StatefulWidget {
 class _BackupRestoreCardState extends State<BackupRestoreCard> {
   bool _backingUp = false;
   bool _restoring = false;
-  bool _cloudSyncing = false;
   String? _lastBackupPath;
   String? _statusMessage;
   bool _statusIsError = false;
@@ -185,7 +135,8 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
 
     // Step 3: confirm
     final fileName = result.files.first.name;
-    final isGoogleConnected = GoogleAuthService.instance.isSignedIn;
+
+    if (!mounted) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -197,7 +148,6 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
           'the current database.\n\n'
           'Existing records with the same ID will be updated. '
           'New records will be added. Nothing will be deleted.\n\n'
-          '${isGoogleConnected ? '☁️  After import, all data will be automatically uploaded to Google Drive so it becomes the new cloud source-of-truth.\n\n' : ''}'
           'Proceed?',
         ),
         actions: [
@@ -242,49 +192,18 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
     if (!mounted) return;
     setState(() => _restoring = false);
 
-    // Step 5: push imported data to Google Drive (if connected)
-    if (isGoogleConnected) {
-      setState(() {
-        _cloudSyncing = true;
-        _statusMessage = 'Import complete — uploading to Google Drive…';
-        _statusIsError = false;
-      });
-
-      final syncResult = await SyncManager.instance.pushAllToCloud();
-
-      if (!mounted) return;
-      setState(() {
-        _cloudSyncing = false;
-        if (syncResult.success) {
-          _statusMessage =
-              'Restore & cloud sync complete — '
-              '${syncResult.employeesPushed} employees, '
-              '${syncResult.vouchersPushed} invoices uploaded to Drive.';
-          _statusIsError = false;
-        } else {
-          _statusMessage =
-              'Data restored locally, but cloud upload failed: '
-              '${syncResult.errorMessage}. '
-              'It will retry on the next app launch.';
-          _statusIsError = true;
-        }
-      });
-    } else {
-      // Not connected to Google Drive — local-only restore
-      setState(() {
-        _statusMessage =
-            'Restore complete — ${summary!['employees']} employees, '
-            '${summary['vouchers']} invoices, '
-            '${summary['voucher_rows']} invoice rows restored. '
-            '(Connect Google Drive in settings to sync to the cloud.)';
-        _statusIsError = false;
-      });
-    }
+    setState(() {
+      _statusMessage =
+          'Restore complete — ${summary!['employees']} employees, '
+          '${summary['vouchers']} invoices, '
+          '${summary['voucher_rows']} invoice rows restored.';
+      _statusIsError = false;
+    });
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   String _p(int n) => n.toString().padLeft(2, '0');
-  bool get _busy => _backingUp || _restoring || _cloudSyncing;
+  bool get _busy => _backingUp || _restoring;
 
   // ── Build ────────────────────────────────────────────────────────────────
   @override
@@ -297,7 +216,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
         borderRadius: BorderRadius.circular(_Tok.cRadius),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -342,17 +261,9 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Description text
-                ListenableBuilder(
-                  listenable: GoogleAuthService.instance,
-                  builder: (ctx, _) {
-                    final connected = GoogleAuthService.instance.isSignedIn;
-                    return Text(
-                      connected
-                          ? 'Save all data to a file on disk, or load a saved file back in. Imported data is automatically synced to Google Drive.'
-                          : 'Save all data to a file on disk, or load a saved file back in. Connect Google Drive to enable automatic cloud sync after import.',
-                      style: _Tok.tsSmall,
-                    );
-                  },
+                Text(
+                  'Save all data to a file on disk, or load a saved file back in.',
+                  style: _Tok.tsSmall,
                 ),
 
                 const SizedBox(height: 16),
@@ -394,12 +305,8 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
                   iconBg: const Color(0xFFECFDF5),
                   title: 'Load Backup',
                   subtitle: 'Pick a previously saved .json file and merge it back in.',
-                  buttonLabel: _restoring
-                      ? 'Restoring…'
-                      : _cloudSyncing
-                          ? 'Syncing to Drive…'
-                          : 'Load File',
-                  busy: _restoring || _cloudSyncing,
+                  buttonLabel: _restoring ? 'Restoring…' : 'Load File',
+                  busy: _restoring,
                   disabled: _busy,
                   onTap: _doRestore,
                 ),
@@ -420,15 +327,7 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_cloudSyncing)
-                          const SizedBox(
-                            width: 15,
-                            height: 15,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: _Tok.inkLight),
-                          )
-                        else
-                          Icon(
+                        Icon(
                             _statusIsError ? Icons.error_outline : Icons.check_circle_outline,
                             size: 15,
                             color: _statusIsError ? const Color(0xFFDC2626) : _Tok.inkLight,
@@ -438,17 +337,12 @@ class _BackupRestoreCardState extends State<BackupRestoreCard> {
                           child: Text(
                             _statusMessage!,
                             style: _Tok.tsSmall.copyWith(
-                              color: _statusIsError
-                                  ? const Color(0xFFDC2626)
-                                  : _cloudSyncing
-                                      ? _Tok.inkLight
-                                      : _Tok.ink,
+                              color: _statusIsError ? const Color(0xFFDC2626) : _Tok.ink,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        if (!_cloudSyncing)
-                          GestureDetector(
+                        GestureDetector(
                             onTap: () => setState(() => _statusMessage = null),
                             child: Icon(
                               Icons.close,

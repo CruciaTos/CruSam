@@ -1,75 +1,25 @@
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/margin_settings_model.dart';
 import '../../../shared/utils/title_utils.dart';
+import 'package:pdf/widgets.dart' as pw;
+import '../../pdf/service/pdf_file_saver.dart';
 import '../../vouchers/notifiers/margin_settings_notifier.dart';
-import '../../vouchers/services/pdf_export_service.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../widgets/attachment_b_preview.dart';
 import '../widgets/shared_salary_widgets.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
+import 'package:crusam_core/crusam_core.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – matching the InvoicesScreen theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-  static const badgeBg     = Color(0xFF1E1B4B);
-  static const badgeFg     = Color(0xFFFFFFFF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-  static const fxcond = 'NotoSansExtraCondensed';
-
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padH     = 18.0;
-  static const double padV     = 16.0;
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-}
+typedef _Tok = InkTokens;
 
 class SalaryAttachmentBScreen extends StatefulWidget {
   const SalaryAttachmentBScreen({super.key});
@@ -78,7 +28,8 @@ class SalaryAttachmentBScreen extends StatefulWidget {
       _SalaryAttachmentBScreenState();
 }
 
-class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
+class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen>
+    with ReloadOnDbChange {
   final _marginNotifier = MarginSettingsNotifier();
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -119,6 +70,9 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
   void _onDescChanged() {
     SalaryDataNotifier.instance.setItemDescriptionAttachmentB(_descCtrl.text);
   }
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {
@@ -177,28 +131,27 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
     try {
       final sc = SalaryStateController.instance;
       final n  = SalaryDataNotifier.instance;
-      await PdfExportService.exportWidgets(
-        context: context,
-        pages: AttachmentBPreview.buildPdfPages(
-          config:          _config,
-          margins:         _margins,
-          itemDescription: n.itemDescriptionAttachmentB,
-          billNo:          n.billNo,
-          poNo:            n.poNo,
-          employeeCount:   sc.employeeCount,
-          date:            n.dateDisplay,
-          customerName:    n.clientName,
-          customerAddress: n.clientAddr,
-          customerGst:     n.clientGstin,
-          departmentCode:  _departmentCode,   // NEW
-        ),
-        fileNameSlug:         'attachment_b',
-        filePrefix:           'attachment_b',
-        shareSubject:         'Attachment B',
-        assetPathsToPrecache: [
-          'assets/images/aarti_logo.png',
-          'assets/images/aarti_signature.png',
+      await SalaryBillPdfService.export(
+        config:  _config,
+        margins: pw.EdgeInsets.fromLTRB(
+            _margins.left, _margins.top, _margins.right, _margins.bottom),
+        pages: [
+          SalaryBillPdfService.attachmentBSpec(
+            header: SalaryBillHeader(
+              billNo:          n.billNo,
+              date:            n.dateDisplay,
+              poNo:            n.poNo,
+              customerName:    n.clientName,
+              customerAddress: n.clientAddr,
+              customerGst:     n.clientGstin,
+              departmentCode:  _departmentCode,
+              period:          n.periodLabel,
+            ),
+            itemDescription: n.itemDescriptionAttachmentB,
+            employeeCount:   sc.employeeCount,
+          ),
         ],
+        fileName: 'attachment_b_${PdfFileSaver.slug(n.billNo)}',
       );
     } catch (e) {
       if (!mounted) return;
@@ -209,7 +162,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
         ),
       );
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -291,7 +244,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                         borderRadius: BorderRadius.circular(_Tok.cRadius),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 12,
                             offset: const Offset(0, 2),
                           ),
@@ -332,6 +285,7 @@ class _SalaryAttachmentBScreenState extends State<SalaryAttachmentBScreen> {
                               poNo:            n.poNo,
                               employeeCount:   sc.employeeCount,
                               date:            date,
+                              period:          n.periodLabel,
                               customerName:    n.clientName,
                               customerAddress: n.clientAddr,
                               customerGst:     n.clientGstin,
@@ -456,9 +410,11 @@ class _LeftPane extends StatelessWidget {
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: _Tok.tsMeta),
+            Expanded(
+              child: Text(label, style: _Tok.tsMeta, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Text(
               value,
               style: _Tok.tsInput.copyWith(

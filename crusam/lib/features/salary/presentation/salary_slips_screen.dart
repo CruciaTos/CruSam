@@ -1,53 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
-import '../services/salary_pdf_export_service.dart';
 import '../widgets/salary_slip_preview.dart';
+import 'package:crusam_core/crusam_core.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – only used for the left employee panel
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padV     = 16.0;
-}
+typedef _Tok = InkTokens;
 
 class SalarySlipsScreen extends StatefulWidget {
   const SalarySlipsScreen({super.key});
@@ -55,7 +23,8 @@ class SalarySlipsScreen extends StatefulWidget {
   State<SalarySlipsScreen> createState() => _SalarySlipsScreenState();
 }
 
-class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
+class _SalarySlipsScreenState extends State<SalarySlipsScreen>
+    with ReloadOnDbChange {
   final _stateCtrl = SalaryStateController.instance;
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -68,6 +37,9 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
   int _currentPage = 0;
 
   static const List<String> _allCodes = ['F&B', 'I&L', 'P&S', 'A&P'];
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {
@@ -164,7 +136,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
           content: Text('Export failed: $e'),
           backgroundColor: Colors.red.shade700));
     } finally {
-      hideLoader(context);
+      hideLoader();
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -247,7 +219,7 @@ class _SalarySlipsScreenState extends State<SalarySlipsScreen> {
                           borderRadius: BorderRadius.circular(_Tok.cRadius),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
+                              color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 12,
                               offset: const Offset(0, 2),
                             ),

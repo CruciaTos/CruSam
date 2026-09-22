@@ -14,6 +14,9 @@
          (automates the manual check RELEASE.md calls out; aborts rather
          than packaging a stale build).
       6. Build updater.exe (dart compile exe) and copy it next to crusam.exe.
+      6b. Build the CruSam MCP server (mcp-server/tool/package.ps1 -NoPack)
+          and copy it next to crusam.exe as claude-server\; the app's
+          "Connect to Claude" button sets Claude Desktop up with it.
       7. Compile installer/crusam_installer.iss with Inno Setup (ISCC.exe),
          producing installer/Output/CruSam-Setup-<version>.exe.
 
@@ -164,6 +167,18 @@ try {
 
 Copy-Item -Path (Join-Path $UpdaterDir 'updater.exe') -Destination (Join-Path $ReleaseDir 'updater.exe') -Force
 Write-Host "updater.exe copied to $ReleaseDir"
+
+# ── 6b. Build the CruSam MCP server and ship it with the app ───────────
+Write-Step "Building the Claude server (claude-server)"
+
+$PackageScript = Join-Path $RepoRoot 'mcp-server\tool\package.ps1'
+& powershell -ExecutionPolicy Bypass -File $PackageScript -NoPack
+if ($LASTEXITCODE -ne 0) { Fail "Building the Claude server failed" }
+
+$ServerDest = Join-Path $ReleaseDir 'claude-server'
+if (Test-Path $ServerDest) { Remove-Item -Recurse -Force $ServerDest }
+Copy-Item -Recurse -Path (Join-Path $RepoRoot 'mcp-server\build\mcpb\server') -Destination $ServerDest
+Write-Host "claude-server copied to $ReleaseDir"
 
 # ── Locate ISCC.exe (Inno Setup 6 command-line compiler) ────────────────
 if (-not $IsccPath) {

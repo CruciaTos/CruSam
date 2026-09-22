@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/employee_model.dart';
+import 'package:crusam_core/crusam_core.dart';
 
 class EmployeeNotifier extends ChangeNotifier {
   // ----- singleton pattern -----
@@ -13,15 +13,26 @@ class EmployeeNotifier extends ChangeNotifier {
   bool isLoading = false;
   String? error;
 
-  Future<void> load() async {
-    isLoading = true;
-    error = null;
-    notifyListeners();
+  String _query = '';
+
+  /// [silent] skips the loading state (background refresh after an
+  /// external change) and keeps the current search applied.
+  Future<void> load({bool silent = false}) async {
+    if (!silent) {
+      isLoading = true;
+      error = null;
+      notifyListeners();
+    }
     try {
       final maps = await DatabaseHelper.instance.getAllEmployees();
       employees = maps.map(EmployeeModel.fromMap).toList()
         ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      filtered = List.of(employees);
+      if (silent) {
+        _applySearch();
+      } else {
+        _query = '';
+        filtered = List.of(employees);
+      }
     } catch (e) {
       error = e.toString();
     } finally {
@@ -31,6 +42,13 @@ class EmployeeNotifier extends ChangeNotifier {
   }
 
   void search(String q) {
+    _query = q;
+    _applySearch();
+    notifyListeners();
+  }
+
+  void _applySearch() {
+    final q = _query;
     if (q.trim().isEmpty) {
       filtered = List.of(employees);
     } else {
@@ -39,7 +57,6 @@ class EmployeeNotifier extends ChangeNotifier {
         e.name.toLowerCase().contains(lower) ||
         e.pfNo.toLowerCase().contains(lower)).toList();
     }
-    notifyListeners();
   }
 
   Future<void> delete(int id) async {

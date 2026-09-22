@@ -39,7 +39,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../storage/app_paths.dart';
 import 'semantic_index_models.dart';
@@ -67,6 +67,10 @@ class SemanticIndexRepository {
   Future<Database> get _database async => _db ??= await _openDb();
 
   Future<Database> _openDb() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
     final dbPath = await _resolveDbPath();
     // Opened without a `version` so sqflite never runs onUpgrade/onDowngrade.
     // Table creation and column migrations are handled entirely in _ensureTables.

@@ -4,78 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/sync/db_change_watcher.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../data/db/database_helper.dart';
-import '../../../data/models/company_config_model.dart';
-import '../../../data/models/employee_model.dart';
 import '../../../shared/utils/title_utils.dart';
 import '../../../shared/widgets/full_screen_loader.dart';
 import 'package:crusam/features/salary/notifier/salary_data_notifier.dart';
 import 'package:crusam/features/salary/notifier/salary_state_controller.dart';
 import '../services/salary_statement_excel_export_service.dart';
-import '../services/salary_statement_pdf_service.dart';
 import '../services/salary_disbursement_service.dart';
-import '../services/salary_formula_engine.dart';
-import '../models/salary_disbursement_model.dart';
 import '../widgets/salary_statement_preview.dart';
+import 'package:crusam_core/crusam_core.dart';
+import '../../../core/theme/ink_tokens.dart';
 
 // ════════════════════════════════════════════════════════════════════════════
 //  Design tokens – matching the InvoicesScreen theme
 // ════════════════════════════════════════════════════════════════════════════
-class _Tok {
-  _Tok._();
-
-  static const ink         = Color(0xFF1E1B4B);
-  static const inkLight    = Color(0xFF3730A3);
-  static const inkMuted    = Color(0xFF818CF8);
-  static const border      = Color(0xFFC7D2FE);
-  static const divider     = Color(0xFFE0E7FF);
-  static const surface     = Color(0xFFFFFFFF);
-  static const surfaceAlt  = Color(0xFFEEF2FF);
-  static const badgeBg     = Color(0xFF1E1B4B);
-  static const badgeFg     = Color(0xFFFFFFFF);
-
-  static const fbody  = 'NotoSans';
-  static const fcond  = 'NotoSansCondensed';
-  static const fxcond = 'NotoSansExtraCondensed';
-
-  static const double radius   = 6.0;
-  static const double cRadius  = 10.0;
-  static const double padH     = 18.0;
-  static const double padV     = 16.0;
-
-  static const tsCardTitle = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w700,
-    fontSize     : 14,
-    letterSpacing: 1.6,
-    color        : inkLight,
-  );
-
-  static const tsLabel = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    letterSpacing: 1.0,
-    color        : inkLight,
-  );
-
-  static const tsInput = TextStyle(
-    fontFamily: fbody,
-    fontWeight: FontWeight.w500,
-    fontSize  : 13,
-    color     : ink,
-    height    : 1.4,
-  );
-
-  static const tsMeta = TextStyle(
-    fontFamily   : fcond,
-    fontWeight   : FontWeight.w600,
-    fontSize     : 11,
-    color        : inkMuted,
-  );
-}
+typedef _Tok = InkTokens;
 
 class SalaryStatementScreen extends StatefulWidget {
   const SalaryStatementScreen({super.key});
@@ -84,7 +30,8 @@ class SalaryStatementScreen extends StatefulWidget {
   State<SalaryStatementScreen> createState() => _SalaryStatementScreenState();
 }
 
-class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
+class _SalaryStatementScreenState extends State<SalaryStatementScreen>
+    with ReloadOnDbChange {
   final _stateCtrl = SalaryStateController.instance;
   CompanyConfigModel _config = const CompanyConfigModel();
   bool _exporting = false;
@@ -101,6 +48,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
 
   // ── Track route visibility for MSW‑only refresh ──────────────────────────
   bool _isRouteCurrent = false;
+
+  @override
+  void onDbChanged() => _loadConfig();
 
   @override
   void initState() {
@@ -158,7 +108,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
       if (isCurrent && !_isRouteCurrent) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            SalaryDataNotifier.instance.notifyListeners();
+            SalaryDataNotifier.instance.refresh();
           }
         });
       }
@@ -251,6 +201,9 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         daysMap: daysMap,
         daysInMonth: n.totalDays,
         columnWidths: Map.of(_columnWidths),
+        departmentCode: _stateCtrl.selectedCompanyCode == 'All'
+            ? ''
+            : _stateCtrl.selectedCompanyCode,
       );
     } catch (e) {
       if (!mounted) return;
@@ -261,7 +214,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
-      if (mounted) hideLoader(context);
+      if (mounted) hideLoader();
       if (mounted) setState(() => _exporting = false);
     }
   }
@@ -313,7 +266,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
-      if (mounted) hideLoader(context);
+      if (mounted) hideLoader();
       if (mounted) setState(() => _exportingExcel = false);
     }
   }
@@ -416,7 +369,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
         ),
       );
     } finally {
-      if (mounted) hideLoader(context);
+      if (mounted) hideLoader();
       if (mounted) setState(() => _generatingDisbursement = false);
     }
   }
@@ -476,7 +429,7 @@ class _SalaryStatementScreenState extends State<SalaryStatementScreen> {
                                 borderRadius: BorderRadius.circular(_Tok.cRadius),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.04),
+                                    color: Colors.black.withValues(alpha: 0.04),
                                     blurRadius: 12,
                                     offset: const Offset(0, 2),
                                   ),
@@ -590,115 +543,76 @@ class _Toolbar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        // Title + badges on the left, actions on the right; each group wraps,
+        // and the actions move to their own line when the window is narrow.
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpacing.md,
+          runSpacing: AppSpacing.sm,
           children: [
-            Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
-            const SizedBox(width: AppSpacing.md),
-            _MonthBadge(monthName: monthName, year: year),
-            // ── Department code badge ──
-            if (selectedCode != 'All') ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.indigo600.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.indigo600.withOpacity(0.3)),
-                ),
-                child: Text(
-                  selectedCode,
-                  style: AppTextStyles.small.copyWith(
-                    color: AppColors.indigo400,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-            const Spacer(),
-            if (employees.isNotEmpty) ...[
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.indigo600.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.indigo600.withValues(alpha: 0.3)),
-                ),
-                child: Text(
-                  '${employees.length} employee${employees.length == 1 ? '' : 's'}',
-                  style: AppTextStyles.small.copyWith(
-                    color: AppColors.indigo400,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-            ],
-            if (isMsw) ...[
-              _FlagBadge(
-                  label: 'MSW month  ₹${mswAmount.toStringAsFixed(0)} active',
-                  bg: AppColors.amber100,
-                  fg: AppColors.amber700),
-              const SizedBox(width: 8),
-            ],
-            if (isFeb) ...[
-              _FlagBadge(
-                  label: 'Feb — PT ₹300',
-                  bg: AppColors.indigo50,
-                  fg: AppColors.indigo600),
-              const SizedBox(width: 8),
-            ],
-            exportingPdf
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : OutlinedButton.icon(
-                    onPressed: onExportPdf,
-                    icon:
-                        const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                    label: const Text('Download PDF'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                      side: BorderSide(color: Colors.red.shade400),
-                    ),
-                  ),
-            const SizedBox(width: 8),
-            exportingExcel
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : OutlinedButton.icon(
-                    onPressed: onExportExcel,
-                    icon: const Icon(Icons.table_chart_outlined, size: 16),
-                    label: const Text('Export Excel'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.green.shade700,
-                      side: BorderSide(color: Colors.green.shade400),
-                    ),
-                  ),
-            const SizedBox(width: 8),
-            generatingDisbursement
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : OutlinedButton.icon(
-                    onPressed:
-                        employees.isEmpty ? null : onGenerateDisbursement,
-                    icon: const Icon(Icons.account_balance_outlined,
-                        size: 16),
-                    label: Text(disbLabel),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.teal.shade700,
-                      side: BorderSide(color: Colors.teal.shade400),
-                    ),
-                  ),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Text(title, style: AppTextStyles.h3.copyWith(color: Colors.white)),
+                _MonthBadge(monthName: monthName, year: year),
+                if (selectedCode != 'All') _pill(selectedCode),
+                if (employees.isNotEmpty)
+                  _pill('${employees.length} employee${employees.length == 1 ? '' : 's'}'),
+                if (isMsw)
+                  _FlagBadge(
+                      label: 'MSW month  ₹${mswAmount.toStringAsFixed(0)} active',
+                      bg: AppColors.amber100,
+                      fg: AppColors.amber700),
+                if (isFeb)
+                  _FlagBadge(
+                      label: 'Feb — PT ₹300',
+                      bg: AppColors.indigo50,
+                      fg: AppColors.indigo600),
+              ],
+            ),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                exportingPdf
+                    ? const _Busy()
+                    : OutlinedButton.icon(
+                        onPressed: onExportPdf,
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                        label: const Text('Download PDF'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red.shade700,
+                          side: BorderSide(color: Colors.red.shade400),
+                        ),
+                      ),
+                exportingExcel
+                    ? const _Busy()
+                    : OutlinedButton.icon(
+                        onPressed: onExportExcel,
+                        icon: const Icon(Icons.table_chart_outlined, size: 16),
+                        label: const Text('Export Excel'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.green.shade700,
+                          side: BorderSide(color: Colors.green.shade400),
+                        ),
+                      ),
+                generatingDisbursement
+                    ? const _Busy()
+                    : OutlinedButton.icon(
+                        onPressed: employees.isEmpty ? null : onGenerateDisbursement,
+                        icon: const Icon(Icons.account_balance_outlined, size: 16),
+                        label: Text(disbLabel),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.teal.shade700,
+                          side: BorderSide(color: Colors.teal.shade400),
+                        ),
+                      ),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: AppSpacing.sm),
@@ -716,6 +630,22 @@ class _Toolbar extends StatelessWidget {
       ],
     );
   }
+
+  static Widget _pill(String text) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppColors.indigo600.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.indigo600.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          text,
+          style: AppTextStyles.small.copyWith(
+            color: AppColors.indigo400,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
 
   static Widget _codeChip(String label, bool active, VoidCallback onTap) =>
       Padding(
@@ -1072,9 +1002,11 @@ class _LeftPaneState extends State<_LeftPane> {
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: _Tok.tsMeta),
+            Expanded(
+              child: Text(label, style: _Tok.tsMeta, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 8),
             Text(value,
                 style: _Tok.tsInput.copyWith(
                   color: color,
@@ -1119,13 +1051,9 @@ class _PreviewPane extends StatelessWidget {
     trackBorderColor: WidgetStatePropertyAll(Colors.transparent),
   );
 
-  double _previewWidth() {
-    double w = 0;
-    SalaryStatementPreview.defaultColumnWidths.forEach((k, defaultVal) {
-      w += columnWidths[k] ?? defaultVal;
-    });
-    return w + 28 + 12;
-  }
+  // Column widths are scaled to fill the page, so the sheet is always one
+  // landscape page wide.
+  double _previewWidth() => SalaryStatementPreview.pageWidth + 40;
 
   @override
   Widget build(BuildContext context) {
@@ -1143,7 +1071,7 @@ class _PreviewPane extends StatelessWidget {
                 size: 13, color: AppColors.slate400),
             const SizedBox(width: 6),
             Text(
-              'Scroll to navigate  ·  Grey zeros = no days entered yet',
+              'Scroll to navigate  ·  Zeros = no days entered yet',
               style: AppTextStyles.small.copyWith(color: AppColors.slate400),
             ),
           ]),
@@ -1199,6 +1127,12 @@ class _PreviewPane extends StatelessWidget {
                                     daysMap: daysMap,
                                     daysInMonth: n.totalDays,
                                     columnWidths: columnWidths,
+                                    departmentCode: SalaryStateController
+                                                .instance.selectedCompanyCode ==
+                                            'All'
+                                        ? ''
+                                        : SalaryStateController
+                                            .instance.selectedCompanyCode,
                                   ),
                                 ),
                               ),
@@ -1300,4 +1234,10 @@ class _FlagBadge extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w600, color: fg)),
       );
+}
+class _Busy extends StatelessWidget {
+  const _Busy();
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+      width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
 }
