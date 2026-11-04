@@ -182,12 +182,16 @@ void main() {
       final active = {
         for (final e in await EmployeeStore.listActive(h.store.db)) e.id: e,
       };
-      // Only employees whose master salary is unchanged since the save.
+      // Only employees whose master salary is unchanged since the save, and
+      // whose saved ESIC already follows today's rule (basic wages). Months
+      // saved under the older gross-wage ESIC rule legitimately differ.
+      const math = SalaryMath(SalaryFormulaConfigModel());
       final comparable = payload.employees.where((e) {
         final now = active[e.employeeId];
         return e.days > 0 && now != null &&
             now.basicCharges == e.basicCharges && now.otherCharges == e.otherCharges &&
-            now.name == e.employeeName;
+            now.name == e.employeeName &&
+            e.esic == math.esic(fullBasicSalary: e.basicCharges, earnedBasic: e.earnedBasic).round();
       }).toList();
       if (comparable.isEmpty) return markTestSkipped('no comparable employees');
 
