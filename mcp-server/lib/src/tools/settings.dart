@@ -44,7 +44,7 @@ class SettingsTools extends ToolGroup {
     'pf_basic_threshold': ('Earned basic at/above which PF is the flat cap.', 1e7),
     'pf_cap_amount': ('Flat PF once basic reaches the threshold.', 1e6),
     'esic_rate': ('Employee ESIC rate as a fraction (0.0075 = 0.75%).', 1.0),
-    'esic_gross_threshold': ('Full gross above which ESIC does not apply.', 1e7),
+    'esic_gross_threshold': ('ESIC wage ceiling: full monthly BASIC above which ESIC does not apply (name kept for compatibility).', 1e7),
     'pt_female_threshold': ('Female: no PT below this earned gross.', 1e7),
     'pt_male_tier1_threshold': ('Male: no PT below this earned gross.', 1e7),
     'pt_male_tier2_threshold': ('Male: tier-2 PT between tier1 and this.', 1e7),
