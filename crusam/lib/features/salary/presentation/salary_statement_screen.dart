@@ -729,8 +729,8 @@ class _LeftPaneState extends State<_LeftPane> {
   int _pf(EmployeeModel e) => SalaryFormulaEngine.pf(_earnedBasic(e)).round();
 
   int _esic(EmployeeModel e) => SalaryFormulaEngine.esic(
-        fullGrossSalary: e.grossSalary,
-        earnedGross: _earnedGross(e),
+        fullBasicSalary: e.basicCharges,
+        earnedBasic: _earnedBasic(e),
       ).round();
 
   int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;

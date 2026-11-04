@@ -30,7 +30,7 @@ class SalaryBillingTotals {
   final int activeEmployeeCount;
   final double totalEarnedBasic;
   final double totalEarnedGross;
-  final double totalEarnedEsicEligibleGross;
+  final double totalEarnedEsicEligibleBasic;
   final double attachmentAPf;
   final double attachmentAEsic;
   final double attachmentASubtotal;
@@ -45,7 +45,7 @@ class SalaryBillingTotals {
     required this.activeEmployeeCount,
     required this.totalEarnedBasic,
     required this.totalEarnedGross,
-    required this.totalEarnedEsicEligibleGross,
+    required this.totalEarnedEsicEligibleBasic,
     required this.attachmentAPf,
     required this.attachmentAEsic,
     required this.attachmentASubtotal,
@@ -61,7 +61,7 @@ class SalaryBillingTotals {
         'active_employee_count': activeEmployeeCount,
         'total_earned_basic': totalEarnedBasic,
         'total_earned_gross': totalEarnedGross,
-        'total_earned_esic_eligible_gross': totalEarnedEsicEligibleGross,
+        'total_earned_esic_eligible_basic': totalEarnedEsicEligibleBasic,
         'attachment_a_pf': attachmentAPf,
         'attachment_a_esic': attachmentAEsic,
         'attachment_a_subtotal': attachmentASubtotal,
@@ -88,7 +88,7 @@ class SalaryMonthCalculator {
 
     final pf = math.pf(earnedBasic).round();
     final esic =
-        math.esic(fullGrossSalary: e.grossSalary, earnedGross: earnedGross).round();
+        math.esic(fullBasicSalary: e.basicCharges, earnedBasic: earnedBasic).round();
     final msw = input.isMsw ? input.mswAmount.round() : 0;
     final pt = math
         .pt(
@@ -150,10 +150,11 @@ class SalaryMonthCalculator {
       final days = daysFor(e.id ?? 0);
       if (days > 0) active++;
       if (totalDays == 0) continue;
-      earnedBasic += e.basicCharges * days / totalDays;
+      final b = e.basicCharges * days / totalDays;
+      earnedBasic += b;
       final g = e.grossSalary * days / totalDays;
       earnedGross += g;
-      if (math.esicApplicable(e.grossSalary)) earnedEsic += g;
+      if (math.esicApplicable(e.basicCharges)) earnedEsic += b;
       final d = employeeData(e, days, input);
       net += d.netSalary;
       ded += d.totalDeduction;
@@ -167,7 +168,7 @@ class SalaryMonthCalculator {
       activeEmployeeCount: active,
       totalEarnedBasic: earnedBasic,
       totalEarnedGross: earnedGross,
-      totalEarnedEsicEligibleGross: earnedEsic,
+      totalEarnedEsicEligibleBasic: earnedEsic,
       attachmentAPf: aPf,
       attachmentAEsic: aEsic,
       attachmentASubtotal: aSub,

@@ -280,8 +280,8 @@ class SalaryPdfExportService {
     final eG     = eB + eO;
     final pf     = SalaryFormulaEngine.pf(eB);
     final esic   = SalaryFormulaEngine.esic(
-      fullGrossSalary: emp.grossSalary,
-      earnedGross: eG,
+      fullBasicSalary: emp.basicCharges,
+      earnedBasic: eB,
     );
     final msw    = isMsw ? mswAmount : 0.0;
     final pt     = SalaryFormulaEngine.pt(

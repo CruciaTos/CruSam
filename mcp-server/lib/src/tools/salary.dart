@@ -54,17 +54,25 @@ class SalaryTools extends ToolGroup {
   static Map<String, Object?> _totalsFromData(
       List<SalarySnapshotEmployeeData> data, SalaryMath math, String code) {
     final f = code == 'All' ? data : data.where((e) => e.code == code).toList();
-    double basic = 0, gross = 0, esicGross = 0, net = 0, ded = 0;
+    double basic = 0, gross = 0, esicWages = 0, net = 0, ded = 0;
     var active = 0;
     for (final e in f) {
       if (e.days > 0) active++;
       basic += e.earnedBasic;
       gross += e.earnedGross;
-      if (math.esicApplicable(e.grossSalary)) esicGross += e.earnedGross;
+      // Saved months keep the numbers they were saved with. ESIC eligibility
+      // and the wage base are read back from the stored deduction (eligible
+      // iff esic > 0; base is earned basic when the stored amount matches the
+      // basic-wage rule, otherwise earned gross for months saved under the
+      // older gross-wage rule) instead of being re-derived from today's rule.
+      if (e.esic > 0) {
+        final onBasic = e.esic == (e.earnedBasic * math.cfg.esicRate).ceil();
+        esicWages += onBasic ? e.earnedBasic : e.earnedGross;
+      }
       net += e.netSalary;
       ded += e.totalDeduction;
     }
-    final aPf = math.employerPf(basic), aEsic = math.employerEsic(esicGross);
+    final aPf = math.employerPf(basic), aEsic = math.employerEsic(esicWages);
     final aSub = gross + aPf + aEsic, aTotal = aSub.ceilToDouble();
     final b = math.attachmentBTotal(active);
     return {

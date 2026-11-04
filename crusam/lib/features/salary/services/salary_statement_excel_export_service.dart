@@ -106,8 +106,8 @@ class ExcelExportService {
 
       final pf      = hasDays ? SalaryFormulaEngine.pf(earnedBasic).round() : 0;
       final esicInt = SalaryFormulaEngine.esic(
-        fullGrossSalary: e.grossSalary,
-        earnedGross: earnedGross,
+        fullBasicSalary: e.basicCharges,
+        earnedBasic: earnedBasic,
       ).round();
       final mswVal        = isMsw ? mswAmount.round() : 0;
       final displayedMsw  = hasDays ? mswVal : 0;

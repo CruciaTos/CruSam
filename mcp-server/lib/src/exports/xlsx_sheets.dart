@@ -311,7 +311,7 @@ List<int> salaryStatementSheet({
     final eo = has ? e.otherCharges * days / daysInMonth : 0.0;
     final eg = has ? e.grossSalary * days / daysInMonth : 0.0;
     final pf = days > 0 ? SalaryFormulaEngine.pf(eb).round() : 0;
-    final esic = SalaryFormulaEngine.esic(fullGrossSalary: e.grossSalary, earnedGross: eg).round();
+    final esic = SalaryFormulaEngine.esic(fullBasicSalary: e.basicCharges, earnedBasic: eb).round();
     final msw = isMsw ? mswAmount.round() : 0;
     final pt = SalaryFormulaEngine.pt(
             earnedGross: eg, isFemale: e.gender.toUpperCase() == 'F', isFeb: isFeb)

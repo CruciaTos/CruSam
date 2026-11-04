@@ -18,14 +18,14 @@ class SalaryFormulaEngine {
 
   static double pf(double earnedBasic) => _math.pf(earnedBasic);
 
-  static bool esicApplicable(double fullGrossSalary) =>
-      _math.esicApplicable(fullGrossSalary);
+  static bool esicApplicable(double fullBasicSalary) =>
+      _math.esicApplicable(fullBasicSalary);
 
   static double esic({
-    required double fullGrossSalary,
-    required double earnedGross,
+    required double fullBasicSalary,
+    required double earnedBasic,
   }) =>
-      _math.esic(fullGrossSalary: fullGrossSalary, earnedGross: earnedGross);
+      _math.esic(fullBasicSalary: fullBasicSalary, earnedBasic: earnedBasic);
 
   static double pt({
     required double earnedGross,
@@ -37,8 +37,8 @@ class SalaryFormulaEngine {
   static double employerPf(double totalEarnedBasic) =>
       _math.employerPf(totalEarnedBasic);
 
-  static double employerEsic(double totalEarnedEsicEligibleGross) =>
-      _math.employerEsic(totalEarnedEsicEligibleGross);
+  static double employerEsic(double totalEarnedEsicEligibleBasic) =>
+      _math.employerEsic(totalEarnedEsicEligibleBasic);
 
   static double attachmentBTotal(int employeeCount) =>
       _math.attachmentBTotal(employeeCount);

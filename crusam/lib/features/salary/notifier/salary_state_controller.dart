@@ -69,10 +69,10 @@ class SalaryStateController extends ChangeNotifier {
   double get totalGrossFull =>
       filteredEmployees.fold(0.0, (s, e) => s + e.grossSalary);
 
-  double get totalEsicEligibleGrossFull =>
+  double get totalEsicEligibleBasicFull =>
       filteredEmployees
-          .where((e) => SalaryFormulaEngine.esicApplicable(e.grossSalary))
-          .fold(0.0, (s, e) => s + e.grossSalary);
+          .where((e) => SalaryFormulaEngine.esicApplicable(e.basicCharges))
+          .fold(0.0, (s, e) => s + e.basicCharges);
 
   // ── Day-prorated totals — used for earned salary display ──────────────────
   double get totalBasic    => totalBasicFull;
@@ -92,20 +92,20 @@ class SalaryStateController extends ChangeNotifier {
         s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
   }
 
-  double get totalEarnedEsicEligibleGross {
+  double get totalEarnedEsicEligibleBasic {
     final n = SalaryDataNotifier.instance;
     if (n.totalDays == 0) return 0;
     return filteredEmployees
-        .where((e) => SalaryFormulaEngine.esicApplicable(e.grossSalary))
+        .where((e) => SalaryFormulaEngine.esicApplicable(e.basicCharges))
         .fold(0.0, (s, e) =>
-            s + e.grossSalary * n.getDays(e.id ?? 0) / n.totalDays);
+            s + e.basicCharges * n.getDays(e.id ?? 0) / n.totalDays);
   }
 
   // ── Attachment A calculations (earned/prorated values) ────────────────────
   /// PF = employer PF rate × Total Earned Basic Salary
   double get attachmentAPf       => SalaryFormulaEngine.employerPf(totalEarnedBasic);
-  /// ESIC = employer ESIC rate × Total Earned Gross of ESIC-eligible employees
-  double get attachmentAEsic     => SalaryFormulaEngine.employerEsic(totalEarnedEsicEligibleGross);
+  /// ESIC = employer ESIC rate × Total Earned Basic of ESIC-eligible employees
+  double get attachmentAEsic     => SalaryFormulaEngine.employerEsic(totalEarnedEsicEligibleBasic);
   double get attachmentASubtotal => totalEarnedGross + attachmentAPf + attachmentAEsic;
   double get attachmentATotal    => attachmentASubtotal.ceilToDouble();
   double get attachmentARoundOff => attachmentATotal - attachmentASubtotal;

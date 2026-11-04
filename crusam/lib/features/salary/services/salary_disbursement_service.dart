@@ -100,8 +100,8 @@ class SalaryDisbursementService {
     final eGross = employee.grossSalary  * days / daysInMonth;
     final pf     = SalaryFormulaEngine.pf(eBasic);
     final esic   = SalaryFormulaEngine.esic(
-      fullGrossSalary: employee.grossSalary,
-      earnedGross: eGross,
+      fullBasicSalary: employee.basicCharges,
+      earnedBasic: eBasic,
     );
     final msw    = isMsw ? mswAmount : 0.0;
     final pt     = SalaryFormulaEngine.pt(

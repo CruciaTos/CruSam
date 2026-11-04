@@ -260,7 +260,7 @@ class DocumentTools extends ToolGroup {
         final eg = e.grossSalary * days / sp.daysInMonth;
         final eb = e.basicCharges * days / sp.daysInMonth;
         final m = calc.math;
-        final net = eg - m.pf(eb) - m.esic(fullGrossSalary: e.grossSalary, earnedGross: eg) -
+        final net = eg - m.pf(eb) - m.esic(fullBasicSalary: e.basicCharges, earnedBasic: eb) -
             (input.isMsw ? input.mswAmount : 0) -
             m.pt(earnedGross: eg, isFemale: e.gender.toUpperCase() == 'F', isFeb: input.isFeb);
         if (net <= 0) continue;

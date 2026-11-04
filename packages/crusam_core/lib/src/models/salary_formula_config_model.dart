@@ -15,8 +15,10 @@ class SalaryFormulaConfigModel {
   final double pfCapAmount;       // flat PF once basic crosses the threshold
 
   // ── ESIC (Employee State Insurance) — employee deduction ───────────────
-  final double esicRate;           // 0.75% of earned gross
-  final double esicGrossThreshold; // employee ineligible above this (full gross)
+  final double esicRate;           // 0.75% of earned basic
+  // Wage ceiling (Rs 21,000): employee ineligible when full monthly BASIC is
+  // above this. Name kept as "gross" so the stored column/key keeps working.
+  final double esicGrossThreshold;
 
   // ── Professional Tax slabs ──────────────────────────────────────────────
   final double ptFemaleThreshold;    // female: 0 below this earned gross
@@ -28,7 +30,7 @@ class SalaryFormulaConfigModel {
 
   // ── Employer contributions (Attachment A) ───────────────────────────────
   final double employerPfRate;   // 13% of total earned basic
-  final double employerEsicRate; // 3.25% of ESIC-eligible earned gross
+  final double employerEsicRate; // 3.25% of ESIC-eligible earned basic
 
   // ── Attachment B ─────────────────────────────────────────────────────────
   final double attachmentBPerEmployee; // fixed amount per active employee

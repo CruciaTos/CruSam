@@ -88,11 +88,11 @@ class _SalaryEntryTableState extends State<SalaryEntryTable> {
   int _pf(EmployeeModel e) => SalaryFormulaEngine.pf(_earnedBasic(e)).round();
 
   bool _esicApplicable(EmployeeModel e) =>
-      SalaryFormulaEngine.esicApplicable(e.grossSalary);
+      SalaryFormulaEngine.esicApplicable(e.basicCharges);
 
   int _esic(EmployeeModel e) => SalaryFormulaEngine.esic(
-        fullGrossSalary: e.grossSalary,
-        earnedGross: _earnedGross(e),
+        fullBasicSalary: e.basicCharges,
+        earnedBasic: _earnedBasic(e),
       ).round();
 
   int _msw() => widget.isMsw ? widget.mswAmount.round() : 0;

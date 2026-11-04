@@ -61,8 +61,16 @@ void main() {
     test('PF cap, ESIC eligibility and PT slabs', () {
       expect(math.pf(10000), 1200);
       expect(math.pf(20000), 1800);
-      expect(math.esic(fullGrossSalary: 25000, earnedGross: 25000), 0);
-      expect(math.esic(fullGrossSalary: 15000, earnedGross: 15000), 113);
+      // ESIC: Rs 21,000 ceiling is tested on BASIC; amount is 0.75% of earned basic.
+      expect(math.esic(fullBasicSalary: 25000, earnedBasic: 25000), 0);
+      expect(math.esic(fullBasicSalary: 15000, earnedBasic: 15000), 113);
+      // Gross above the ceiling no longer matters when basic is within it.
+      expect(math.esic(fullBasicSalary: 14990, earnedBasic: 14990), 113);
+      expect(math.esic(fullBasicSalary: 21000, earnedBasic: 21000), 158);
+      expect(math.esic(fullBasicSalary: 21001, earnedBasic: 21001), 0);
+      // Prorated: eligible on full basic, deducted on earned (prorated) basic.
+      expect(math.esic(fullBasicSalary: 14990, earnedBasic: 7495), 57);
+      expect(math.esic(fullBasicSalary: 14990, earnedBasic: 0), 0);
       expect(math.pt(earnedGross: 9000, isFemale: false, isFeb: false), 175);
       expect(math.pt(earnedGross: 12000, isFemale: false, isFeb: true), 300);
       expect(math.pt(earnedGross: 20000, isFemale: true, isFeb: false), 0);

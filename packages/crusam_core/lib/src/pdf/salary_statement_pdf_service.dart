@@ -85,8 +85,8 @@ class SalaryStatementPdfService {
       SalaryFormulaEngine.pf(_earnedBasic(e, days, dim)).round();
 
   static int _esic(EmployeeModel e, int days, int dim) => SalaryFormulaEngine.esic(
-        fullGrossSalary: e.grossSalary,
-        earnedGross: _earnedGross(e, days, dim),
+        fullBasicSalary: e.basicCharges,
+        earnedBasic: _earnedBasic(e, days, dim),
       ).round();
 
   static int _msw(bool isMsw, double mswAmount) => isMsw ? mswAmount.round() : 0;
