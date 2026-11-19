@@ -168,6 +168,7 @@ class ClaudeFollowController extends ChangeNotifier {
   bool _canLeaveFor(String route) {
     final here = _currentPath;
     if (here == route) return true;
+    if (here == '/society' || here.startsWith('/society/')) return false;
     // A dialog (e.g. the employee form) is open on top of the screen.
     if (AppRouter.rootNavigatorKey.currentState?.canPop() ?? false) return false;
     if (_editingRoutes.contains(here)) return false;

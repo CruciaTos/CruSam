@@ -21,6 +21,7 @@ import '../../features/salary/presentation/salary_analytics_screen.dart';
 import '../../features/salary/presentation/salary_snapshots_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../shared/widgets/coming_soon_screen.dart';
+import '../../features/society/society_routes.dart';
 
 class AppRouter {
   static final _root = GlobalKey<NavigatorState>();
@@ -139,6 +140,7 @@ class AppRouter {
             path: '/salary-analytics',
             builder: (context, state) => const SalaryAnalyticsScreen(),
           ),
+          ...societyRoutes,
         ],
       ),
     ],

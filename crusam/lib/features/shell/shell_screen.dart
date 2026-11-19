@@ -20,6 +20,9 @@ import 'package:crusam/features/salary/notifier/salary_snapshot_notifier.dart';
 import 'package:crusam/core/ai/notifier/ai_chat_notifier.dart';
 import '../../shared/widgets/ai_chat_panel.dart';   // ← AiChatScreen lives here
 import '../../shared/widgets/min_height_scroll.dart';
+import '../../features/society/core/workspace_memory.dart';
+import '../../features/society/shared/widgets/workspace_switch.dart';
+import '../../features/society/shared/widgets/society_picker.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Dark Slate Color Scheme – Minimal & Eye‑Friendly
@@ -87,6 +90,56 @@ const _kNav = <_NavItem>[
   _Route('/salary-analytics', Icons.insights_outlined, 'Salary Analytics'),
 ];
 
+const _kSocietyNav = <_NavItem>[
+  _Route('/society/overview', Icons.space_dashboard_outlined, 'Overview'),
+  _Route('/society/societies', Icons.apartment_outlined, 'Societies'),
+  _Group(Icons.people_alt_outlined, 'Members & Units', [
+    _Route('/society/units', Icons.meeting_room_outlined, 'Units'),
+    _Route('/society/unit-types', Icons.category_outlined, 'Unit Types'),
+    _Route('/society/members', Icons.groups_outlined, 'Members'),
+    _Route('/society/import', Icons.upload_file_outlined, 'Import'),
+  ]),
+  _Group(Icons.request_quote_outlined, 'Billing', [
+    _Route('/society/charge-heads', Icons.list_alt_outlined, 'Charge Heads'),
+    _Route('/society/billing-rules', Icons.rule_outlined, 'Billing Rules'),
+    _Route('/society/meters', Icons.speed_outlined, 'Meter Readings'),
+    _Route('/society/bill-runs', Icons.playlist_add_check_outlined, 'Bill Runs'),
+    _Route('/society/bills', Icons.receipt_long_outlined, 'Bills'),
+  ]),
+  _Group(Icons.payments_outlined, 'Collections', [
+    _Route('/society/receipts', Icons.point_of_sale_outlined, 'Receipts'),
+    _Route('/society/notes', Icons.note_alt_outlined, 'Credit & Debit Notes'),
+    _Route('/society/unidentified', Icons.help_outline, 'Unidentified Receipts'),
+    _Route('/society/dues', Icons.notification_important_outlined, 'Dues & Reminders'),
+  ]),
+  _Route('/society/other-income', Icons.add_card_outlined, 'Other Income'),
+  _Group(Icons.shopping_bag_outlined, 'Expenses', [
+    _Route('/society/vendors', Icons.storefront_outlined, 'Vendors'),
+    _Route('/society/expenses', Icons.receipt_outlined, 'Expense Bills'),
+    _Route('/society/payments', Icons.outbox_outlined, 'Payments'),
+    _Route('/society/budget', Icons.savings_outlined, 'Budget'),
+    _Route('/society/expense-comparison', Icons.compare_arrows_outlined, 'Expense Comparison'),
+  ]),
+  _Group(Icons.account_balance_outlined, 'Bank & Cash', [
+    _Route('/society/bank', Icons.account_balance_wallet_outlined, 'Accounts'),
+    _Route('/society/transfers', Icons.swap_horiz_outlined, 'Transfers'),
+    _Route('/society/reconciliation', Icons.fact_check_outlined, 'Reconciliation'),
+    _Route('/society/deposits', Icons.lock_clock_outlined, 'Fixed Deposits'),
+    _Route('/society/tax', Icons.percent_outlined, 'GST & TDS'),
+  ]),
+  _Group(Icons.menu_book_outlined, 'Accounts', [
+    _Route('/society/accounts', Icons.account_tree_outlined, 'Chart of Accounts'),
+    _Route('/society/journals', Icons.edit_note_outlined, 'Journal Entries'),
+    _Route('/society/ledger', Icons.manage_search_outlined, 'Ledger Enquiry'),
+    _Route('/society/trial-balance', Icons.balance_outlined, 'Trial Balance'),
+    _Route('/society/statements', Icons.summarize_outlined, 'Financial Statements'),
+    _Route('/society/year-end', Icons.event_available_outlined, 'Year End'),
+  ]),
+  _Route('/society/reports', Icons.assessment_outlined, 'Reports'),
+  _Route('/society/settings', Icons.tune_outlined, 'Society Settings'),
+  _Route('/society/about', Icons.info_outline, 'About & Credits'),
+];
+
 String? _findActiveStatic(List<_NavItem> items, String loc) {
   for (final item in items) {
     if (item is _Route && (loc == item.path || loc.startsWith('${item.path}/'))) return item.path;
@@ -104,7 +157,7 @@ String _titleForStatic(List<_NavItem> items, String route) {
     }
   }
   scan(items);
-  return t ?? 'Dashboard';
+  return t ?? (isSocietyLocation(route) ? 'Overview' : 'Dashboard');
 }
 
 bool _groupContainsActiveStatic(List<_NavItem> items, String active) {
@@ -127,11 +180,14 @@ class ShellScreen extends StatefulWidget {
 
 class _ShellScreenState extends State<ShellScreen> {
   bool _expanded = true;
-  final Set<String> _open = {'Salary-Output'};
+  final Set<String> _open = {'Salary-Output', 'Billing', 'Collections'};
 
   String _currentLocation = '';
   String _activePath = '/dashboard';
   String _pageTitle = 'Dashboard';
+
+  bool get _isSociety => isSocietyLocation(_currentLocation);
+  List<_NavItem> get _navItems => _isSociety ? _kSocietyNav : _kNav;
 
   // ─── Resizable AI panel state ───────────────────────────────────────────
   bool   _isPanelOpen   = false;
@@ -184,11 +240,16 @@ class _ShellScreenState extends State<ShellScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final loc = GoRouterState.of(context).uri.toString();
+    final loc = GoRouterState.of(context).uri.path;
     if (_currentLocation != loc) {
       _currentLocation = loc;
-      _activePath = _findActiveStatic(_kNav, loc) ?? '/dashboard';
-      _pageTitle = _titleForStatic(_kNav, _activePath);
+      WorkspaceMemory.instance.recordLocation(loc);
+      if (_isSociety && _isPanelOpen) {
+        _isPanelOpen = false;
+      }
+      final fallback = _isSociety ? '/society/overview' : '/dashboard';
+      _activePath = _findActiveStatic(_navItems, loc) ?? fallback;
+      _pageTitle = _titleForStatic(_navItems, _activePath);
     }
   }
 
@@ -252,12 +313,14 @@ class _ShellScreenState extends State<ShellScreen> {
                 maxWidth: w,
                 child: _expanded
                     ? _ExpandedSidebar(
+                        items: _navItems,
                         active: _activePath,
                         openGroups: _open,
                         onNavigate: (p) => context.go(p),
                         onToggle: _toggle,
                       )
                     : _CollapsedSidebar(
+                        items: _navItems,
                         active: _activePath,
                         onNavigate: (p) => context.go(p),
                       ),
@@ -364,12 +427,14 @@ class _ShellScreenState extends State<ShellScreen> {
 
 // ───── Expanded Sidebar (logout removed) ────────────────────────────────────
 class _ExpandedSidebar extends StatelessWidget {
+  final List<_NavItem> items;
   final String active;
   final Set<String> openGroups;
   final void Function(String) onNavigate;
   final void Function(String) onToggle;
 
   const _ExpandedSidebar({
+    required this.items,
     required this.active,
     required this.openGroups,
     required this.onNavigate,
@@ -383,7 +448,7 @@ class _ExpandedSidebar extends StatelessWidget {
     Expanded(
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        children: _buildItems(_kNav, 0),
+        children: _buildItems(items, 0),
       ),
     ),
     Container(
@@ -461,10 +526,15 @@ class _ExpandedSidebar extends StatelessWidget {
 
 // ───── Collapsed Sidebar (logout removed) ──────────────────────────────────
 class _CollapsedSidebar extends StatelessWidget {
+  final List<_NavItem> items;
   final String active;
   final void Function(String) onNavigate;
 
-  const _CollapsedSidebar({required this.active, required this.onNavigate});
+  const _CollapsedSidebar({
+    required this.items,
+    required this.active,
+    required this.onNavigate,
+  });
 
   @override
   Widget build(BuildContext context) => Column(children: [
@@ -473,7 +543,7 @@ class _CollapsedSidebar extends StatelessWidget {
     Expanded(
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        children: _kNav.map((item) {
+        children: items.map((item) {
           if (item is _Route) {
             return _CollapsedTile(
               icon: item.icon,
@@ -1049,6 +1119,8 @@ class _HeaderState extends State<_Header> {
   @override
   Widget build(BuildContext context) {
     final primaryColor = Theme.of(context).colorScheme.primary;
+    final loc = GoRouterState.of(context).uri.path;
+    final isSociety = isSocietyLocation(loc);
 
     return Container(
       height: AppSpacing.headerHeight,
@@ -1067,41 +1139,57 @@ class _HeaderState extends State<_Header> {
           ),
         ),
         const SizedBox(width: 4),
-        Text(widget.title,
-            style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary)),
+        Flexible(
+          child: Text(
+            widget.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.h4.copyWith(color: _ShellColors.textPrimary),
+          ),
+        ),
+        const SizedBox(width: 12),
+        const WorkspaceSwitch(),
+        if (isSociety) ...[
+          const SizedBox(width: 12),
+          const SocietyPicker(),
+        ],
         const Spacer(),
 
-        const _FollowClaudeToggle(),
-        const SizedBox(width: 4),
+        if (!isSociety) ...[
+          const _FollowClaudeToggle(),
+          const SizedBox(width: 4),
+        ],
         const _WindowModeButton(),
         const SizedBox(width: 4),
 
         // AI Assistant – opens resizable right‑side panel
-        MouseRegion(
-          onEnter: (_) => setState(() => _isHoveredAI = true),
-          onExit: (_) => setState(() => _isHoveredAI = false),
-          child: IconButton(
-            icon: Icon(
-              Icons.auto_awesome,
-              color: widget.isPanelOpen || _isHoveredAI
-                  ? primaryColor
-                  : _ShellColors.iconDefault,
+        if (!isSociety) ...[
+          MouseRegion(
+            onEnter: (_) => setState(() => _isHoveredAI = true),
+            onExit: (_) => setState(() => _isHoveredAI = false),
+            child: IconButton(
+              icon: Icon(
+                Icons.auto_awesome,
+                color: widget.isPanelOpen || _isHoveredAI
+                    ? primaryColor
+                    : _ShellColors.iconDefault,
+              ),
+              tooltip: 'AI Assistant',
+              onPressed: () async {
+                final ctx = await AiContextBuilder.build(
+                  employeeNotifier: EmployeeNotifier.instance,
+                  salaryStateController: SalaryStateController.instance,
+                  salaryDataNotifier: SalaryDataNotifier.instance,
+                  voucherNotifier: VoucherNotifier.instance,
+                  currentVoucher: VoucherNotifier.instance.current,
+                );
+                AiChatNotifier.instance.updateContext(ctx);
+                widget.onAiTap();
+              },
             ),
-            tooltip: 'AI Assistant',
-            onPressed: () async {
-              final ctx = await AiContextBuilder.build(
-                employeeNotifier: EmployeeNotifier.instance,
-                salaryStateController: SalaryStateController.instance,
-                salaryDataNotifier: SalaryDataNotifier.instance,
-                voucherNotifier: VoucherNotifier.instance,
-                currentVoucher: VoucherNotifier.instance.current,
-              );
-              AiChatNotifier.instance.updateContext(ctx);
-              widget.onAiTap();
-            },
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
 
         // User info – fallback to "Admin User" when no session
         ListenableBuilder(
@@ -1562,7 +1650,11 @@ class _CompactHeader extends StatelessWidget {
   static const height = 44.0;
 
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) {
+    final loc = GoRouterState.of(context).uri.path;
+    final isSociety = isSocietyLocation(loc);
+
+    return Container(
         height: height,
         padding: const EdgeInsets.only(left: 12, right: 4),
         decoration: const BoxDecoration(
@@ -1591,7 +1683,12 @@ class _CompactHeader extends StatelessWidget {
               ),
             ),
           ),
-          const _FollowClaudeToggle(),
+          const WorkspaceSwitch(compact: true),
+          const SizedBox(width: 4),
+          if (!isSociety) ...[
+            const _FollowClaudeToggle(),
+            const SizedBox(width: 4),
+          ],
           const _WindowModeButton(),
           IconButton(
             onPressed: () => windowManager.minimize(),
@@ -1601,6 +1698,7 @@ class _CompactHeader extends StatelessWidget {
           ),
         ]),
       );
+  }
 }
 
 /// Lays [child] out at [designWidth] and scales it down to fit when the space

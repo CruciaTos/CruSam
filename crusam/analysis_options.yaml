@@ -10,6 +10,12 @@
 analyzer:
   exclude:
     - files/**
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
   errors:
     unused_import: ignore
 include: package:flutter_lints/flutter.yaml
